@@ -35,6 +35,15 @@ class DslCompilationTest {
         compile(false, "d.nullSafeEquals(d.nullValue(CommonTypes.decimal(9, 2)), d.nullValue(CommonTypes.decimal(9, 2)).asStr());");
     }
 
+    @Test
+    void nullIfRetainsTheSelectedScalarFamily() throws IOException {
+        compile(true, "NumberTypeExpression<BigDecimal> number = d.nullIfValue(p.amount(), BigDecimal.ZERO); number.multiply(2); StringTypeExpression<String> text = d.nullIfValue(p.name(), null); text.toUpper();");
+        compile(true, "DateTimeTypeExpression<java.time.LocalDate> day = d.nullIfValue(e.eventDate(), null); day.year(); BooleanTypeExpression<Boolean> flag = d.nullIfValue(d.nullSafeEqualsValue(p.id(), 1), true); flag.eq(false);");
+        compile(false, "StringTypeExpression<String> text = d.nullIfValue(p.amount(), BigDecimal.ZERO);");
+        compile(false, "d.nullIf(p.amount(), p.id());");
+        compile(false, "d.nullIfValue(e.eventDate(), \"wrong type\");");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
@@ -42,7 +51,9 @@ class DslCompilationTest {
                 import com.easy.query.core.proxy.extension.functions.type.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
                 import org.dpdns.zerodep.easyquery.pro.dsl.type.*;
-                final class Consumer { void use(ProDsl d) { %s } }
+                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
+                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;
+                final class Consumer { void use(ProDsl d, TestProductProxy p, TestEventProxy e) { %s } }
                 """.formatted(body));
         var compiler = ToolProvider.getSystemJavaCompiler();
         assertNotNull(compiler, "Consumer compilation requires a JDK");

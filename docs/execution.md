@@ -224,6 +224,18 @@ IDEA 格式化和编译通过；MCP 确认 EQP_BUSINESS_% / EQP_JOIN_PROBE_% sch
 
 IDEA 格式化和编译通过，MCP 确认本轮 EQP_CONVERT_% schema 遗留为 0；自建诊断日志已清理，保留持久开发数据库与标准报告。完整 U04 验收仍包含后续分片/类型目录组合，G4.3 的 NULLIF、日期截断和 JSON path 继续推进。
 
+## NULLIF 类型族与可空结果
+
+提交 `51c1d436f2b03be685ee2813309e6bfc84453665` 的 [CI 39342797479](https://github.com/kenconnet666/easy_query_pro/actions/runs/39342797479) 已通过全部五个强制任务，包含上节 NULL-safe 比较和完整三库回归。
+
+U05 使用原有数字、文本、日期时间、布尔类型族重载，返回相应上游表达式；`nullIfValue` 与表达式重载分开命名，不要求强转 null。参数绑定复用 U04 的上游比较参数路径。普通列保留结果映射，显式 asStr 等视图的输出移除原整列转换器；nullable 数字与布尔结果不使用 primitive 默认值。
+
+本地 HANA `HanaNullIfDslIT,HanaConversionIT` 共 4 项通过，同次 50 个离线测试通过。MySQL/PostgreSQL 的共享真实契约共 2 项通过，同次 9 项选定离线/编译检查通过；两库验证包含新增 primitive 属性投影为 NULL 的边界。JDK 17 消费者编译现覆盖 5 个正例、9 个负例，验证数字/文本/日期/布尔结果类型及混用错误。IDEA 格式化和编译通过，MCP 确认 EQP_CONVERT_% schema 遗留为 0。
+
+最后单独运行 HANA `HanaNullIfDslIT`，确认 primitive 投影边界通过；同次 50 个离线测试通过。本轮三份诊断日志已删除，标准报告与持久数据库保留。
+
+三库均使用原生 NULLIF。MySQL 在不相等时可能重复求值左值，这是明确记录的原生限制；不为随机值/序列制造跨库单次求值保证。完整使用规则见 [比较与 NULLIF](dsl-comparison.md)。日期截断、方言类型与跨分片结果合并继续推进，不以本节替代 G4/G7 的完整验收。
+
 ## 下一步
 
 1. 检查新提交的精确类型 DSL CI，继续 HANA 未关闭的函数/写入边界与其他通用类型。

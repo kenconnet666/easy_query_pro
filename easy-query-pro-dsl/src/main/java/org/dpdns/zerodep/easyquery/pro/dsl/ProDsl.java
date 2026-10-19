@@ -11,6 +11,15 @@ import com.easy.query.core.func.SQLFunctionTranslateImpl;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.ProxyEntity;
 import com.easy.query.core.proxy.core.EntitySQLContext;
+import com.easy.query.core.proxy.extension.functions.ColumnNumberFunctionAvailable;
+import com.easy.query.core.proxy.extension.functions.ColumnStringFunctionAvailable;
+import com.easy.query.core.proxy.extension.functions.ColumnDateTimeFunctionAvailable;
+import com.easy.query.core.proxy.extension.functions.ColumnBooleanFunctionAvailable;
+import com.easy.query.core.proxy.extension.functions.type.StringTypeExpression;
+import com.easy.query.core.proxy.extension.functions.type.DateTimeTypeExpression;
+import com.easy.query.core.proxy.extension.functions.type.IgnoreValueConverterTypeExpression;
+import com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl;
+import com.easy.query.core.proxy.extension.functions.type.impl.DateTimeTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.NumberTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.BooleanTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
@@ -18,10 +27,12 @@ import com.easy.query.core.proxy.extension.functions.type.impl.AnyTypeExpression
 import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
 import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import com.easy.query.core.util.EasyColumnSegmentUtil;
+import com.easy.query.core.util.EasyClassUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
 
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
  * Portable additions that compose with EasyQuery's existing query and expression types.
@@ -103,9 +114,64 @@ public final class ProDsl {
         return comparisonValue(left, value, true);
     }
 
-    private <T> BooleanTypeExpression<Boolean> comparisonValue(PropTypeColumn<T> left, T value, boolean distinct) {
+    public <N extends Number> NumberTypeExpression<N> nullIf(ColumnNumberFunctionAvailable<N> left, PropTypeColumn<N> right) {
+        return new NumberTypeExpressionImpl<>(context, left.getTable(), resultProperty(left), nullIfFunction(left, right),
+                resultType(left));
+    }
+
+    public StringTypeExpression<String> nullIf(ColumnStringFunctionAvailable<String> left, PropTypeColumn<String> right) {
+        return new StringTypeExpressionImpl<>(context, left.getTable(), resultProperty(left), nullIfFunction(left, right), String.class);
+    }
+
+    public <T> DateTimeTypeExpression<T> nullIf(ColumnDateTimeFunctionAvailable<T> left, PropTypeColumn<T> right) {
+        return new DateTimeTypeExpressionImpl<>(context, left.getTable(), resultProperty(left), nullIfFunction(left, right), resultType(left));
+    }
+
+    public BooleanTypeExpression<Boolean> nullIf(ColumnBooleanFunctionAvailable<Boolean> left, PropTypeColumn<Boolean> right) {
+        return new BooleanTypeExpressionImpl<>(context, left.getTable(), resultProperty(left), nullIfFunction(left, right), Boolean.class);
+    }
+
+    public <N extends Number> NumberTypeExpression<N> nullIfValue(ColumnNumberFunctionAvailable<N> left, N value) {
+        return nullIf(left, comparisonParameter(left, value));
+    }
+
+    public StringTypeExpression<String> nullIfValue(ColumnStringFunctionAvailable<String> left, String value) {
+        return nullIf(left, comparisonParameter(left, value));
+    }
+
+    public <T> DateTimeTypeExpression<T> nullIfValue(ColumnDateTimeFunctionAvailable<T> left, T value) {
+        return nullIf(left, comparisonParameter(left, value));
+    }
+
+    public BooleanTypeExpression<Boolean> nullIfValue(ColumnBooleanFunctionAvailable<Boolean> left, Boolean value) {
+        return nullIf(left, comparisonParameter(left, value));
+    }
+
+    private Function<SQLFunc, SQLFunction> nullIfFunction(PropTypeColumn<?> left, PropTypeColumn<?> right) {
         requireSource(left);
-        var parameter = new AnyTypeExpressionImpl<T>(context, anchor, null, factory -> {
+        requireSource(right);
+        return factory -> new ScopedFunction(factory.anySQLFunction("NULLIF({0},{1})", args -> {
+            args.sqlFunc(left.getTable(), operand(left, factory));
+            args.sqlFunc(right.getTable(), operand(right, factory));
+        }), AggregationType.UNKNOWN, true, left.getTable(), right.getTable());
+    }
+
+    private static String resultProperty(PropTypeColumn<?> source) {
+        // asStr 等显式视图不再使用原整列转换器；同类型 NULLIF 则保留普通列的结果映射。
+        return source instanceof IgnoreValueConverterTypeExpression ? null : source.getValue();
+    }
+
+    private static Class<?> resultType(PropTypeColumn<?> source) {
+        return EasyClassUtil.getObjectTypeWhenPrimitive(Objects.requireNonNull(source.getPropertyType(), "The source Java type is required"));
+    }
+
+    private <T> BooleanTypeExpression<Boolean> comparisonValue(PropTypeColumn<T> left, T value, boolean distinct) {
+        return comparison(left, comparisonParameter(left, value), distinct);
+    }
+
+    private <T> PropTypeColumn<T> comparisonParameter(PropTypeColumn<T> left, T value) {
+        requireSource(left);
+        return new AnyTypeExpressionImpl<>(context, anchor, null, factory -> {
             if (left instanceof DSLSQLFunctionAvailable) {
                 return factory.anySQLFunction("{0}", args -> args.value(left._toFunctionSerializeValue(value)));
             }
@@ -113,7 +179,6 @@ public final class ProDsl {
             return factory.anySQLFunction("{0}", args -> args.sql(EasyColumnSegmentUtil.createColumnCompareValue2Segment(left.getTable(),
                     left.getTable().getEntityMetadata().getColumnNotNull(left.getValue()), context.getExpressionContext(), value)));
         }, left.getPropertyType());
-        return comparison(left, parameter, distinct);
     }
 
     private BooleanTypeExpression<Boolean> comparison(PropTypeColumn<?> left, PropTypeColumn<?> right, boolean distinct) {

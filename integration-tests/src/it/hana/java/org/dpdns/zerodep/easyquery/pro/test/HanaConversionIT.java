@@ -72,6 +72,10 @@ class HanaConversionIT {
             assertEquals(List.of("first:" + first.getLabel().value()), encoded);
             assertEquals(List.of("first:" + first.getLabel().value() + "!"), firstClient.queryable(CodecRecord.class).asSchema(s -> schema.name())
                     .where(row -> row.label().eq(first.getLabel())).selectColumn(row -> row.label().asStr().concat("!")).toList());
+            assertNull(firstClient.queryable(CodecRecord.class).asSchema(s -> schema.name()).where(row -> row.label().eq(first.getLabel()))
+                    .selectColumn(row -> ProDsl.of(row).nullIfValue(row.label().asStr(), "first:" + first.getLabel().value())).toList().get(0));
+            assertEquals(List.of("FIRST:" + first.getLabel().value().toUpperCase(java.util.Locale.ROOT)), firstClient.queryable(CodecRecord.class).asSchema(s -> schema.name())
+                    .where(row -> row.label().eq(first.getLabel())).selectColumn(row -> ProDsl.of(row).nullIfValue(row.label().asStr(), "absent").toUpper()).toList());
             loaded.setLabel(new CodecRecord.Label("changed"));
             firstClient.updatable(loaded).asSchema(s -> schema.name()).executeRows();
             assertEquals(1L, firstClient.queryable(CodecRecord.class).asSchema(s -> schema.name()).where(row -> row.label().eq(loaded.getLabel())).count());
@@ -101,6 +105,8 @@ class HanaConversionIT {
             assertEquals(0, new BigDecimal("23.45").compareTo(query.queryable(CodecRecord.class).asSchema(s -> schema.name()).selectColumn(value -> value.price()).toList().get(0)));
             assertEquals(0, new BigDecimal("23.45").compareTo(query.queryable(CodecRecord.class).asSchema(s -> schema.name())
                     .selectColumn(value -> ProDsl.of(value).nativeCast(value.price(), CommonTypes.decimal(19, 2))).singleNotNull()));
+            assertNull(query.queryable(CodecRecord.class).asSchema(s -> schema.name())
+                    .selectColumn(value -> ProDsl.of(value).nullIfValue(value.price(), new BigDecimal("23.45"))).toList().get(0));
         }
     }
 
