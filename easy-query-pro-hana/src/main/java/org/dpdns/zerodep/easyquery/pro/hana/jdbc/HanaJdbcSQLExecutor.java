@@ -4,24 +4,83 @@ import com.easy.query.core.basic.extension.listener.JdbcExecuteAfterArg;
 import com.easy.query.core.basic.extension.listener.JdbcExecuteBeforeArg;
 import com.easy.query.core.basic.jdbc.conn.EasyConnection;
 import com.easy.query.core.basic.jdbc.executor.ExecutorContext;
+import com.easy.query.core.basic.jdbc.executor.internal.merge.result.StreamResultSet;
 import com.easy.query.core.basic.jdbc.executor.internal.merge.result.impl.EasyStreamResultSet;
 import com.easy.query.core.basic.jdbc.executor.internal.props.BasicJdbcProperty;
 import com.easy.query.core.basic.jdbc.parameter.SQLParameter;
 import com.easy.query.core.enums.EasyBehaviorEnum;
 import com.easy.query.core.exception.EasyQuerySQLStatementException;
 import com.easy.query.core.metadata.ColumnMetadata;
+import com.easy.query.core.expression.lambda.SQLConsumer;
 import com.easy.query.core.sql.DefaultJdbcSQLExecutor;
 import com.easy.query.core.util.EasyJdbcExecutorUtil;
 import org.dpdns.zerodep.easyquery.pro.hana.key.HanaSequenceGenerator;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
-/** 仅扩展回填插入的 JDBC 生命周期，其余操作沿用上游执行器。 */
+/**
+ * 扩展回填插入生命周期和时间结果读取；查询执行、绑定、监听仍复用上游。
+ */
 public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
+    @Override
+    public StreamResultSet query(ExecutorContext context, EasyConnection connection, String sql, List<SQLParameter> parameters,
+                                 boolean sharding, boolean replica) throws SQLException {
+        var query = new QueryContext(context);
+        var result = super.query(query, connection, sql, parameters, sharding, replica);
+        try {
+            return HanaTemporalResultSet.wrap(result, query.statement.getResultSet());
+        } catch (SQLException | RuntimeException | Error failure) {
+            try {
+                result.close();
+            } catch (SQLException cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
+    }
+
+    private static final class QueryContext extends ExecutorContext {
+        private final ExecutorContext original;
+        private Statement statement;
+
+        private QueryContext(ExecutorContext original) {
+            super(original.getExpressionContext(), original.isQuery(), original.getExecuteMethod(), original.isTracking());
+            this.original = original;
+            setMapToBeanStrict(original.isMapToBeanStrict());
+        }
+
+        @Override
+        public SQLConsumer<Statement> getConfigurer(boolean sharding) {
+            var configure = original.getConfigurer(sharding);
+            return prepared -> {
+                // 上游分片结果不暴露原始 ResultSet；通过公开 Statement 配置钩子取得它，不读取私有字段。
+                statement = prepared;
+                if (configure != null) configure.accept(prepared);
+            };
+        }
+
+        @Override
+        public LocalDateTime getCreateTime() {
+            return original.getCreateTime();
+        }
+
+        @Override
+        public String getJdbcListenerTraceId() {
+            return original.getJdbcListenerTraceId();
+        }
+
+        @Override
+        public void setJdbcListenerTraceId(String value) {
+            original.setJdbcListenerTraceId(value);
+        }
+    }
+
     @Override
     public <T> int insert(ExecutorContext context, EasyConnection connection, String sql, List<T> entities,
                           List<SQLParameter> parameters, boolean fillKeys, boolean sharding, boolean replica)

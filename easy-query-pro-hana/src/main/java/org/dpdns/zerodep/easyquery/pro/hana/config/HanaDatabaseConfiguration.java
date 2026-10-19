@@ -16,6 +16,8 @@ import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaInsertExecution;
 import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaConnectionFactory;
 import org.dpdns.zerodep.easyquery.pro.hana.function.HanaSQLFunc;
 import org.dpdns.zerodep.easyquery.pro.hana.metadata.HanaCatalog;
+import org.dpdns.zerodep.easyquery.pro.hana.metadata.HanaEntityMetadataManager;
+import com.easy.query.core.metadata.EntityMetadataManager;
 import com.easy.query.core.migration.DatabaseMigrationProvider;
 import com.easy.query.core.migration.MigrationEntityParser;
 import com.easy.query.core.migration.MigrationsSQLGenerator;
@@ -51,6 +53,7 @@ public final class HanaDatabaseConfiguration implements DatabaseConfiguration {
         services.addService(EntityExpressionPrepareExecutor.class, HanaInsertExecution.class);
         services.addService(EasyConnectionFactory.class, HanaConnectionFactory.class);
         services.addService(HanaCatalog.class);
+        services.addService(EntityMetadataManager.class, HanaEntityMetadataManager.class);
         services.addService(MigrationEntityParser.class, HanaMigrationEntityParser.class);
         services.addService(DatabaseMigrationProvider.class, HanaDatabaseMigrationProvider.class);
         services.addService(MigrationsSQLGenerator.class, HanaMigrationsSQLGenerator.class);

@@ -160,9 +160,19 @@ G3 保持实施中：复杂依赖迁移、完整类型与 Spring/独立消费者
 
 功能提交为 `a1c4b0410e4fe0c8eb83f7a3bbacd4484dea4157`。后续单独整理测试设施：三个非管理员场景共用测试用户/凭据/清理作用域，删除重复的 DataSource 配置和多层 finally；生成键权限与目录权限两个受影响用例通过，同次 18 个离线测试通过，IDEA 编译通过。两个提交一起推送以减少重复 CI；已删除本轮自建日志，标准测试报告和持久开发资源保留。
 
+## 日期、UTC 与历法边界
+
+提交 `bb9762abe033094b1cd81dbb072e6d8b004fbaec` 的 [CI 39325617092](https://github.com/kenconnet666/easy_query_pro/actions/runs/39325617092) 已通过全部强制任务，包括元数据、Code First 和测试设施整理。
+
+随后继续类型验证，真实发现了两个日期偏移（柏林 DST 缺口 +1 小时、Apia 跳日 +1 天），并发现 Instant 被上游按需要无参构造器的 bean 处理。适配器补充公开 metadata 标量分类，使用明确 Calendar 绑定，并在原始 JDBC 结果进入行映射/分片聚合前保留逻辑时间值。库不修改 JVM 默认时区或上游私有字段；测试临时切换 JVM 时区后均在 finally 恢复。
+
+当前本地 `HanaTemporalBindingIT,HanaDateTimeFunctionsIT,HanaCastFunctionsIT` 共 14 个测试通过，同次 18 个离线测试通过。涵盖 UTC Instant、实体批量写入/更新/Proxy 投影/NULL、精度拒绝、0001–9999 年与 HANA 历法边界、旧 Map 的不可表示值拒绝、上游内存行保真。完整多库分片、LOB 与转换器仍待实施。具体原因、原生 SQL 证据和接口契约见 [HANA 类型说明](hana-types.md)。
+
+IDEA 格式化、编译与错误检查通过；数据库 MCP 确认 `EQP_TEMPORAL_%` 遗留 schema 为 0。本轮自建时间诊断日志已删除，标准测试报告与开发实例保留。
+
 ## 下一步
 
-1. 检查新提交的迁移与元数据 CI，继续补 HANA 核心实现。
+1. 检查新提交的时间绑定 CI，继续 LOB/UUID/转换器及 HANA 核心实现。
 2. 继续收敛 G0 高风险接口：计算视图正式查询源和参数绑定 SPI、类型转换器以及编译负例。
 3. 完成函数审计、类型桥接的转换器/编译负例与 SQL 组合失败覆盖，明确不等价能力与剩余风险。
 4. 按依赖进入完整 HANA 函数/查询/类型实现，再实施通用 DSL 与三库类型增强。

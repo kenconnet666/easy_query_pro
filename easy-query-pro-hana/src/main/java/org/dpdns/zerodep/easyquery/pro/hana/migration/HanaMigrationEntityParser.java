@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -43,6 +44,7 @@ public class HanaMigrationEntityParser extends DefaultMigrationEntityParser {
         types.put(LocalDate.class, new ColumnDbTypeResult("DATE", null));
         types.put(LocalTime.class, new ColumnDbTypeResult("TIME", null));
         types.put(LocalDateTime.class, new ColumnDbTypeResult("TIMESTAMP", null));
+        types.put(Instant.class, new ColumnDbTypeResult("TIMESTAMP", null));
         types.put(java.sql.Date.class, new ColumnDbTypeResult("DATE", null));
         types.put(java.sql.Time.class, new ColumnDbTypeResult("TIME", null));
         types.put(java.sql.Timestamp.class, new ColumnDbTypeResult("TIMESTAMP", null));

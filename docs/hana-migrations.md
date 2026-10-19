@@ -43,11 +43,12 @@ command.executeWithTransaction(arg -> {
 | BigDecimal | DECIMAL(16,2)，可用 length/scale 指定 |
 | String、UUID、byte[] | NVARCHAR(255)、NVARCHAR(36)、VARBINARY(255) |
 | LocalDate、LocalTime、LocalDateTime | DATE、TIME、TIMESTAMP |
+| Instant | TIMESTAMP，使用明确 UTC 契约 |
 | java.sql.Date/Time/Timestamp、java.util.Date | 对应 DATE/TIME/TIMESTAMP |
 
 primitive 保留上游默认值规则，boolean 使用 FALSE。wrapper 不自行增加默认值。显式 `dbType` 使用 HANA 类型名，校验长度与 precision/scale；不接受 MySQL 的整型显示宽度或 `TIMESTAMP(3)`。裸 DECIMAL 保留 HANA 浮点十进制语义。DDL 中省略字符串长度的含义与 CAST 不同，二者独立渲染。
 
-`generatedSQLColumnGenerator` 的 sequence 列不会被错误创建成 identity；sequence 本身仍通过明确的部署 DDL 创建。转换器的完整存储类型推导、Instant 和完整 LOB 生命周期属于后续类型验收，不能由上述默认映射推断全部完成。
+`generatedSQLColumnGenerator` 的 sequence 列不会被错误创建成 identity；sequence 本身仍通过明确的部署 DDL 创建。Instant、时区和历法边界已有 [真实类型验证](hana-types.md)。转换器的完整存储类型推导和完整 LOB 生命周期属于后续类型验收，不能由上述默认映射推断全部完成。
 
 `HanaForeignKeyMigrationData` 在上游迁移数据基础上补充 `targetSchema`；null 表示连接当前 schema。实体注解会保留目标实体的 schema 和 `@ForeignKey.action`。普通上游 `ForeignKeyMigrationData` 没有该字段，沿用当前表的 schema。不要把带点号的原始名称当作拼接后的限定名。
 

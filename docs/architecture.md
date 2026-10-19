@@ -61,6 +61,7 @@ HANA 底层模块保持与 Proxy DSL 解耦。专属 DSL 可以组合已有函�
 12. 冲突写入沿用 `onConflictThen`，由 HANA renderer 生成原子 MERGE；执行前只核对真实唯一约束。目标解析与生成键共用既有准备阶段，不为 upsert 建立新的 Queryable 或执行协议，见 [写入契约](hana-writes.md)。
 13. `HanaConnectionFactory` 负责连接借用与初始化的所有权交接，失败归还整批。`HanaEasyConnection` 继承上游包装，只在 Code First 新事务中临时改变 DDL 模式，结束后恢复；不替换 `ConnectionManager`、不创建生产连接池，也不接管 Spring 事务。
 14. `HanaCatalog` 只读目录，`migration` 复用上游 parser/data/command/executor；命令保存语句边界而不拆分已生成 SQL。ngdbc 的可选依赖只用于标准 JDBC 缺失的 DDL 状态读取，公开 unwrap API 与完整约束见 [迁移说明](hana-migrations.md)。
+15. JDBC 时间结果在进入上游分片聚合前转换为保留日历字段的逻辑值；原有查询执行、配置钩子、监听、预取与关闭过程继续复用上游。`HanaEntityMetadataManager` 仅补充 3.2.17 缺失的 Instant 标量分类，不修改私有状态或全局类型表；规则见 [类型契约](hana-types.md)。
 
 ## 代码审计入口
 
