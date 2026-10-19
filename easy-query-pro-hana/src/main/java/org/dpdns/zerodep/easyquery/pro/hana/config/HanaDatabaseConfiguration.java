@@ -3,6 +3,7 @@ package org.dpdns.zerodep.easyquery.pro.hana.config;
 import com.easy.query.core.bootstrapper.DatabaseConfiguration;
 import com.easy.query.core.basic.jdbc.types.JdbcTypeHandlerManager;
 import com.easy.query.core.basic.jdbc.executor.EntityExpressionPrepareExecutor;
+import com.easy.query.core.basic.jdbc.conn.EasyConnectionFactory;
 import com.easy.query.core.configuration.dialect.SQLKeyword;
 import com.easy.query.core.expression.sql.expression.factory.ExpressionFactory;
 import com.easy.query.core.inject.ServiceCollection;
@@ -12,6 +13,7 @@ import org.dpdns.zerodep.easyquery.pro.hana.expression.HanaExpressionFactory;
 import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaJdbcSQLExecutor;
 import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaJdbcTypeHandlerManager;
 import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaInsertExecution;
+import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaConnectionFactory;
 import org.dpdns.zerodep.easyquery.pro.hana.function.HanaSQLFunc;
 
 import java.util.Objects;
@@ -36,5 +38,6 @@ public final class HanaDatabaseConfiguration implements DatabaseConfiguration {
         services.addService(JdbcSQLExecutor.class, HanaJdbcSQLExecutor.class);
         services.addService(JdbcTypeHandlerManager.class, HanaJdbcTypeHandlerManager.class);
         services.addService(EntityExpressionPrepareExecutor.class, HanaInsertExecution.class);
+        services.addService(EasyConnectionFactory.class, HanaConnectionFactory.class);
     }
 }

@@ -59,6 +59,7 @@ HANA 底层模块保持与 Proxy DSL 解耦。专属 DSL 可以组合已有函�
 10. `HanaOptions` 为每个 client 的不可变配置。HANA 2.0 的 JSON 数组长度需要显式部署一个 SQLScript 函数；`HanaJsonSupport` 仅生成 DDL，不在安装、渲染或首次查询时修改 schema。部署权限、输出容量与错误策略见 [HANA 函数说明](hana-functions.md)。
 11. 生成键插入由 `HanaInsertExecution` 在既有准备阶段传递结构化目标，不引入全局 SQL-to-metadata 缓存。JDBC 层在回调前完成回填，触发器不安全组合在写入前拒绝；成本、权限与限制见 [生成键契约](hana-generated-keys.md)。
 12. 冲突写入沿用 `onConflictThen`，由 HANA renderer 生成原子 MERGE；执行前只核对真实唯一约束。目标解析与生成键共用既有准备阶段，不为 upsert 建立新的 Queryable 或执行协议，见 [写入契约](hana-writes.md)。
+13. `HanaConnectionFactory` 只负责数据源连接借用与初始化的所有权交接：初始化成功后沿用上游 `DefaultEasyConnection`；失败则归还整批。它不替换 `ConnectionManager`、不创建生产连接池，也不接管 Spring 事务。
 
 ## 代码审计入口
 

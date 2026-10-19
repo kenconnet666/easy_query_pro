@@ -35,6 +35,24 @@ MERGE 的 session-generated-key 回填目前明确拒绝。匹配 UPDATE/忽略�
 
 本地 `HanaConflictWriteIT` 的 8 个测试涵盖：原生参数化 MERGE、Unicode 与 DECIMAL(19,4)、重复渲染、主键/唯一索引/复合键、选择列、NULL、重复批量输入、非法目标、回填拒绝、失败回滚和并发。完整矩阵仍以相应提交的 CI 为准。
 
+## 事务、行锁与连接初始化
+
+既有 `forUpdate()` 继续使用上游事务检查和 SQL 渲染。必须先开启事务；已验证单表 WHERE/ORDER BY/LIMIT 组合在另一事务上产生真实锁等待，并分别在 commit/rollback 后释放。测试通过 `M_BLOCKED_TRANSACTIONS` 确认等待，未把 future 暂未结束当作锁生效的证据。JOIN 的显式锁定目标、额外 WAIT/NOWAIT 等变体尚未作为已支持接口交付。
+
+当前 HANA 支持的 JDBC 隔离级别如下：
+
+| JDBC 请求 | 当前服务端监控值 | 已验证的可见性 |
+| --- | --- | --- |
+| READ_COMMITTED | READ COMMITTED | 同一事务的后续语句可以看到其他连接新提交的版本 |
+| REPEATABLE_READ | SERIALIZABLE | 同一事务继续看到首次读取的快照 |
+| SERIALIZABLE | SERIALIZABLE | 同一事务继续看到首次读取的快照 |
+
+revision 88 的 `M_TRANSACTIONS` 将原生 REPEATABLE READ 也报告为 SERIALIZABLE；已通过独立 hdbsql 会话复核，并检查 ngdbc 2.30.11 的请求映射确实发送 REPEATABLE READ。适配器没有把 JDBC 4 改成 JDBC 8。测试还直接验证了跨连接的快照可见性，避免只根据监控字段下结论；这不替代所有并发异常类型的长期验证。
+
+READ_UNCOMMITTED 和其他未支持数值在借用连接前明确拒绝。发现并修复了上游连接初始化的失败路径：设置不支持的隔离级别时，物理连接已经借出，却没有归还池。HANA 的 `EasyConnectionFactory` 适配保留上游数据源路由、等待策略、`DefaultEasyConnection` 和事务管理，只接管借用到初始化完成之间的资源责任。任何初始化失败会关闭本次已经借到的所有连接，包括尚未包装的连接；关闭失败挂到原始异常上。
+
+`HanaTransactionIT` 验证 7 个行锁、隔离和失败恢复案例；`HanaConnectionFactoryTest` 用故障连接验证三连接初始化中途失败时全部归还，并保留 close 异常。单连接池复用后恢复 auto-commit 和原隔离级别，失败之后还可继续查询。连接池仍只是测试依赖；生产模块不创建自己的连接池。
+
 ## 零显式列插入仍未完成
 
 上游 `InsertExpressionBuilder` 在没有插入列时就会抛错，早于数据库表达式渲染。这需要在正确的 builder 扩展层解决，不能只改最后的 SQL 字符串。普通省略列后的服务器默认值，与“所有显式列都为空”的插入不是同一个路径。

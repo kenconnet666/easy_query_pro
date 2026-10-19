@@ -129,6 +129,16 @@ HANA `onConflictThen` 已接入原生 MERGE，复用上游插入列、参数与�
 
 MCP 最终确认本轮 MERGE/default/override 探测遗留表为 0。已删除本次事件生成的 10 个 crash trace/IPMM 文件和 2 个本地探测日志；标准测试报告及持久开发数据库保留。
 
+## 行锁、隔离与连接初始化失败
+
+提交 `fcdab2e4109a68076f013582b29d7bd44a106a61` 的 [CI 39298663389](https://github.com/kenconnet666/easy_query_pro/actions/runs/39298663389) 已通过全部强制任务，包含上述 8 个 MERGE 测试。
+
+本轮复用上游 `forUpdate` 与事务管理，新增服务器锁等待证据、提交/回滚释放、三种隔离级别的跨连接快照可见性和池复用检查。原生 hdbsql 与 ngdbc 请求映射核对表明：revision 88 的监控视图会把 REPEATABLE READ 报告成 SERIALIZABLE，因此增加了行为验证而非修改隔离请求。
+
+实测不支持的 READ_UNCOMMITTED 导致连接池保留 1 个活动连接，复现了上游 `DefaultEasyConnection` 初始化失败后的资源泄漏。新增 HANA 连接工厂在借用前拒绝不支持的隔离级别，并在任意初始化失败时归还已借出的整批连接；继续复用上游数据源选择、等待和事务包装。
+
+本地 `HanaTransactionIT,HanaConnectionPoolIT` 共 8 个测试及 13 个离线测试通过。新增的 2 个连接工厂离线测试覆盖多连接中途失败和清理异常保留；IDEA 编译通过。重复连接池配置收拢到测试设施，作为独立整理提交，与连接工厂修复分开记录后一起推送，减少重复 CI 启动。
+
 ## 下一步
 
 1. 检查新提交的函数/查询组合 CI，继续补 HANA 核心实现。
