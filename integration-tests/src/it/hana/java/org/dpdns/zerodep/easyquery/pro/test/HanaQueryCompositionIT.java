@@ -3,12 +3,10 @@ package org.dpdns.zerodep.easyquery.pro.test;
 import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 import com.easy.query.api.proxy.entity.select.EntityQueryable;
 import com.easy.query.api.proxy.entity.select.impl.EasyEntityQueryable;
-import com.easy.query.core.bootstrapper.EasyQueryBootstrapper;
 import com.easy.query.core.basic.jdbc.parameter.SQLParameter;
 import com.easy.query.core.func.def.enums.OrderByModeEnum;
 import com.easy.query.core.proxy.sql.GroupKeys;
 import com.easy.query.core.proxy.sql.Select;
-import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,9 +22,7 @@ class HanaQueryCompositionIT {
 
     @BeforeEach
     void createClient() throws SQLException {
-        query = new DefaultEasyEntityQuery(EasyQueryBootstrapper.defaultBuilderConfiguration()
-                .setDefaultDataSource(HanaTestDatabase.dataSource())
-                .useDatabaseConfigure(new HanaDatabaseConfiguration()).build());
+        query = HanaTestDatabase.client();
     }
 
     @Test

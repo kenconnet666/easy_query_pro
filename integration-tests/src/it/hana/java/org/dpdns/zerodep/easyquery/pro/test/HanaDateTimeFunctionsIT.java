@@ -3,7 +3,6 @@ package org.dpdns.zerodep.easyquery.pro.test;
 import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 import com.easy.query.api.proxy.entity.select.EntityQueryable;
 import com.easy.query.core.basic.jdbc.parameter.SQLParameter;
-import com.easy.query.core.bootstrapper.EasyQueryBootstrapper;
 import com.easy.query.core.func.def.enums.DateTimeDurationEnum;
 import com.easy.query.core.func.def.enums.DateTimeUnitEnum;
 import com.easy.query.core.func.def.enums.TimeUnitEnum;
@@ -11,7 +10,6 @@ import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.extension.functions.type.impl.DateTimeTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl;
-import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.test.entity.TestEvent;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,9 +30,7 @@ class HanaDateTimeFunctionsIT {
 
     @BeforeEach
     void createClient() throws SQLException {
-        query = new DefaultEasyEntityQuery(EasyQueryBootstrapper.defaultBuilderConfiguration()
-                .setDefaultDataSource(HanaTestDatabase.dataSource())
-                .useDatabaseConfigure(new HanaDatabaseConfiguration()).build());
+        query = HanaTestDatabase.client();
     }
 
     @Test

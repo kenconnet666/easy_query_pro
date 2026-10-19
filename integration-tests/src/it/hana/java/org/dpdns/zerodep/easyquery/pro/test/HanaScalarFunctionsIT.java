@@ -3,13 +3,11 @@ package org.dpdns.zerodep.easyquery.pro.test;
 import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 import com.easy.query.api.proxy.entity.select.EntityQueryable;
 import com.easy.query.core.basic.jdbc.parameter.SQLParameter;
-import com.easy.query.core.bootstrapper.EasyQueryBootstrapper;
 import com.easy.query.core.func.def.enums.MathMethodEnum;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl;
-import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,10 +27,7 @@ class HanaScalarFunctionsIT {
 
     @BeforeEach
     void createClient() throws SQLException {
-        var client = EasyQueryBootstrapper.defaultBuilderConfiguration()
-                .setDefaultDataSource(HanaTestDatabase.dataSource())
-                .useDatabaseConfigure(new HanaDatabaseConfiguration()).build();
-        query = new DefaultEasyEntityQuery(client);
+        query = HanaTestDatabase.client();
     }
 
     @Test

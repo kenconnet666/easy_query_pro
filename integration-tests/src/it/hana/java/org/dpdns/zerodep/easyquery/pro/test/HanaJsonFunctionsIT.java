@@ -2,12 +2,10 @@ package org.dpdns.zerodep.easyquery.pro.test;
 
 import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 import com.easy.query.api.proxy.entity.select.EntityQueryable;
-import com.easy.query.core.bootstrapper.EasyQueryBootstrapper;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.NumberTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl;
-import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaOptions;
 import org.dpdns.zerodep.easyquery.pro.hana.json.HanaJsonSupport;
 import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
@@ -27,7 +25,7 @@ class HanaJsonFunctionsIT {
 
     @BeforeEach
     void createClient() throws SQLException {
-        query = client(HanaOptions.DEFAULT);
+        query = HanaTestDatabase.client();
     }
 
     @Test
@@ -86,7 +84,7 @@ class HanaJsonFunctionsIT {
             statement.execute("CREATE SCHEMA \"" + schema + "\"");
             try {
                 statement.execute(HanaJsonSupport.createArrayLengthFunctionSql(schema));
-                var supported = client(new HanaOptions(5000, schema));
+                var supported = HanaTestDatabase.client(new HanaOptions(5000, schema));
                 assertEquals(3, arrayLength(supported, "[1,null,3]"));
                 assertEquals(0, arrayLength(supported, "[]"));
                 assertEquals(0, arrayLength(supported, " \t\r\n[ ]"));
@@ -114,7 +112,7 @@ class HanaJsonFunctionsIT {
     void outputCapacityIsExplicitAndIsolatedPerClient() throws SQLException {
         String text = "中".repeat(6000);
         String json = "{\"message\":\"" + text + "\"}";
-        var larger = client(new HanaOptions(10000));
+        var larger = HanaTestDatabase.client(new HanaOptions(10000));
         assertEquals(text, source(larger, json).selectColumn(p -> p.name().asJSONObject().getString("message")).toList().get(0));
         assertEquals(1, source(larger, json).where(p -> p.name().asJSONObject().containsKey("message")).toList().size());
         assertThrows(RuntimeException.class, () -> source(query, json).selectColumn(p -> p.name().asJSONObject().getString("message")).toList());
@@ -128,12 +126,6 @@ class HanaJsonFunctionsIT {
     private static NumberTypeExpression<Integer> length(PropTypeColumn<?> document) {
         return new NumberTypeExpressionImpl<>(document.getEntitySQLContext(), document.getTable(), null,
                 fx -> fx.jsonArrayLength(args -> PropTypeColumn.columnFuncSelector(args, document)), Integer.class);
-    }
-
-    private static DefaultEasyEntityQuery client(HanaOptions options) throws SQLException {
-        return new DefaultEasyEntityQuery(EasyQueryBootstrapper.defaultBuilderConfiguration()
-                .setDefaultDataSource(HanaTestDatabase.dataSource())
-                .useDatabaseConfigure(new HanaDatabaseConfiguration(options)).build());
     }
 
     private static EntityQueryable<TestProductProxy, TestProduct> source(DefaultEasyEntityQuery client, String json) {

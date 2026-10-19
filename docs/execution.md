@@ -94,6 +94,8 @@ HDI 检查发现 HXE 未启用 diserver，已按 SAP HANA Platform 2.0 的官方
 
 H08/G2.2 尚未关闭：去重字符串聚合需要查询级去重方案；少量旧 SQLFunc 工厂仍需独立组合证据。此次函数/查询测试使用派生表，没有创建持久数据库对象。
 
+函数/查询组合提交为 `7af9e9bdd9820014fd634d937060c81a9818b946`，[CI 39289562420](https://github.com/kenconnet666/easy_query_pro/actions/runs/39289562420) 已启动；读取时仍在运行，不计作通过。随后单独整理测试设施：六个测试类统一使用 `HanaTestDatabase.client`，每次返回独立 client，保留选项隔离。整理后 5 个 JSON 集成测试与 11 个离线测试通过，IDEA 编译通过；不重复本地运行全套数据库测试。
+
 ## 下一步
 
 1. 检查新提交的函数/查询组合 CI，继续补 HANA 核心实现。
