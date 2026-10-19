@@ -47,9 +47,17 @@ final class HanaTestDatabase {
     }
 
     static DefaultEasyEntityQuery client(HanaOptions options) throws SQLException {
+        return client(dataSource(), options);
+    }
+
+    static DefaultEasyEntityQuery client(DataSource source) {
+        return client(source, HanaOptions.DEFAULT);
+    }
+
+    private static DefaultEasyEntityQuery client(DataSource source, HanaOptions options) {
         // 每次构建独立 client，使函数选项与服务注册不会在测试之间相互污染。
         return new DefaultEasyEntityQuery(EasyQueryBootstrapper.defaultBuilderConfiguration()
-                .setDefaultDataSource(dataSource())
+                .setDefaultDataSource(source)
                 .useDatabaseConfigure(new HanaDatabaseConfiguration(options)).build());
     }
 

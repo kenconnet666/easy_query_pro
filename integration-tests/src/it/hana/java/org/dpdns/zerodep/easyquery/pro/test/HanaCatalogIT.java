@@ -1,6 +1,5 @@
 package org.dpdns.zerodep.easyquery.pro.test;
 
-import com.sap.db.jdbcext.HanaDataSource;
 import com.easy.query.core.exception.EasyQuerySQLCommandException;
 import org.dpdns.zerodep.easyquery.pro.hana.metadata.HanaCatalog;
 import org.dpdns.zerodep.easyquery.pro.hana.metadata.HanaRelationMetadata;
@@ -8,8 +7,6 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.SQLException;
 import java.util.List;
-import java.util.Locale;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -73,26 +70,16 @@ class HanaCatalogIT {
 
     @Test
     void missingObjectsAndPermissionFailuresAreNotTheSameResult() throws SQLException {
-        String user = HanaTestDatabase.uniqueName("CATALOG_USER").toUpperCase(Locale.ROOT);
-        String password = "Eqp9!" + UUID.randomUUID().toString().replace("-", "");
-        try (var schema = HanaTestDatabase.createSchema("CATALOG_PERMISSIONS"); var statement = schema.connection().createStatement()) {
+        try (var schema = HanaTestDatabase.createSchema("CATALOG_PERMISSIONS"); var user = HanaTestDatabase.createUser("CATALOG_USER");
+             var statement = schema.connection().createStatement()) {
             statement.execute("CREATE COLUMN TABLE " + schema.qualified("allowed") + " (\"id\" INTEGER)");
             statement.execute("CREATE COLUMN TABLE " + schema.qualified("denied") + " (\"id\" INTEGER)");
-            statement.execute("CREATE USER " + user + " PASSWORD \"" + password + "\" NO FORCE_FIRST_PASSWORD_CHANGE");
-            try {
-                statement.execute("GRANT SELECT ON " + schema.qualified("allowed") + " TO " + user);
-                var source = new HanaDataSource();
-                source.setUrl(TestEnvironment.required("EQP_HANA_JDBC_URL"));
-                source.setUser(user);
-                source.setPassword(password);
-                var catalog = new HanaCatalog(source);
-                assertEquals(1, catalog.describe(schema.name(), "allowed").orElseThrow().columns().size());
-                var failure = assertThrows(EasyQuerySQLCommandException.class, () -> catalog.describe(schema.name(), "denied"));
-                assertEquals(258, assertInstanceOf(SQLException.class, failure.getCause()).getErrorCode());
-                assertTrue(catalog.find(schema.name(), "not_present").isEmpty());
-            } finally {
-                statement.execute("DROP USER " + user + " CASCADE");
-            }
+            statement.execute("GRANT SELECT ON " + schema.qualified("allowed") + " TO " + user.name());
+            var catalog = new HanaCatalog(user.dataSource());
+            assertEquals(1, catalog.describe(schema.name(), "allowed").orElseThrow().columns().size());
+            var failure = assertThrows(EasyQuerySQLCommandException.class, () -> catalog.describe(schema.name(), "denied"));
+            assertEquals(258, assertInstanceOf(SQLException.class, failure.getCause()).getErrorCode());
+            assertTrue(catalog.find(schema.name(), "not_present").isEmpty());
         }
     }
 }
