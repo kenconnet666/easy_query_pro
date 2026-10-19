@@ -37,6 +37,10 @@ POM 使用 `release=17`，不启用 preview；Maven 堆上限 1 GiB，测试 JVM
 
 数据库脚本面向 Windows PowerShell 7 和 WSL Debian，不依赖 Docker Desktop。它生成临时密码和独立 Compose project，使用空闲端口，并在 finally 中删除自己的容器、卷、网络。镜像作为 Docker 缓存复用，脚本不清理用户共享镜像。
 
+供 IDEA 使用的持久开发实例由 `tools/databases.ps1 -Action start` 启动，Compose project 为 `eqp-dev`，MySQL 端口 53306、PostgreSQL 端口 55432；数据库和用户均为 `eqp`。`stop` 保留容器和卷，后续 `start` 从自己的已有容器恢复凭据，发现不一致时拒绝覆盖。
+
+`tools/database-password.ps1 -Database mysql|postgres|hana` 将相应本地密码复制到剪贴板，不写入仓库文件。该脚本兼容 Windows PowerShell 5.1 和 PowerShell 7；数据库生命周期脚本仍使用 PowerShell 7。IDEA 可以使用默认驱动或本地 Maven 缓存的对应 JAR；HANA 已验证必须使用本项目的 ngdbc 2.30.11，IDEA 默认下载的 2.17.12 在当前 IDE 运行时出现 `getSubject is not supported`。
+
 容器限制定义在 `infra/compose.yaml`：MySQL 2 GiB、PostgreSQL 1 GiB，memory+swap 与 memory 相等，两者各限 1 CPU；内存限制不足或不一致时脚本拒绝继续测试。镜像固定为 Linux amd64 的版本及 digest，资源不会因为上游浮动 tag 变化而悄悄更换。
 
 凭据只通过进程环境传递，不写入 POM、Compose 明文值或仓库文件。测试使用 `eqp_product` 表，只有成功创建后才进入清理流程，已有同名表会使测试失败而不会被删除；PostgreSQL 额外使用每次随机创建的 schema。
@@ -70,7 +74,7 @@ HANA 是核心目标数据库。`infra/hana.compose.yaml` 固定 SAP 官方 `sap
 .\tools\hana.ps1 -Action stop
 ```
 
-默认仅绑定本机 `127.0.0.1:39017`，JDBC 地址为 `jdbc:sap://127.0.0.1:39017`。首次启动从 `EQP_HANA_PASSWORD` 读取密码，未设置时生成随机密码；再次启动/测试从已存在容器的环境读取，不输出密码。已有数据卷而没有容器时，必须提供原始密码，脚本不会猜测、覆盖或删除数据库。
+端口只绑定 loopback：HXE 业务租户使用 `127.0.0.1:39041` / `jdbc:sap://127.0.0.1:39041`；SYSTEMDB 管理连接使用 `127.0.0.1:39017`。集成测试显式拒绝 SYSTEMDB，避免连接成功却验证错数据库。首次启动从 `EQP_HANA_PASSWORD` 读取密码，未设置时生成随机密码；再次启动/测试从已存在容器的环境读取，不输出密码。已有数据卷而没有容器时，必须提供原始密码，脚本不会猜测、覆盖或删除数据库。
 
 `test` 默认增量编译，`-IntegrationTest` 传给 Failsafe 选择定向测试；需要干净构建时显式添加 `-Clean`。CI 始终执行完整 clean 验证。本地开发不等待长时间 CI 结束，下一次提交前读取前一提交的结果并处理失败。
 
@@ -94,7 +98,7 @@ IDEA 已识别父项目和六个子模块，Project SDK 为指定 JBR 17。通�
 
 ## GitHub Actions
 
-`CI` 工作流由 push、pull_request、workflow_dispatch 触发。Windows/Linux 使用 JetBrains JDK 17.0.14 构建；Linux 数据库 job 使用同一 Compose 配置，并再次验证实际内存与 swap 限制，再运行完整 MySQL/PostgreSQL 契约。失败时保留报告和数据库日志，最后总是清理测试资源。
+`CI` 工作流由 push、pull_request、workflow_dispatch 触发。Windows/Linux 使用 JetBrains JDK 17.0.14 构建；MySQL、PostgreSQL 通过 matrix 在独立 runner 上并行运行，各自启动对应 profile、校验内存并保存独立报告，设置 fail-fast=false。HANA 仍是独立 job，所有 job 没有相互等待的依赖。失败时保留报告和数据库日志，最后总是清理本 job 的测试资源。
 
 HANA Docker job 默认运行，使用临时密码、独立卷和同一份 HANA Compose 配置，运行 JDBC 检查后清理所有测试资源。手动输入 hana 额外启用外部实例检查，需要在 `hana-test` Environment 配置三项同名 secrets，并确保 runner 能访问实例；只有这项额外检查可以显示 skipped。
 

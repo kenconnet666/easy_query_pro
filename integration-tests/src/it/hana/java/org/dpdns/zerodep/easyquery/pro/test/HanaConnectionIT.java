@@ -10,6 +10,7 @@ import java.sql.SQLException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HanaConnectionIT {
@@ -20,6 +21,10 @@ class HanaConnectionIT {
             var info = HanaDatabaseInfo.inspect(connection);
             System.out.println("HANA database version: " + info.productVersion());
             statement.setQueryTimeout(15);
+            try (var result = statement.executeQuery("SELECT DATABASE_NAME FROM SYS.M_DATABASE")) {
+                assertTrue(result.next());
+                assertNotEquals("SYSTEMDB", result.getString(1), "ORM contracts must run against a HANA tenant database");
+            }
             try (var result = statement.executeQuery("SELECT CURRENT_USER, CURRENT_SCHEMA FROM DUMMY")) {
                 assertTrue(result.next());
                 assertNotNull(result.getString(1));

@@ -40,11 +40,12 @@ try {
             $container = (& wsl @compose ps -q hana).Trim()
             $limits = (wsl -d $Distribution --exec docker inspect --format '{{json .HostConfig}}' $container) | ConvertFrom-Json
             if ($limits.Memory -ne 12GB -or $limits.MemorySwap -ne 12GB) { throw 'HANA memory limits do not match 12 GiB.' }
-            Write-Host 'HANA started on localhost:39017 with a 12 GiB memory limit and no additional swap.'
+            Write-Host 'HANA HXE started on localhost:39041; SYSTEMDB uses localhost:39017. Memory limit: 12 GiB, no additional swap.'
         }
         'test' {
             $ports = (wsl -d $Distribution --exec docker inspect --format '{{json .NetworkSettings.Ports}}' $container) | ConvertFrom-Json
-            $port = $ports.'39017/tcp'[0].HostPort
+            $port = $ports.'39041/tcp'[0].HostPort
+            if (-not $port) { throw 'The HXE tenant port is not published. Run tools/hana.ps1 -Action start to apply the Compose configuration.' }
             $env:EQP_HANA_JDBC_URL = "jdbc:sap://127.0.0.1:$port"
             $env:EQP_HANA_USER = 'SYSTEM'
             $mavenArgs = @('--batch-mode', 'verify', '-Phana')

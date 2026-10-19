@@ -18,13 +18,16 @@
 ```powershell
 .\mvnw.cmd clean verify
 .\tools\test-databases.ps1
+.\tools\databases.ps1 -Action start
 .\tools\hana.ps1 -Action start
 .\tools\hana.ps1 -Action test
 ```
 
 第一条不需要数据库，验证 JDK 17、上游 APT 和三库参数化 SQL。第二条通过 Debian Docker 启动隔离数据库，验证 CRUD 和事务，结束后删除本次容器、卷与网络。MySQL 内存上限为 2 GiB，PostgreSQL 为 1 GiB，均禁用额外 swap，并在测试前检查 Docker 实际配置。
 
-HANA 使用独立 Docker 部署和持久卷，内存上限 12 GiB、无额外 swap。`start` 保留开发实例，`test` 运行真实 HANA JDBC 检查，`stop` 停止服务并保留数据；不与 MySQL/PostgreSQL 的临时测试清理混用。
+`tools/databases.ps1` 启动供 IDEA 使用的 MySQL/PostgreSQL 持久开发实例，固定端口为 53306/55432，数据库及用户均为 `eqp`；`stop` 保留数据。它与临时测试的 Compose project、卷和清理流程独立。
+
+HANA 使用独立 Docker 部署和持久卷，内存上限 12 GiB、无额外 swap。业务测试连接 HXE 租户的 `39041` 端口，`39017` 是 SYSTEMDB 管理端口。`start` 保留开发实例，`test` 运行真实 HANA 检查，`stop` 停止服务并保留数据；不与临时测试清理混用。
 
 完整验证交给 [GitHub Actions](.github/workflows/ci.yml)：Windows/Linux 构建、MySQL/PostgreSQL JDBC 契约、默认执行的 HANA Docker/JDBC 检查。另有手动验证外部 HANA 实例的入口。产物与测试报告保存为 Actions artifacts，尚不自动发布 Maven 包。
 

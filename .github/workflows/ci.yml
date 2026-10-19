@@ -47,13 +47,18 @@ jobs:
           retention-days: 7
 
   databases:
-    name: MySQL and PostgreSQL
+    name: Database / ${{ matrix.database }}
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [mysql, postgres]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      COMPOSE_PROJECT_NAME: eqp-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      COMPOSE_PROJECT_NAME: eqp-ci-${{ matrix.database }}-${{ github.run_id }}-${{ github.run_attempt }}
       COMPOSE_FILE: infra/compose.yaml
-      COMPOSE_PROFILES: mysql,postgres
+      COMPOSE_PROFILES: ${{ matrix.database }}
+      TEST_DATABASE: ${{ matrix.database }}
       EQP_MYSQL_JDBC_URL: jdbc:mysql://127.0.0.1:53306/eqp?sslMode=DISABLED&allowPublicKeyRetrieval=true
       EQP_MYSQL_USER: eqp
       EQP_PG_JDBC_URL: jdbc:postgresql://127.0.0.1:55432/eqp
@@ -77,15 +82,13 @@ jobs:
       - name: Start databases with memory limits
         run: |
           docker compose up --detach --wait --wait-timeout 120
-          for service in mysql postgres; do
-            expected=1073741824
-            if [ "$service" = mysql ]; then expected=2147483648; fi
-            container=$(docker compose ps -q "$service")
-            docker inspect "$container" | jq -e --argjson expected "$expected" \
-              '.[0].HostConfig | .Memory == $expected and .MemorySwap == $expected'
-          done
+          expected=1073741824
+          if [ "$TEST_DATABASE" = mysql ]; then expected=2147483648; fi
+          container=$(docker compose ps -q "$TEST_DATABASE")
+          docker inspect "$container" | jq -e --argjson expected "$expected" \
+            '.[0].HostConfig | .Memory == $expected and .MemorySwap == $expected'
       - name: Run JDBC contracts
-        run: ./mvnw --batch-mode clean verify -Pmysql,postgres
+        run: ./mvnw --batch-mode clean verify "-P$TEST_DATABASE"
       - name: Collect database logs on failure
         if: failure()
         run: |
@@ -95,7 +98,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: database-reports
+          name: database-reports-${{ matrix.database }}
           path: |
             integration-tests/target/surefire-reports/
             integration-tests/target/failsafe-reports/
@@ -112,7 +115,7 @@ jobs:
     env:
       COMPOSE_PROJECT_NAME: eqp-hana-ci-${{ github.run_id }}-${{ github.run_attempt }}
       COMPOSE_FILE: infra/hana.compose.yaml
-      EQP_HANA_JDBC_URL: jdbc:sap://127.0.0.1:39017
+      EQP_HANA_JDBC_URL: jdbc:sap://127.0.0.1:39041
       EQP_HANA_USER: SYSTEM
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

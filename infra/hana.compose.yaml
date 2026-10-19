@@ -13,7 +13,8 @@ services:
     environment:
       EQP_HANA_PASSWORD: ${EQP_HANA_PASSWORD:?Set EQP_HANA_PASSWORD in the environment}
     ports:
-      - "127.0.0.1:${EQP_HANA_PORT:-39017}:39017"
+      - "127.0.0.1:${EQP_HANA_PORT:-39041}:39041"
+      - "127.0.0.1:${EQP_HANA_SYSTEM_PORT:-39017}:39017"
     volumes:
       - hana-data:/hana/mounts
       - ./hana:/eqp:ro
