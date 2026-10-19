@@ -16,7 +16,7 @@ services:
       - "127.0.0.1:${EQP_HANA_PORT:-39017}:39017"
     volumes:
       - hana-data:/hana/mounts
-      - ./hana/start.sh:/eqp/start.sh:ro
+      - ./hana:/eqp:ro
     tmpfs:
       - /run/eqp:size=1m,mode=0700,uid=12000,gid=79
     entrypoint: [/bin/bash, /eqp/start.sh]
@@ -30,7 +30,7 @@ services:
       kernel.shmall: 8388608
       net.ipv4.ip_local_port_range: "40000 60999"
     healthcheck:
-      test: [CMD-SHELL, 'test ! -e /run/eqp/password.json && bash -c "exec 3<>/dev/tcp/127.0.0.1/39017"']
+      test: [CMD, /bin/bash, /eqp/health.sh]
       interval: 10s
       timeout: 5s
       retries: 90
