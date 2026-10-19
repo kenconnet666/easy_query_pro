@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       hana:
-        description: Run the HANA JDBC check against a configured test instance
+        description: Run HANA adapter contracts against a configured test instance
         type: boolean
         default: false
 
@@ -109,7 +109,7 @@ jobs:
         run: docker compose down --volumes --remove-orphans
 
   hana-docker:
-    name: HANA Docker / JDBC
+    name: HANA Docker / adapter
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -138,7 +138,8 @@ jobs:
           container=$(docker compose ps -q hana)
           docker inspect "$container" | jq -e \
             '.[0].HostConfig | .Memory == 12884901888 and .MemorySwap == 12884901888'
-      - name: Verify HANA JDBC
+          docker exec "$container" /bin/bash /eqp/enable-hdi.sh
+      - name: Verify HANA adapter and HDI contracts
         run: ./mvnw --batch-mode clean verify -Phana
       - name: Collect HANA logs on failure
         if: failure()
@@ -159,7 +160,7 @@ jobs:
         run: docker compose down --volumes --remove-orphans
 
   hana:
-    name: Optional HANA JDBC
+    name: Optional external HANA
     if: github.event_name == 'workflow_dispatch' && inputs.hana
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -180,7 +181,7 @@ jobs:
           : "${EQP_HANA_JDBC_URL:?Configure the hana-test environment}"
           : "${EQP_HANA_USER:?Configure the hana-test environment}"
           : "${EQP_HANA_PASSWORD:?Configure the hana-test environment}"
-      - name: Verify HANA JDBC connectivity
+      - name: Verify HANA adapter and HDI contracts
         run: ./mvnw --batch-mode clean verify -Phana
       - name: Preserve HANA reports
         if: always()

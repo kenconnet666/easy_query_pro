@@ -55,11 +55,15 @@ MySQL/PostgreSQL 持久开发实例为 `eqp-dev-mysql-1` / `eqp-dev-postgres-1`�
 - 函数清单见 [HANA 函数审计](hana-function-audit.md)。尚未覆盖的默认函数不能视为已支持；H08 与 G2.2 保持未完成。
 - CI 已拆分 MySQL/PostgreSQL matrix；不等待新 CI 完整结束，下一次提交前读取上一提交的结果。
 
-HDI 检查发现 HXE 尚未启用 diserver，因而没有 `_SYS_DI` 管理 API。已查 SAP HANA Platform 2.0 的官方启用步骤，后续需在测试 SYSTEMDB 为 HXE 启用该服务，再部署真实计算视图 fixture。参考：[按租户启用 HDI](https://help.sap.com/docs/SAP_HANA_PLATFORM/3823b0f33420468ba5f1cf7f59bd6bd9/6df24edbef3a4e039a7b0a7bf4acd6c8.html)。
+HDI 检查发现 HXE 未启用 diserver，已按 SAP HANA Platform 2.0 的官方步骤启用。`infra/hana/enable-hdi.sql` / `.sh` 使本地 start 和 CI 可重复配置并等待租户 SQL API 就绪。
+
+`HanaHdiIT` 已在真实 HXE 完成隔离容器创建、容器 API/Schema 授权、默认部署库配置、上传并 MAKE `.hdbtable` 与带输入参数的 `.hdbcalculationview`、绑定带单引号/中文的值查询，以及 finally 删除整个测试容器。过程使用顶层 JDBC CallableStatement，明确检查 HDI 返回码并保留精简诊断；未忽略错误或用普通视图替代。MCP 确认遗留的 `EQP_HDI_%` 容器为 0。详见 [HDI 测试说明](hana-hdi.md)。G0.3 的数据库部署路径得到验证，正式计算视图 DSL 仍属于 G5.4，未完成。
+
+提交 `d6adb8cea5237bb48eb17bbf0547f83463dc1dd3` 的 [CI 39274828544](https://github.com/kenconnet666/easy_query_pro/actions/runs/39274828544) 已通过，涵盖修正后的 HXE 连接、并行 MySQL/PostgreSQL、双平台构建和当前标量函数；新的 HDI fixture 需要下一提交对应的 CI 验证。
 
 ## 下一步
 
 1. 检查新提交的 HXE 租户/并行 CI，继续补 HANA 核心实现。
-2. 为 HXE 配置可复现的 HDI 启用与真实计算视图 fixture，完成 G0 高风险验证。
+2. 继续收敛 G0 高风险接口：计算视图正式查询源和参数绑定 SPI、类型转换器以及编译负例。
 3. 完成函数审计、类型桥接的转换器/编译负例与 SQL 组合失败覆盖，明确不等价能力与剩余风险。
 4. 按依赖进入完整 HANA 函数/查询/类型实现，再实施通用 DSL 与三库类型增强。

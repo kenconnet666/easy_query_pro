@@ -7,5 +7,9 @@
 *.config text eol=lf
 *.properties text eol=lf
 *.sh text eol=lf
+*.sql text eol=lf
+*.hdbtable text eol=lf
+*.hdbcalculationview text eol=lf
+.hdiconfig text eol=lf
 mvnw text eol=lf
 *.cmd text eol=crlf

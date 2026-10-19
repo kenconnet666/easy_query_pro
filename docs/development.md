@@ -86,6 +86,8 @@ HANA 所需 IPC sysctl 和文件句柄限制在 Compose 中配置。若宿主系
 
 `tools/hana.ps1 stop` 保留容器和数据，避免下次启动丢失初始化凭据。清空开发数据库属于单独的显式操作，普通测试不会删除持久卷。
 
+`start` 还会为 HXE 启用 HDI 的 diserver 并等待 SQL API 就绪，CI 使用同一脚本。该服务仅用于部署真实计算视图等测试工件，不要求安装 XS Advanced。部署权限、结果码和清理流程见 [HDI 测试说明](hana-hdi.md)。
+
 ## IDEA 与 DebugTools
 
 IDEA 已识别父项目和六个子模块，Project SDK 为指定 JBR 17。通过 Maven 导入同步依赖；代理源由 `sql-processor:3.2.17` 生成在 `integration-tests/target/generated-test-sources/test-annotations`，不提交生成文件。

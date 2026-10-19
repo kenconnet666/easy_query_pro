@@ -40,6 +40,7 @@ try {
             $container = (& wsl @compose ps -q hana).Trim()
             $limits = (wsl -d $Distribution --exec docker inspect --format '{{json .HostConfig}}' $container) | ConvertFrom-Json
             if ($limits.Memory -ne 12GB -or $limits.MemorySwap -ne 12GB) { throw 'HANA memory limits do not match 12 GiB.' }
+            wsl -d $Distribution --exec docker exec $container /bin/bash /eqp/enable-hdi.sh
             Write-Host 'HANA HXE started on localhost:39041; SYSTEMDB uses localhost:39017. Memory limit: 12 GiB, no additional swap.'
         }
         'test' {
