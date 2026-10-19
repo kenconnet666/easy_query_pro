@@ -1,65 +1,78 @@
-# EasyQuery Pro 实施计划
+# EasyQuery Pro 完整执行计划
 
-目标限定 MySQL、PostgreSQL、HANA，使用 Java 17，优先适配 HANA 2.0 本地部署。模块与依赖初始化已实施；后续功能设计见 [architecture.md](architecture.md)。
+范围与完成标准只由 [完整交付蓝图](blueprint.md) 定义。本表用于后续无人值守执行和恢复，不能通过删除任务或改变状态缩小蓝图的必交付范围。
 
-## 阶段 0 工程与运行环境
+当前状态：工程基础已验证，功能实施尚未启动。蓝图范围确认后，按依赖推进到 G7 全部通过，而不是在某个中间阶段收工。
 
-- 已建立父 POM、五个生产模块和一个不发布的测试模块，移除初始 Main 示例。
-- 固定 EasyQuery 3.2.17，使用 Maven Central 发行依赖；相邻上游仓库保持不变。
-- Maven Wrapper 固定 3.9.16，release=17。本机工具链使用用户指定的 `C:\Users\lionheart\.jdks\jbr-17.0.14`，不更改系统默认 Java。
-- 已配置上游 APT，默认运行两组无数据库 SQL 契约；MySQL/PostgreSQL 的真实 JDBC profile 复用同一套 CRUD、值往返与事务检查。
-- 已提供 Debian Docker 脚本和内存限制：MySQL 2 GiB、PostgreSQL 1 GiB；启动后验证实际 memory 与 memory+swap 数值，结束后清理本次资源。
-- HANA profile 配好 SAP JDBC 驱动、连接/参数绑定/事务检查，并提供独立持久化 Docker 开发部署和默认执行的 Docker CI job；HANA 方言实现尚未开始。
-- GitHub Actions 承担 Windows/Linux JDK 17 构建和数据库回归，保存测试报告与 JAR。实际运行状态以对应 commit 的 Actions 结果为准。
-- IDEA MCP 已通过原生只读调用和构建检查。DebugTools 5.3.0 及热重载 MCP 可用，目前没有运行中的调试 JVM。
+## 已完成的基础
 
-运行命令、凭据入口、资源清理和热重载边界见 [development.md](development.md)。
+| 项目 | 证据 |
+| --- | --- |
+| 分包、依赖、Maven Wrapper 和 JDK 17 | 工程基线 `7b9d96089327f035a9ee9baa542fd74b2fe75ea5` |
+| IDEA MCP、APT 和独立重建 | 已清理生成文件后通过 IDEA 重建，使用指定 JBR 17 |
+| MySQL/PostgreSQL 基础契约 | CI 中真实数据库执行 CRUD、绑定和事务；配置内存为 2 GiB/1 GiB |
+| HANA Docker 和原生 JDBC | 12 GiB/4 CPU，认证 SQL 健康检查，真实版本 2.00.088.00.1760424921；参数与事务检查通过 |
+| Windows/Linux 和三库基础 CI | [基线运行 39255071676](https://github.com/kenconnet666/easy_query_pro/actions/runs/39255071676) 通过 |
 
-## 阶段 1 HANA 最小可用后端
+这些证据不代表 HANA EasyQuery 适配器、类型 DSL 或高级功能已经完成。
 
-1. 按上游 `DatabaseConfiguration`、`SQLKeyword`、`ExpressionFactory`、`SQLFunc` 接口接入。
-2. 从无数据库 SQL 契约测试开始，覆盖标识符、schema、别名、JOIN、分页、参数顺序与常用函数。
-3. 接入真实 HANA 2.0，验证基本 CRUD、事务提交/回滚、生成主键、批处理与常用 JDBC 类型。
-4. 建立所有暴露能力的支持矩阵。尚未支持的递归 CTE、迁移或复杂写入必须有清晰的失败行为，不能输出其他数据库 SQL。
+## 工作单元
 
-验收：同一组普通 EasyQuery 查询无需改 DSL 即可在声明支持的 HANA 功能范围内执行。每项结论记录增强包 commit、数据库 revision、驱动版本与对应测试。
+| 工作单元 | 交付内容 | 前置 | 状态 |
+| --- | --- | --- | --- |
+| G0.1 | 将蓝图范围固定为执行目标，核对当前 HEAD、用户改动、环境和 CI | 范围确认 | 待实施 |
+| G0.2 | 建立完整 SQL/函数/类型/业务机制能力清单，映射到测试 | G0.1 | 待实施 |
+| G0.3 | 验证 HANA generated keys/批量键、类型 DSL 互操作、真实计算视图部署等高风险路径 | G0.2 | 待实施 |
+| G0.4 | 固定必需接口、版本限制、不可等价能力和阻塞解决路线 | G0.3 | 待实施 |
+| G1.1 | HANA 配置、方言身份、SQLKeyword 与基本 ExpressionFactory | G0.4 | 待实施 |
+| G1.2 | 普通查询、插入、更新、删除与参数绑定的纵向实现 | G1.1 | 待实施 |
+| G1.3 | identity、sequence、批量键、事务和基础类型的真实执行 | G1.2 | 待实施 |
+| G2.1 | 完整选定查询组合：JOIN、子查询、UNION、普通 CTE、分页/count、clone | G1.3 | 待实施 |
+| G2.2 | 字符串、数值、日期、NULL、聚合、JSON 和已有窗口函数的 HANA 翻译 | G2.1 | 待实施 |
+| G2.3 | 类型/Unicode/LOB/时间点边界及绑定、读取和转换器协作 | G2.2 | 待实施 |
+| G2.4 | 冲突写入、锁竞争、批量失败与连接状态恢复 | G1.3、G2.3 | 待实施 |
+| G2.5 | 导航、过滤、逻辑删除、乐观锁、DTO、拦截器、多 client/数据源兼容 | G2.1–G2.4 | 待实施 |
+| G3.1 | HANA schema/表/视图/列/键/索引/注释等元数据 | G2.3 | 待实施 |
+| G3.2 | Code First 创建、受控增量、预览、幂等和失败后状态 | G3.1 | 待实施 |
+| G3.3 | 专用测试 schema 与非 SYSTEM 应用用户验证 | G3.2 | 待实施 |
+| G4.1 | 用三库真实消费示例定型通用/专属类型、CAST 与列视图 API | G0.4、G2.5 | 待实施 |
+| G4.2 | 通用类型参数、三库 DDL/CAST 分离、返回表达式静态类型 | G4.1 | 待实施 |
+| G4.3 | MySQL JSON、PG JSONB 与 PG SQL 数组的完整选定操作 | G4.2 | 待实施 |
+| G4.4 | 编译负例、跨 client/错库负例、组合与资源释放 | G4.3 | 待实施 |
+| G5.1 | 共同窗口 frame 及方言差异，复用已有窗口能力 | G4.4 | 待实施 |
+| G5.2 | 三库全文检索、索引 fixture、模式与评分作用域 | G4.4 | 待实施 |
+| G5.3 | HANA 邻接树/森林、祖先/后代、深度、顺序、循环/孤儿策略 | G2.5、G4.4 | 待实施 |
+| G5.4 | HANA 参数化计算视图与表函数的真实 fixture、查询、绑定和组合 | G0.3、G4.4 | 待实施 |
+| G6.1 | 独立 Java 与 Spring 接入示例，验证安装顺序和选项生命周期 | G3、G4、G5 | 待实施 |
+| G6.2 | 三库真实组合、并发、非管理员、失败路径与长结果集回归 | G6.1 | 待实施 |
+| G6.3 | 可复现性能/资源基准及报告，检查额外 SQL 与泄漏 | G6.2 | 待实施 |
+| G6.4 | 发行 JAR/POM/processor 的干净消费者验证 | G6.2 | 待实施 |
+| G7.1 | 公共 API 文档、完整支持表、限制、迁移和诊断说明 | G6 | 待实施 |
+| G7.2 | 对照每个必交付 ID 检查实现、测试、文档和未关闭问题 | G7.1 | 待实施 |
+| G7.3 | 当前候选 commit 的全部强制 CI、产物和最终资源清理 | G7.2 | 待实施 |
 
-## 阶段 2 补齐通用契约
+`G3` 等阶段缩写表示该阶段全部工作单元通过。允许推进不依赖阻塞项的工作，但阶段门槛不会因此消失。
 
-- 时间、字符串、数值、聚合、JSON、窗口函数逐项做语义对照，重点覆盖 NULL、空结果、边界值、Unicode、日期精度和 decimal。
-- 验证 HANA 的锁、分页组合、更新/删除限制以及并发事务行为。
-- 通过现有接口补冲突写入和基础 Code First，未完成部分继续显式标记；DDL 只针对测试或应用自己的 schema。
-- 对照 PostgreSQL/MySQL 等现有实现确定哪些是语法差异、哪些无法保持语义，不以最弱功能集替代准确契约。
+## 每项任务的证据记录
 
-验收：文档中的每个支持项对应测试；不能仅凭 SQL 字符串或其他数据库结果宣布 HANA 兼容。
+开始执行后，为工作单元维护以下记录，放在本文件对应条目或专门的执行记录中：
 
-## 阶段 3 方言类型 DSL 原型
+```text
+Task: G2.4
+Capabilities: H04, H05, H06
+Status: planned | in_progress | awaiting_verification | passed | blocked
+Decision: implementation choice and reason
+Changed commit: full SHA
+Local checks: exact command and outcome
+CI evidence: run URL, tested SHA, required job conclusions
+Remaining issues: reproducible failures or external blockers
+Next action: one concrete continuation
+```
 
-- 在已建的通用 DSL、HANA/MySQL/PostgreSQL DSL 模块内实现功能。
-- 先做窄范围 API 验证：一个 HANA 专属函数与一个 PostgreSQL JSONB 操作。方法名、入口形态和返回类型通过消费示例评审后固定。
-- 类型正例：原始列、组合函数、select、where、orderBy、子查询中的使用。
-- 类型负例：错库类型描述、参数类型不匹配、无效长度/精度；分别区分编译期拒绝与运行时拒绝。
-- 查询上下文负例：把另一 client、另一方言或不兼容表上下文的表达式混入查询，执行前明确报错。
-- 保留上游的参数绑定、表达式访问与结果映射，不拼接业务值，不解析 SQL 字符串恢复元数据。
-- 若必须修改上游 APT 或公共查询泛型链，先提交独立设计与取舍，不在原型中悄悄扩大范围。
+任务状态不能仅由“代码已写完”决定。必需 CI 未结束、当前 SHA 尚未验证或外部条件缺失时，保留相应状态。引用基线 CI 只能说明基础状态，不能作为新功能的验收结果。
 
-验收：仅靠上游公开/可维护的扩展点完成示例；普通查询写法不变；清楚列出编译期类型安全的边界。
+## 整体终点
 
-## 阶段 4 有需求的通用增强与发布
+以蓝图第 15 节为唯一完整完成条件，尤其包含：HANA 通过适配器执行、所有必交付高级能力、类型负例、非管理员与并发验证、独立产物消费、性能证据、完整文档和当前 commit 的全套 CI。
 
-- 优先评估显式窗口 frame，在既有窗口能力上补缺口，先证明 ROWS 的语义，再决定 RANGE 的跨库范围。
-- 后续按实际用例考虑 HANA 全文检索、层级查询、JSONB 扩展等，不按数据库函数清单机械铺 API。
-- 建立版本兼容表、模块使用示例、可运行的隔离消费工程和升级检查。
-- Spring Boot 集成单独验证上游配置选择与生命周期，仅有明确需要时再创建集成模块。
-
-验收：实际 JDK 17、真实数据库契约测试和发布产物消费测试全部通过；只声明已经验证的数据库/驱动/上游版本组合。
-
-## 验证分层
-
-| 层次 | 验证内容 | 执行方式 |
-| --- | --- | --- |
-| 快速本地 | SQL、参数、类型边界、失败路径 | 单元测试，不依赖数据库 |
-| 消费与编译 | APT、泛型推导、错误用法、发行依赖 | 独立消费工程，用产物而非源码替代 |
-| JDBC | CRUD、类型往返、事务、主键、批处理 | 真 HANA，固定并记录 revision 与驱动 |
-| 跨库语义 | 通用函数、窗口与类型结果 | 同数据集在 HANA、PG 和相关参考库对比 |
-| 并发与长期回归 | 锁等待、冲突更新、版本矩阵 | 有界测试与 CI；新 commit 须有自己的验证结果 |
+实施权限与暂停条件见蓝图第 16 节。发布、主分支合并和生产操作按实际授权处理，不把这些外部动作混同于代码与产物可用。

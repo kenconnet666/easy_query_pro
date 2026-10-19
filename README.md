@@ -28,6 +28,7 @@ HANA 使用独立 Docker 部署和持久卷，内存上限 12 GiB、无额外 sw
 
 完整验证交给 [GitHub Actions](.github/workflows/ci.yml)：Windows/Linux 构建、MySQL/PostgreSQL JDBC 契约、默认执行的 HANA Docker/JDBC 检查。另有手动验证外部 HANA 实例的入口。产物与测试报告保存为 Actions artifacts，尚不自动发布 Maven 包。
 
+- [完整成熟交付蓝图](docs/blueprint.md)
 - [开发环境与运行方式](docs/development.md)
 - [分包与设计方案](docs/architecture.md)
 - [实施计划与验证条件](docs/plan.md)
