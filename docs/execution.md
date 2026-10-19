@@ -178,9 +178,19 @@ IDEA 格式化、编译与错误检查通过；数据库 MCP 确认 `EQP_TEMPORA
 
 本地 `HanaLobIT,HanaIdentityIT` 共 6 个测试及同次 18 个离线测试通过。覆盖 >1 MiB BLOB、补充字符 NCLOB、ASCII CLOB、NULL/空值、UUID 条件/投影、批量失败回滚、提前结束/消费者异常、输入绑定/读取异常；后者验证调用方 LOB 未被 free、池归还和当前连接 M_ACTIVE_STATEMENTS 无增长。IDEA 格式化和编译通过。MCP 确认本轮 EQP_LOB_% 表/schema 为 0，已清理自建日志，保留开发实例和标准测试报告。具体规则见 [类型契约](hana-types.md)。
 
+## 转换器与业务主键
+
+提交 `495b941455a54d7e165ae47f9c2060e43b0f7bf7` 的 [CI 39333924655](https://github.com/kenconnet666/easy_query_pro/actions/runs/39333924655) 已通过全部强制任务，包括 LOB 生命周期与 UUID。
+
+生成键路径复现 Long 直接写入业务 RowId 属性的 ClassCastException；现复用上游结果列映射与 fromValue，保留普通读取的解密/转换顺序。普通业务转换器、DTO、NULL、NCLOB、自定义 handler、两 client 隔离和 asStr 派生表达式已确认可复用上游，无需另造转换体系。
+
+SQL 转换器测试还确认 HANA 会把 `? * 100` 的参数按 DECIMAL(19,0) 推断，19.99 存成 1900；显式 CAST 输入为 DECIMAL(19,2) 后，插入/查询/条件/更新均正确。保留正确的原有 INSERT 渲染，不在 SQL 字符串上打补丁。完整说明见 [类型契约](hana-types.md)。本地 `HanaConversionIT,HanaKeyLifecycleIT` 共 8 个测试及同次 18 个离线测试通过。
+
+IDEA 编译通过，MCP 确认 EQP_CONVERT_% schema 遗留为 0；自建诊断日志已删除。后续继续依赖当前提交的完整 CI 验证，不阻塞等待。
+
 ## 下一步
 
-1. 检查新提交的时间绑定 CI，继续 LOB/UUID/转换器及 HANA 核心实现。
+1. 检查新提交的业务主键/转换器 CI，继续 HANA 业务机制与精确类型 DSL 原型。
 2. 继续收敛 G0 高风险接口：计算视图正式查询源和参数绑定 SPI、类型转换器以及编译负例。
 3. 完成函数审计、类型桥接的转换器/编译负例与 SQL 组合失败覆盖，明确不等价能力与剩余风险。
 4. 按依赖进入完整 HANA 函数/查询/类型实现，再实施通用 DSL 与三库类型增强。

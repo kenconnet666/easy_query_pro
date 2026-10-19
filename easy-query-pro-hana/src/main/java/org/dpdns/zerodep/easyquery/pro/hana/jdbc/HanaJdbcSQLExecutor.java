@@ -6,7 +6,7 @@ import com.easy.query.core.basic.jdbc.conn.EasyConnection;
 import com.easy.query.core.basic.jdbc.executor.ExecutorContext;
 import com.easy.query.core.basic.jdbc.executor.internal.merge.result.StreamResultSet;
 import com.easy.query.core.basic.jdbc.executor.internal.merge.result.impl.EasyStreamResultSet;
-import com.easy.query.core.basic.jdbc.executor.internal.props.BasicJdbcProperty;
+import com.easy.query.core.basic.jdbc.executor.impl.def.EntityResultColumnMetadata;
 import com.easy.query.core.basic.jdbc.parameter.SQLParameter;
 import com.easy.query.core.enums.EasyBehaviorEnum;
 import com.easy.query.core.exception.EasyQuerySQLStatementException;
@@ -205,9 +205,12 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
             if (!result.next()) throw new SQLException("HANA did not return generated keys");
             for (int i = 0; i < columns.size(); i++) {
                 var column = columns.get(i);
-                Object key = column.getJdbcTypeHandler().getValue(new BasicJdbcProperty(i, column.getPropertyType()), result);
+                var mapping = new EntityResultColumnMetadata(i, column.getEntityMetadata(), column);
+                Object raw = mapping.getJdbcTypeHandler().getValue(mapping.getJdbcProperty(), result);
+                // 生成键也走普通读取的解密/ValueConverter 路径，不能把 JDBC 值直接塞入业务值对象。
+                Object key = EasyJdbcExecutorUtil.fromValue(mapping, raw);
                 if (key == null) throw new SQLException("HANA generated key is null for " + column.getPropertyName());
-                column.getSetterCaller().call(entity, key);
+                mapping.setValue(entity, key);
             }
         }
     }

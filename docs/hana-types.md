@@ -51,8 +51,18 @@ HANA 的 `transactionalLobs` 默认值会使结果集/statement 的部分释放�
 
 `HanaLobIT` 覆盖普通值/UUID、流式批量输入、NULL/空 locator、提前结束/消费者异常、输入绑定/读取异常。失败用例验证单连接池可复用，并比较当前连接的 M_ACTIVE_STATEMENTS，防止绑定失败遗留 statement。带部分成功的批处理仍应使用显式事务，由调用方决定提交或回滚。
 
+## 值转换器与 SQL 转换器
+
+继续使用上游 `ValueConverter`、`ColumnValueSQLConverter` 和列级 `typeHandler`。业务值对象应明确 `@Column(dbType=...)`；需要从 NCLOB 读取字符串再反序列化时，指定 `StringTypeHandler`，不依赖驱动 `getObject()` 恰好返回 String。转换器在 client 的 QueryConfiguration 中注册，不能把特定业务字段的序列化规则注册为全局 String 行为。
+
+生成键回填现在复用上游 `EntityResultColumnMetadata` 与 `EasyJdbcExecutorUtil.fromValue`，与普通读取使用相同的解密/ValueConverter 路径。`RowId` 一类不可变业务主键可声明 BIGINT、LongTypeHandler 和对应 ValueConverter，直接回填为业务值；不再将 Long 写入业务对象属性导致 ClassCastException。
+
+已验证实体/DTO、NULL、两个 client 的不同转换器实例、普通列与 NCLOB 列、更新条件，以及 `asStr()` 后的原始存储值和字符串组合。上游已有 `asStr` 与 IgnoreValueConverterTypeExpression 能处理这类视图转换，不新建平行的转换框架。
+
+SQL 转换器必须明确输入参数的 SQL 类型：HANA 将写入 DECIMAL(19,0) 的 `? * 100` 参数推断为零位小数，实测 19.99 会存成 1900。`CAST(? AS DECIMAL(19,2)) * 100` 才保存为 1999；查询、比较与更新已共同验证。问题来自参数精度推断，不是 INSERT 漏掉了 SQL 转换器。精确类型 DSL 应复用这一契约。
+
 ## 验证与未完成项
 
 `HanaTemporalBindingIT` 覆盖六组行为：DST 缺口、跳过整日的时区、三个时区中的 UTC Instant/精度、实体批量插入/更新/投影/NULL、历法边界，以及 legacy Map 与上游 `DefaultMemoryResultSetRow`。后者验证值在聚合之前已经保留；完整多库分片/导航组合仍属于 G2.5，不能以这一测试替代。
 
-已有 Byte 范围、Unicode/CAST 的证据见 [函数契约](hana-functions.md)。DDL 映射与迁移规则见 [迁移说明](hana-migrations.md)。自定义值转换器、更多业务组合和长期资源/性能验收继续实施，未标记为完成。
+已有 Byte 范围、Unicode/CAST 的证据见 [函数契约](hana-functions.md)。DDL 映射与迁移规则见 [迁移说明](hana-migrations.md)。更多业务组合和长期资源/性能验收继续实施，未标记为完成。
