@@ -170,6 +170,14 @@ G3 保持实施中：复杂依赖迁移、完整类型与 Spring/独立消费者
 
 IDEA 格式化、编译与错误检查通过；数据库 MCP 确认 `EQP_TEMPORAL_%` 遗留 schema 为 0。本轮自建时间诊断日志已删除，标准测试报告与开发实例保留。
 
+## LOB 与 UUID
+
+提交 `d7a458d672521cb3d4da91969f75d077c8ef4c9f` 的 [CI 39329181887](https://github.com/kenconnet666/easy_query_pro/actions/runs/39329181887) 已通过全部强制任务，包含上一节的时间类型修复。
+
+已验证 String/byte[] 大对象、文本 UUID 的原有 handler，并复现 SerialClob/SerialBlob 经通用 setObject 被写成对象字符串的问题。补充未注册具体 LOB 类的接口回退，保留显式 handler 优先级。进一步复现大 Clob 绑定在 execute 时出现 Stream closed；改用标准流 setter 和每次执行的资源作用域，使查询、插入、更新/原生 SQL 共享同一所有权规则，支持嵌套调用，不复制整个 LOB。
+
+本地 `HanaLobIT,HanaIdentityIT` 共 6 个测试及同次 18 个离线测试通过。覆盖 >1 MiB BLOB、补充字符 NCLOB、ASCII CLOB、NULL/空值、UUID 条件/投影、批量失败回滚、提前结束/消费者异常、输入绑定/读取异常；后者验证调用方 LOB 未被 free、池归还和当前连接 M_ACTIVE_STATEMENTS 无增长。IDEA 格式化和编译通过。MCP 确认本轮 EQP_LOB_% 表/schema 为 0，已清理自建日志，保留开发实例和标准测试报告。具体规则见 [类型契约](hana-types.md)。
+
 ## 下一步
 
 1. 检查新提交的时间绑定 CI，继续 LOB/UUID/转换器及 HANA 核心实现。

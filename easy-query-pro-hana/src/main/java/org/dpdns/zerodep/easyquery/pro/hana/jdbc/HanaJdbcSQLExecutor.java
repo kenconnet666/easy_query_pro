@@ -32,17 +32,45 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
     public StreamResultSet query(ExecutorContext context, EasyConnection connection, String sql, List<SQLParameter> parameters,
                                  boolean sharding, boolean replica) throws SQLException {
         var query = new QueryContext(context);
-        var result = super.query(query, connection, sql, parameters, sharding, replica);
-        try {
-            return HanaTemporalResultSet.wrap(result, query.statement.getResultSet());
+        StreamResultSet result = null;
+        try (var bindings = lobBindings(context)) {
+            result = super.query(query, connection, sql, parameters, sharding, replica);
+            var wrapped = HanaTemporalResultSet.wrap(result, query.statement.getResultSet());
+            if (bindings != null) bindings.completed();
+            return wrapped;
         } catch (SQLException | RuntimeException | Error failure) {
-            try {
+            if (result != null) try {
                 result.close();
             } catch (SQLException cleanup) {
                 failure.addSuppressed(cleanup);
             }
             throw failure;
         }
+    }
+
+    @Override
+    public <T> int executeRows(ExecutorContext context, EasyConnection connection, String sql, List<T> entities,
+                               List<SQLParameter> parameters, boolean sharding, boolean replica) throws SQLException {
+        try (var bindings = lobBindings(context)) {
+            int rows = super.executeRows(context, connection, sql, entities, parameters, sharding, replica);
+            if (bindings != null) bindings.completed();
+            return rows;
+        }
+    }
+
+    @Override
+    public int executeRows(ExecutorContext context, EasyConnection connection, String sql, List<SQLParameter> parameters,
+                           boolean sharding, boolean replica) throws SQLException {
+        try (var bindings = lobBindings(context)) {
+            int rows = super.executeRows(context, connection, sql, parameters, sharding, replica);
+            if (bindings != null) bindings.completed();
+            return rows;
+        }
+    }
+
+    private static HanaLobBindings.Scope lobBindings(ExecutorContext context) {
+        var handlers = context.getRuntimeContext().getJdbcTypeHandlerManager();
+        return handlers instanceof HanaJdbcTypeHandlerManager hana ? hana.openLobBindings() : null;
     }
 
     private static final class QueryContext extends ExecutorContext {
@@ -85,6 +113,15 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
     public <T> int insert(ExecutorContext context, EasyConnection connection, String sql, List<T> entities,
                           List<SQLParameter> parameters, boolean fillKeys, boolean sharding, boolean replica)
             throws SQLException {
+        try (var bindings = lobBindings(context)) {
+            int rows = insertRows(context, connection, sql, entities, parameters, fillKeys, sharding, replica);
+            if (bindings != null) bindings.completed();
+            return rows;
+        }
+    }
+
+    private <T> int insertRows(ExecutorContext context, EasyConnection connection, String sql, List<T> entities,
+                               List<SQLParameter> parameters, boolean fillKeys, boolean sharding, boolean replica) throws SQLException {
         if (context instanceof HanaInsertExecution.Context insertContext) {
             insertContext.checkConflictTarget(connection.getConnection());
         }
