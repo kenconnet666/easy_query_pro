@@ -3,6 +3,8 @@ package org.dpdns.zerodep.easyquery.pro.test;
 import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 import com.easy.query.core.bootstrapper.EasyQueryBootstrapper;
 import com.sap.db.jdbcext.HanaDataSource;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaOptions;
 
@@ -26,6 +28,16 @@ final class HanaTestDatabase {
 
     static Connection connect() throws SQLException {
         return dataSource().getConnection();
+    }
+
+    static HikariDataSource pool(int maximumConnections) throws SQLException {
+        var config = new HikariConfig();
+        config.setDataSource(dataSource());
+        config.setPoolName(uniqueName("POOL"));
+        config.setMaximumPoolSize(maximumConnections);
+        config.setMinimumIdle(0);
+        config.setConnectionTimeout(10_000);
+        return new HikariDataSource(config);
     }
 
     static DefaultEasyEntityQuery client() throws SQLException {
