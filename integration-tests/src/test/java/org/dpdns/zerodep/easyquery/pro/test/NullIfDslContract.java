@@ -1,8 +1,6 @@
 package org.dpdns.zerodep.easyquery.pro.test;
 
-import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 import com.easy.query.core.bootstrapper.DatabaseConfiguration;
-import com.easy.query.core.bootstrapper.EasyQueryBootstrapper;
 import com.easy.query.core.inject.ServiceCollection;
 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
@@ -25,9 +23,8 @@ final class NullIfDslContract {
     }
 
     static void verify(DataSource dataSource, DatabaseConfiguration database, Consumer<ServiceCollection> extensions) {
-        var client = EasyQueryBootstrapper.defaultBuilderConfiguration().setDefaultDataSource(dataSource)
-                .useDatabaseConfigure(database).customConfigure(extensions).build();
-        var query = new DefaultEasyEntityQuery(client);
+        var query = TestClients.configured(dataSource, database, extensions);
+        var client = query.getEasyQueryClient();
         var quote = client.getRuntimeContext().getQueryConfiguration().getDialect();
         var dialect = client.getRuntimeContext().getService(SqlDialect.class);
         String from = dialect == SqlDialect.HANA ? " FROM DUMMY" : "";

@@ -24,6 +24,10 @@ final class TestClients {
                 new Class<?>[]{DataSource.class}, (proxy, method, args) -> {
                     throw new AssertionError("SQL rendering must not access JDBC: " + method.getName());
                 });
+        return configured(dataSource, configuration, extensions);
+    }
+
+    static DefaultEasyEntityQuery configured(DataSource dataSource, DatabaseConfiguration configuration, Consumer<ServiceCollection> extensions) {
         var client = EasyQueryBootstrapper.defaultBuilderConfiguration()
                 .setDefaultDataSource(dataSource).useDatabaseConfigure(configuration).customConfigure(extensions).build();
         return new DefaultEasyEntityQuery(client);

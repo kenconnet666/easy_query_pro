@@ -2,7 +2,6 @@ package org.dpdns.zerodep.easyquery.pro.test;
 
 import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 import com.easy.query.core.basic.api.database.CodeFirstCommandTxArg;
-import com.easy.query.core.bootstrapper.EasyQueryBootstrapper;
 import com.easy.query.core.enums.SQLExecuteStrategyEnum;
 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.HanaExtensions;
@@ -111,9 +110,7 @@ class HanaConversionIT {
     }
 
     private static DefaultEasyEntityQuery client(String prefix) throws SQLException {
-        var query = new DefaultEasyEntityQuery(EasyQueryBootstrapper.defaultBuilderConfiguration()
-                .setDefaultDataSource(HanaTestDatabase.dataSource()).useDatabaseConfigure(new HanaDatabaseConfiguration())
-                .customConfigure(HanaExtensions::configure).build());
+        var query = TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure);
         var configuration = query.getEasyQueryClient().getRuntimeContext().getQueryConfiguration();
         configuration.applyValueConverter(new CodecRecord.IdConverter());
         configuration.applyValueConverter(new CodecRecord.LabelConverter(prefix));
