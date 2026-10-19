@@ -3,7 +3,9 @@
 param(
     [ValidateSet('start', 'test', 'stop', 'status')]
     [string]$Action = 'start',
-    [string]$Distribution = 'Debian'
+    [string]$Distribution = 'Debian',
+    [string]$IntegrationTest,
+    [switch]$Clean
 )
 
 $ErrorActionPreference = 'Stop'
@@ -45,7 +47,10 @@ try {
             $port = $ports.'39017/tcp'[0].HostPort
             $env:EQP_HANA_JDBC_URL = "jdbc:sap://127.0.0.1:$port"
             $env:EQP_HANA_USER = 'SYSTEM'
-            & .\mvnw.cmd --batch-mode clean verify -Phana
+            $mavenArgs = @('--batch-mode', 'verify', '-Phana')
+            if ($Clean) { $mavenArgs = @('--batch-mode', 'clean', 'verify', '-Phana') }
+            if ($IntegrationTest) { $mavenArgs += "-Dit.test=$IntegrationTest" }
+            & .\mvnw.cmd @mavenArgs
         }
         'stop' { & wsl @compose stop }
         'status' { & wsl @compose ps }

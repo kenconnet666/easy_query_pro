@@ -2,7 +2,7 @@
 
 基于 EasyQuery 3.2.17 的 Java 17 增强包，目标数据库限定为 MySQL、PostgreSQL、SAP HANA。优先适配 HANA 2.0 本地部署，保持 EasyQuery 的统一查询体验；只有通用 API 无法准确表达的数据库能力才提供显式方言 DSL。
 
-当前已建立 Maven 多模块、依赖管理、JDK 17 工具链、APT 与数据库验证入口。生产模块目前只有包声明，HANA 适配器和增强 DSL 尚未实现。
+完整蓝图已获授权并进入实施。HANA 底层已开始实现：离线 SQL、普通 CRUD/事务、identity 与 sequence 回填已有本地真实数据库证据。完整函数、元数据和增强 DSL 仍在推进，当前阶段不能视为可发布产品；详细状态与限制见 [执行记录](docs/execution.md)。
 
 | 子项目 | 职责 | 生产依赖 |
 | --- | --- | --- |
@@ -22,7 +22,7 @@
 .\tools\hana.ps1 -Action test
 ```
 
-第一条不需要数据库，验证 JDK 17、上游 APT 和 MySQL/PostgreSQL 参数化 SQL。第二条通过 Debian Docker 启动隔离数据库，验证 CRUD 和事务，结束后删除本次容器、卷与网络。MySQL 内存上限为 2 GiB，PostgreSQL 为 1 GiB，均禁用额外 swap，并在测试前检查 Docker 实际配置。
+第一条不需要数据库，验证 JDK 17、上游 APT 和三库参数化 SQL。第二条通过 Debian Docker 启动隔离数据库，验证 CRUD 和事务，结束后删除本次容器、卷与网络。MySQL 内存上限为 2 GiB，PostgreSQL 为 1 GiB，均禁用额外 swap，并在测试前检查 Docker 实际配置。
 
 HANA 使用独立 Docker 部署和持久卷，内存上限 12 GiB、无额外 swap。`start` 保留开发实例，`test` 运行真实 HANA JDBC 检查，`stop` 停止服务并保留数据；不与 MySQL/PostgreSQL 的临时测试清理混用。
 

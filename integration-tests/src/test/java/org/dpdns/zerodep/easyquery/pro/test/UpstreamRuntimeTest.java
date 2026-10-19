@@ -5,6 +5,7 @@ import com.easy.query.core.bootstrapper.DatabaseConfiguration;
 import com.easy.query.core.bootstrapper.EasyQueryBootstrapper;
 import com.easy.query.mysql.config.MySQLDatabaseConfiguration;
 import com.easy.query.pgsql.config.PgSQLDatabaseConfiguration;
+import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -46,6 +47,7 @@ class UpstreamRuntimeTest {
     static Stream<Arguments> databases() {
         return Stream.of(
                 Arguments.of(new MySQLDatabaseConfiguration(), "`"),
-                Arguments.of(new PgSQLDatabaseConfiguration(), "\""));
+                Arguments.of(new PgSQLDatabaseConfiguration(), "\""),
+                Arguments.of(new HanaDatabaseConfiguration(), "\""));
     }
 }

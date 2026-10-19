@@ -60,7 +60,7 @@ try {
     $env:EQP_PG_JDBC_URL = "jdbc:postgresql://127.0.0.1:$env:EQP_PG_PORT/eqp"
     $env:EQP_PG_USER = 'eqp'
     $env:EQP_PG_PASSWORD = $env:EQP_DB_PASSWORD
-    # Clean removes test classes left by a previously selected database profile.
+    # Isolated runs use a clean build; Failsafe profiles select the database tests explicitly.
     & .\mvnw.cmd --batch-mode clean verify "-P$($services -join ',')"
 } finally {
     try {

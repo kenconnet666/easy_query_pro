@@ -19,6 +19,10 @@ final class JdbcContract {
     }
 
     static void verify(DataSource dataSource, DatabaseConfiguration configuration) throws SQLException {
+        verify(dataSource, configuration, "VARCHAR(255)");
+    }
+
+    static void verify(DataSource dataSource, DatabaseConfiguration configuration, String textType) throws SQLException {
         assertEquals(17, Runtime.version().feature(), "Tests must run on the Java 17 toolchain");
         var client = EasyQueryBootstrapper.defaultBuilderConfiguration()
                 .setDefaultDataSource(dataSource)
@@ -29,7 +33,7 @@ final class JdbcContract {
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
             statement.execute("CREATE TABLE " + table + " ("
                     + dialect.getQuoteName("id") + " INTEGER PRIMARY KEY, "
-                    + dialect.getQuoteName("name") + " VARCHAR(255) NOT NULL, "
+                    + dialect.getQuoteName("name") + " " + textType + " NOT NULL, "
                     + dialect.getQuoteName("amount") + " DECIMAL(19, 4) NOT NULL)");
             try {
                 var query = new DefaultEasyEntityQuery(client);

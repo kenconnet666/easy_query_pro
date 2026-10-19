@@ -175,15 +175,17 @@
                 <executions>
                     <execution>
                         <goals>
-                            <goal>select-jdk-toolchain</goal>
+                            <goal>toolchain</goal>
                         </goals>
-                        <configuration>
-                            <version>[17,18)</version>
-                            <!-- Explicit toolchains avoid probing unrelated experimental JDKs. -->
-                            <discoverToolchains>false</discoverToolchains>
-                        </configuration>
                     </execution>
                 </executions>
+                <configuration>
+                    <toolchains>
+                        <jdk>
+                            <version>[17,18)</version>
+                        </jdk>
+                    </toolchains>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

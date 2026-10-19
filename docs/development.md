@@ -6,7 +6,7 @@
 
 Maven Wrapper 固定 Maven 3.9.16，wrapper 为官方 only-script 3.3.4。不要求安装全局 Maven，不更改系统 JAVA_HOME。首次运行需要网络以下载依赖。
 
-其他机器可以直接把 JAVA_HOME 指向 JDK 17，或在自己的 `~/.m2/toolchains.xml` 注册 17。POM 禁用自动扫描其他 JDK：本机工具链发现插件在扫描同时安装的实验版 JDK 时出现 NullPointerException，显式注册可以避免该问题。
+其他机器需要在自己的 `~/.m2/toolchains.xml` 注册 JDK 17，CI 由 `actions/setup-java` 写入工具链。POM 使用标准 `toolchain` goal 和 `<toolchains><jdk><version>` 配置，供 Maven 与 IDEA 一致解析，不自动扫描其他 JDK。本机实验版 JDK 的发现曾触发插件异常，而 IDEA 会错误地将 `select-jdk-toolchain` 的 `discoverToolchains` 配置解析为匹配条件；标准配置避开这两个问题。
 
 ```xml
 <toolchains>
@@ -66,10 +66,13 @@ HANA 是核心目标数据库。`infra/hana.compose.yaml` 固定 SAP 官方 `sap
 .\tools\hana.ps1 -Action start
 .\tools\hana.ps1 -Action status
 .\tools\hana.ps1 -Action test
+.\tools\hana.ps1 -Action test -IntegrationTest 'HanaSequenceIT'
 .\tools\hana.ps1 -Action stop
 ```
 
 默认仅绑定本机 `127.0.0.1:39017`，JDBC 地址为 `jdbc:sap://127.0.0.1:39017`。首次启动从 `EQP_HANA_PASSWORD` 读取密码，未设置时生成随机密码；再次启动/测试从已存在容器的环境读取，不输出密码。已有数据卷而没有容器时，必须提供原始密码，脚本不会猜测、覆盖或删除数据库。
+
+`test` 默认增量编译，`-IntegrationTest` 传给 Failsafe 选择定向测试；需要干净构建时显式添加 `-Clean`。CI 始终执行完整 clean 验证。本地开发不等待长时间 CI 结束，下一次提交前读取前一提交的结果并处理失败。
 
 SAP 启动入口要求密码 JSON 文件。启动脚本从环境变量生成该文件，仅存放在容器的私有 tmpfs 中，由 SAP 初始化流程消费；健康检查确认 HXE 租户的认证 SQL 可用后删除可能遗留的文件。仓库、宿主配置和持久数据卷不保存明文密码文件。本项目启动脚本接受 16–64 位字母数字密码，须同时包含大写、小写和数字。
 
