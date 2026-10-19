@@ -1,0 +1,75 @@
+# 开发环境与验证
+
+## JDK 与 Maven
+
+本机使用 `C:\Users\lionheart\.jdks\jbr-17.0.14`，IDEA Project SDK 为 `jbr-17`。已在本机 `~/.m2/toolchains.xml` 注册该路径，项目编译和测试选择 `[17,18)` 工具链；即使 Maven 本身由系统 Java 25 启动，编译器和测试 JVM 仍使用 JDK 17。
+
+Maven Wrapper 固定 Maven 3.9.16，wrapper 为官方 only-script 3.3.4。不要求安装全局 Maven，不更改系统 JAVA_HOME。首次运行需要网络以下载依赖。
+
+其他机器可以直接把 JAVA_HOME 指向 JDK 17，或在自己的 `~/.m2/toolchains.xml` 注册 17。POM 禁用自动扫描其他 JDK：本机工具链发现插件在扫描同时安装的实验版 JDK 时出现 NullPointerException，显式注册可以避免该问题。
+
+```xml
+<toolchains>
+    <toolchain>
+        <type>jdk</type>
+        <provides><version>17</version></provides>
+        <configuration><jdkHome>/absolute/path/to/jdk-17</jdkHome></configuration>
+    </toolchain>
+</toolchains>
+```
+
+POM 使用 `release=17`，不启用 preview；Maven 堆上限 1 GiB，测试 JVM 上限 512 MiB。测试会断言实际运行在 Java 17，避免只验证字节码目标版本。
+
+## 本地工作流
+
+```powershell
+# 快速验证：无数据库，无凭据。
+.\mvnw.cmd clean verify
+
+# 确认生产依赖边界。
+.\mvnw.cmd dependency:tree '-Dscope=compile'
+
+# 本地定位数据库问题；完整回归通常交给 GitHub Actions。
+.\tools\test-databases.ps1 -Database mysql
+.\tools\test-databases.ps1 -Database postgres
+.\tools\test-databases.ps1 -Database all
+```
+
+数据库脚本面向 Windows PowerShell 7 和 WSL Debian，不依赖 Docker Desktop。它生成临时密码和独立 Compose project，使用空闲端口，并在 finally 中删除自己的容器、卷、网络。镜像作为 Docker 缓存复用，脚本不清理用户共享镜像。
+
+容器限制定义在 `infra/compose.yaml`：MySQL 1 GiB、PostgreSQL 512 MiB，memory+swap 与 memory 相等，两者各限 1 CPU；内存限制不足或不一致时脚本拒绝继续测试。镜像固定为 Linux amd64 的版本及 digest，资源不会因为上游浮动 tag 变化而悄悄更换。
+
+凭据只通过进程环境传递，不写入 POM、Compose 明文值或仓库文件。测试使用 `eqp_product` 表，只有成功创建后才进入清理流程，已有同名表会使测试失败而不会被删除；PostgreSQL 额外使用每次随机创建的 schema。
+
+运行已有实例可配置环境变量，再执行对应 profile：
+
+| Profile | 环境变量 | 执行内容 |
+| --- | --- | --- |
+| `mysql` | `EQP_MYSQL_JDBC_URL`、`EQP_MYSQL_USER`、`EQP_MYSQL_PASSWORD` | APT Proxy、CRUD、Unicode/decimal 往返、参数绑定、事务提交/回滚 |
+| `postgres` | `EQP_PG_JDBC_URL`、`EQP_PG_USER`、`EQP_PG_PASSWORD` | 同一组 JDBC 契约，独立 schema |
+| `hana` | `EQP_HANA_JDBC_URL`、`EQP_HANA_USER`、`EQP_HANA_PASSWORD` | 当前只做 JDBC 连通性与只读查询，不代表 HANA 方言适配完成 |
+
+```powershell
+.\mvnw.cmd clean verify -Pmysql,postgres
+.\mvnw.cmd clean verify -Phana
+```
+
+切换 profile 时使用 clean，避免另一个 profile 留下的测试 class 被运行。主动启用的 profile 缺少环境变量会失败，不会静默跳过。当前驱动固定为 MySQL Connector/J 9.7.0、PostgreSQL JDBC 42.7.14、SAP ngdbc 2.30.11；它们只进入相应 profile 的测试 classpath。
+
+## IDEA 与 DebugTools
+
+IDEA 已识别父项目和六个子模块，Project SDK 为指定 JBR 17。通过 Maven 导入同步依赖；代理源由 `sql-processor:3.2.17` 生成在 `integration-tests/target/generated-test-sources/test-annotations`，不提交生成文件。
+
+已核对 DebugTools 官方 [热重载说明](https://debug-tools.cc/guide/hot-reload.html)和 [JDK 安装说明](https://debug-tools.cc/guide/install.html)。本机插件为 5.3.0，JBR 17 已通过 `-XX:+AllowEnhancedClassRedefinition -version` 启动检查；这项检查不等于已经完成应用热重载验证。
+
+当前会话已暴露 `get_debug_tools_status`、`execute_debug_tools_run_configuration` 和 `compile_and_reload_modified_files`。后续有运行中的调试程序时，可通过 DebugTools Hotswap 启动并重编译/重载函数实现。按官方文档核对 Async Stack Traces 设置；本轮没有改动全局调试设置，也没有在普通 Maven 构建中加入 agent。
+
+修改实体字段、注解、代理签名、服务注册或元数据缓存时，重新执行 APT 并重建受影响的 EasyQuery runtime。官方文档未列出 EasyQuery 专属热重载适配，不能假设热重载自动刷新其元数据。正式验收使用无热重载 agent 的 clean 构建。
+
+## GitHub Actions
+
+`CI` 工作流由 push、pull_request、workflow_dispatch 触发。Windows/Linux 使用 JetBrains JDK 17.0.14 构建；Linux 数据库 job 使用同一 Compose 配置，并再次验证实际内存与 swap 限制，再运行完整 MySQL/PostgreSQL 契约。失败时保留报告和数据库日志，最后总是清理测试资源。
+
+HANA 连通检查只有手动选择 hana 才启动，需要在 `hana-test` Environment 配置三项同名 secrets，并确保 runner 能访问该测试实例。未选择的 HANA job 会显示 skipped，不能计为通过。常规 build job 会编译该检查并解析驱动，但不会连接 HANA。
+
+CI 保存各模块 JAR 和测试报告 7 天。当前尚无生产功能发布，CD 的边界是交付可下载构建产物，不执行 Maven Central 发布或数据库迁移。报告必须对应当前 commit 的运行，不能以旧版本成功替代。

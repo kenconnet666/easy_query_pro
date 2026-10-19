@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      hana:
+        description: Run the HANA JDBC check against a configured test instance
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Java 17 / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: jetbrains
+          java-version: '17.0.14'
+          cache: maven
+      - name: Build and run SQL contracts
+        shell: bash
+        run: ./mvnw --batch-mode clean verify
+      - name: Compile the optional HANA JDBC check
+        shell: bash
+        run: ./mvnw --batch-mode -Phana -DskipTests test-compile
+      - name: Preserve build outputs and reports
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: build-${{ matrix.os }}
+          path: |
+            easy-query-pro-*/target/*.jar
+            integration-tests/target/surefire-reports/
+          retention-days: 7
+
+  databases:
+    name: MySQL and PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COMPOSE_PROJECT_NAME: eqp-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      COMPOSE_FILE: infra/compose.yaml
+      COMPOSE_PROFILES: mysql,postgres
+      EQP_MYSQL_JDBC_URL: jdbc:mysql://127.0.0.1:53306/eqp?sslMode=DISABLED&allowPublicKeyRetrieval=true
+      EQP_MYSQL_USER: eqp
+      EQP_PG_JDBC_URL: jdbc:postgresql://127.0.0.1:55432/eqp
+      EQP_PG_USER: eqp
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: jetbrains
+          java-version: '17.0.14'
+          cache: maven
+      - name: Generate temporary database credentials
+        run: |
+          password=$(openssl rand -hex 24)
+          echo "::add-mask::$password"
+          {
+            echo "EQP_DB_PASSWORD=$password"
+            echo "EQP_MYSQL_PASSWORD=$password"
+            echo "EQP_PG_PASSWORD=$password"
+          } >> "$GITHUB_ENV"
+      - name: Start databases with memory limits
+        run: |
+          docker compose up --detach --wait --wait-timeout 120
+          for service in mysql postgres; do
+            expected=536870912
+            if [ "$service" = mysql ]; then expected=1073741824; fi
+            container=$(docker compose ps -q "$service")
+            docker inspect "$container" | jq -e --argjson expected "$expected" \
+              '.[0].HostConfig | .Memory == $expected and .MemorySwap == $expected'
+          done
+      - name: Run JDBC contracts
+        run: ./mvnw --batch-mode clean verify -Pmysql,postgres
+      - name: Collect database logs on failure
+        if: failure()
+        run: |
+          mkdir -p target
+          docker compose logs --no-color > target/database-containers.log
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: database-reports
+          path: |
+            integration-tests/target/surefire-reports/
+            integration-tests/target/failsafe-reports/
+            target/database-containers.log
+          retention-days: 7
+      - name: Remove test resources
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  hana:
+    name: Optional HANA JDBC
+    if: github.event_name == 'workflow_dispatch' && inputs.hana
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: hana-test
+    env:
+      EQP_HANA_JDBC_URL: ${{ secrets.EQP_HANA_JDBC_URL }}
+      EQP_HANA_USER: ${{ secrets.EQP_HANA_USER }}
+      EQP_HANA_PASSWORD: ${{ secrets.EQP_HANA_PASSWORD }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: jetbrains
+          java-version: '17.0.14'
+          cache: maven
+      - name: Check HANA configuration
+        run: |
+          : "${EQP_HANA_JDBC_URL:?Configure the hana-test environment}"
+          : "${EQP_HANA_USER:?Configure the hana-test environment}"
+          : "${EQP_HANA_PASSWORD:?Configure the hana-test environment}"
+      - name: Verify HANA JDBC connectivity
+        run: ./mvnw --batch-mode clean verify -Phana
+      - name: Preserve HANA reports
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: hana-reports
+          path: integration-tests/target/failsafe-reports/
+          retention-days: 7
