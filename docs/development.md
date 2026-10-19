@@ -37,7 +37,7 @@ POM 使用 `release=17`，不启用 preview；Maven 堆上限 1 GiB，测试 JVM
 
 数据库脚本面向 Windows PowerShell 7 和 WSL Debian，不依赖 Docker Desktop。它生成临时密码和独立 Compose project，使用空闲端口，并在 finally 中删除自己的容器、卷、网络。镜像作为 Docker 缓存复用，脚本不清理用户共享镜像。
 
-容器限制定义在 `infra/compose.yaml`：MySQL 1 GiB、PostgreSQL 512 MiB，memory+swap 与 memory 相等，两者各限 1 CPU；内存限制不足或不一致时脚本拒绝继续测试。镜像固定为 Linux amd64 的版本及 digest，资源不会因为上游浮动 tag 变化而悄悄更换。
+容器限制定义在 `infra/compose.yaml`：MySQL 2 GiB、PostgreSQL 1 GiB，memory+swap 与 memory 相等，两者各限 1 CPU；内存限制不足或不一致时脚本拒绝继续测试。镜像固定为 Linux amd64 的版本及 digest，资源不会因为上游浮动 tag 变化而悄悄更换。
 
 凭据只通过进程环境传递，不写入 POM、Compose 明文值或仓库文件。测试使用 `eqp_product` 表，只有成功创建后才进入清理流程，已有同名表会使测试失败而不会被删除；PostgreSQL 额外使用每次随机创建的 schema。
 
@@ -47,7 +47,7 @@ POM 使用 `release=17`，不启用 preview；Maven 堆上限 1 GiB，测试 JVM
 | --- | --- | --- |
 | `mysql` | `EQP_MYSQL_JDBC_URL`、`EQP_MYSQL_USER`、`EQP_MYSQL_PASSWORD` | APT Proxy、CRUD、Unicode/decimal 往返、参数绑定、事务提交/回滚 |
 | `postgres` | `EQP_PG_JDBC_URL`、`EQP_PG_USER`、`EQP_PG_PASSWORD` | 同一组 JDBC 契约，独立 schema |
-| `hana` | `EQP_HANA_JDBC_URL`、`EQP_HANA_USER`、`EQP_HANA_PASSWORD` | 当前只做 JDBC 连通性与只读查询，不代表 HANA 方言适配完成 |
+| `hana` | `EQP_HANA_JDBC_URL`、`EQP_HANA_USER`、`EQP_HANA_PASSWORD` | 真实 HANA 连接、临时列存表、绑定参数、中文/decimal 与事务验证，不代表 HANA 方言适配完成 |
 
 ```powershell
 .\mvnw.cmd clean verify -Pmysql,postgres
@@ -55,6 +55,27 @@ POM 使用 `release=17`，不启用 preview；Maven 堆上限 1 GiB，测试 JVM
 ```
 
 切换 profile 时使用 clean，避免另一个 profile 留下的测试 class 被运行。主动启用的 profile 缺少环境变量会失败，不会静默跳过。当前驱动固定为 MySQL Connector/J 9.7.0、PostgreSQL JDBC 42.7.14、SAP ngdbc 2.30.11；它们只进入相应 profile 的测试 classpath。
+
+## HANA Docker 开发实例
+
+HANA 是核心目标数据库。`infra/hana.compose.yaml` 固定 SAP 官方 `saplabs/hanaexpress:2.00.088.00.20251110.1` 的 digest，使用独立 `eqp-hana` Compose project 和持久卷。容器限制 12 GiB 内存、无额外 swap、4 CPU，采用数据库服务版，不安装 XS 应用服务。
+
+```powershell
+.\tools\hana.ps1 -Action start
+.\tools\hana.ps1 -Action status
+.\tools\hana.ps1 -Action test
+.\tools\hana.ps1 -Action stop
+```
+
+默认仅绑定本机 `127.0.0.1:39017`，JDBC 地址为 `jdbc:sap://127.0.0.1:39017`。首次启动从 `EQP_HANA_PASSWORD` 读取密码，未设置时生成随机密码；再次启动/测试从已存在容器的环境读取，不输出密码。已有数据卷而没有容器时，必须提供原始密码，脚本不会猜测、覆盖或删除数据库。
+
+SAP 启动入口要求密码 JSON 文件。启动脚本从环境变量生成该文件，仅存放在容器的私有 tmpfs 中，由 SAP 初始化流程消费并删除；仓库、宿主配置和持久数据卷不保存明文密码文件。本项目启动脚本接受 16–64 位字母数字密码，须同时包含大写、小写和数字。
+
+部署执行 SAP 官方入口的许可接受参数。参考 [SAP 官方 Docker 安装说明](https://developers.sap.com/tutorials/hxe-ua-install-using-docker)与 [官方镜像](https://hub.docker.com/r/saplabs/hanaexpress)。本机 Debian/WSL 是开发验证环境，不能从测试成功推导生产部署认证。
+
+HANA 所需 IPC sysctl 和文件句柄限制在 Compose 中配置。若宿主系统检查不满足，先核对错误和现值再调整相应内核参数，不关闭整个系统检查。CI 在独立 runner 上设置所需 AIO、memory map 和 early kill 参数；需要至少约 14 GiB 可见内存，资源不足会失败。
+
+`tools/hana.ps1 stop` 保留容器和数据，避免下次启动丢失初始化凭据。清空开发数据库属于单独的显式操作，普通测试不会删除持久卷。
 
 ## IDEA 与 DebugTools
 
@@ -70,6 +91,6 @@ IDEA 已识别父项目和六个子模块，Project SDK 为指定 JBR 17。通�
 
 `CI` 工作流由 push、pull_request、workflow_dispatch 触发。Windows/Linux 使用 JetBrains JDK 17.0.14 构建；Linux 数据库 job 使用同一 Compose 配置，并再次验证实际内存与 swap 限制，再运行完整 MySQL/PostgreSQL 契约。失败时保留报告和数据库日志，最后总是清理测试资源。
 
-HANA 连通检查只有手动选择 hana 才启动，需要在 `hana-test` Environment 配置三项同名 secrets，并确保 runner 能访问该测试实例。未选择的 HANA job 会显示 skipped，不能计为通过。常规 build job 会编译该检查并解析驱动，但不会连接 HANA。
+HANA Docker job 默认运行，使用临时密码、独立卷和同一份 HANA Compose 配置，运行 JDBC 检查后清理所有测试资源。手动输入 hana 额外启用外部实例检查，需要在 `hana-test` Environment 配置三项同名 secrets，并确保 runner 能访问实例；只有这项额外检查可以显示 skipped。
 
 CI 保存各模块 JAR 和测试报告 7 天。当前尚无生产功能发布，CD 的边界是交付可下载构建产物，不执行 Maven Central 发布或数据库迁移。报告必须对应当前 commit 的运行，不能以旧版本成功替代。

@@ -9,6 +9,7 @@
     <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>EasyQuery Pro</name>
+    <description>Java 17 extensions for EasyQuery 3.2.17 targeting MySQL, PostgreSQL and SAP HANA.</description>
 
     <modules>
         <module>easy-query-pro-hana</module>

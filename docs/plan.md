@@ -8,8 +8,8 @@
 - 固定 EasyQuery 3.2.17，使用 Maven Central 发行依赖；相邻上游仓库保持不变。
 - Maven Wrapper 固定 3.9.16，release=17。本机工具链使用用户指定的 `C:\Users\lionheart\.jdks\jbr-17.0.14`，不更改系统默认 Java。
 - 已配置上游 APT，默认运行两组无数据库 SQL 契约；MySQL/PostgreSQL 的真实 JDBC profile 复用同一套 CRUD、值往返与事务检查。
-- 已提供 Debian Docker 脚本和内存限制：MySQL 1 GiB、PostgreSQL 512 MiB；启动后验证实际 memory 与 memory+swap 数值，结束后清理本次资源。
-- HANA profile 配好 SAP JDBC 驱动和只读连接检查，真实实例未配置；HANA 方言实现尚未开始。
+- 已提供 Debian Docker 脚本和内存限制：MySQL 2 GiB、PostgreSQL 1 GiB；启动后验证实际 memory 与 memory+swap 数值，结束后清理本次资源。
+- HANA profile 配好 SAP JDBC 驱动、连接/参数绑定/事务检查，并提供独立持久化 Docker 开发部署和默认执行的 Docker CI job；HANA 方言实现尚未开始。
 - GitHub Actions 承担 Windows/Linux JDK 17 构建和数据库回归，保存测试报告与 JAR。实际运行状态以对应 commit 的 Actions 结果为准。
 - IDEA MCP 已通过原生只读调用和构建检查。DebugTools 5.3.0 及热重载 MCP 可用，目前没有运行中的调试 JVM。
 

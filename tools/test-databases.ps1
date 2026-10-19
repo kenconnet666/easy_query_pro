@@ -48,7 +48,7 @@ try {
         $containerId = (& wsl @compose ps -q $service).Trim()
         $limits = (& wsl -d $Distribution --exec docker inspect --format '{{json .HostConfig}}' $containerId) |
             ConvertFrom-Json
-        $expectedMemory = if ($service -eq 'mysql') { 1GB } else { 512MB }
+        $expectedMemory = if ($service -eq 'mysql') { 2GB } else { 1GB }
         if ($limits.Memory -ne $expectedMemory -or $limits.MemorySwap -ne $expectedMemory) {
             throw "Unexpected memory limits for $service"
         }

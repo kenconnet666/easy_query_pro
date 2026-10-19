@@ -3,9 +3,9 @@ services:
     profiles: [mysql]
     image: mysql:8.4.11@sha256:1f8411cc085d2f2f92060fca926746cbf97f87b76c3008e9741ad62e604c4ffa
     platform: linux/amd64
-    mem_limit: 1g
-    memswap_limit: 1g
-    mem_reservation: 256m
+    mem_limit: 2g
+    memswap_limit: 2g
+    mem_reservation: 512m
     cpus: 1.0
     pids_limit: 256
     environment:
@@ -13,7 +13,7 @@ services:
       MYSQL_USER: eqp
       MYSQL_PASSWORD: ${EQP_DB_PASSWORD:?Set EQP_DB_PASSWORD in the environment}
       MYSQL_ROOT_PASSWORD: ${EQP_DB_PASSWORD:?Set EQP_DB_PASSWORD in the environment}
-    command: [--innodb-buffer-pool-size=128M, --max-connections=30, --performance-schema=OFF]
+    command: [--innodb-buffer-pool-size=256M, --max-connections=30, --performance-schema=OFF]
     ports:
       - "127.0.0.1:${EQP_MYSQL_PORT:-53306}:3306"
     volumes:
@@ -28,16 +28,16 @@ services:
     profiles: [postgres]
     image: postgres:17.11-bookworm@sha256:66aafa11cf15800a3c94763f7e11d1e7b2e37e5e84bc4ce027cb6e1e4bfaf4df
     platform: linux/amd64
-    mem_limit: 512m
-    memswap_limit: 512m
-    mem_reservation: 128m
+    mem_limit: 1g
+    memswap_limit: 1g
+    mem_reservation: 256m
     cpus: 1.0
     pids_limit: 128
     environment:
       POSTGRES_DB: eqp
       POSTGRES_USER: eqp
       POSTGRES_PASSWORD: ${EQP_DB_PASSWORD:?Set EQP_DB_PASSWORD in the environment}
-    command: [postgres, -c, shared_buffers=64MB, -c, max_connections=30]
+    command: [postgres, -c, shared_buffers=128MB, -c, max_connections=30]
     ports:
       - "127.0.0.1:${EQP_PG_PORT:-55432}:5432"
     volumes:

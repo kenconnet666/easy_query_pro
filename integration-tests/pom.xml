@@ -52,21 +52,17 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>default-testCompile</id>
-                        <configuration>
-                            <proc>full</proc>
-                            <annotationProcessorPaths>
-                                <path>
-                                    <groupId>com.easy-query</groupId>
-                                    <artifactId>sql-processor</artifactId>
-                                    <version>${easy-query.version}</version>
-                                </path>
-                            </annotationProcessorPaths>
-                        </configuration>
-                    </execution>
-                </executions>
+                <!-- IDEA imports processor paths from plugin-level configuration. -->
+                <configuration>
+                    <proc>full</proc>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>com.easy-query</groupId>
+                            <artifactId>sql-processor</artifactId>
+                            <version>${easy-query.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -96,9 +92,13 @@
                             <execution>
                                 <id>mysql-test-sources</id>
                                 <phase>generate-test-sources</phase>
-                                <goals><goal>add-test-source</goal></goals>
+                                <goals>
+                                    <goal>add-test-source</goal>
+                                </goals>
                                 <configuration>
-                                    <sources><source>src/it/mysql/java</source></sources>
+                                    <sources>
+                                        <source>src/it/mysql/java</source>
+                                    </sources>
                                 </configuration>
                             </execution>
                         </executions>
@@ -128,9 +128,13 @@
                             <execution>
                                 <id>postgres-test-sources</id>
                                 <phase>generate-test-sources</phase>
-                                <goals><goal>add-test-source</goal></goals>
+                                <goals>
+                                    <goal>add-test-source</goal>
+                                </goals>
                                 <configuration>
-                                    <sources><source>src/it/postgres/java</source></sources>
+                                    <sources>
+                                        <source>src/it/postgres/java</source>
+                                    </sources>
                                 </configuration>
                             </execution>
                         </executions>
@@ -160,9 +164,13 @@
                             <execution>
                                 <id>hana-test-sources</id>
                                 <phase>generate-test-sources</phase>
-                                <goals><goal>add-test-source</goal></goals>
+                                <goals>
+                                    <goal>add-test-source</goal>
+                                </goals>
                                 <configuration>
-                                    <sources><source>src/it/hana/java</source></sources>
+                                    <sources>
+                                        <source>src/it/hana/java</source>
+                                    </sources>
                                 </configuration>
                             </execution>
                         </executions>
