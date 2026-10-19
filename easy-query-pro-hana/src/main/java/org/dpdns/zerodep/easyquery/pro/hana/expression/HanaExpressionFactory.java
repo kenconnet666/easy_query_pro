@@ -1,5 +1,8 @@
 package org.dpdns.zerodep.easyquery.pro.hana.expression;
 
+import com.easy.query.core.context.QueryRuntimeContext;
+import com.easy.query.core.enums.MultiTableTypeEnum;
+import com.easy.query.core.expression.parser.core.available.TableAvailable;
 import com.easy.query.core.expression.sql.expression.EntityDeleteSQLExpression;
 import com.easy.query.core.expression.sql.expression.EntityInsertSQLExpression;
 import com.easy.query.core.expression.sql.expression.EntityQuerySQLExpression;
@@ -10,6 +13,12 @@ import com.easy.query.core.expression.sql.expression.impl.EntitySQLExpressionMet
 
 /** Retains upstream table, subquery, UNION, CTE and clone protocols. */
 public final class HanaExpressionFactory extends DefaultEasyExpressionFactory {
+    @Override
+    public EntityTableSQLExpression createEntityTableSQLExpression(TableAvailable table, MultiTableTypeEnum type,
+                                                                  QueryRuntimeContext runtime) {
+        return new HanaTableSQLExpression(table, type, runtime);
+    }
+
     @Override
     public EntityQuerySQLExpression createEasyQuerySQLExpression(EntitySQLExpressionMetadata metadata) {
         return new HanaQuerySQLExpression(metadata);

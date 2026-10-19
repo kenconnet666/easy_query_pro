@@ -16,6 +16,8 @@ class HanaConfigurationTest {
         assertEquals("\"order\"", keyword.getQuoteName("order"));
         assertEquals("\"a\"\"b\"", keyword.getQuoteName("a\"b"));
         assertEquals("\"a\"\"b\"", keyword.getQuoteName("\"a\"\"b\""));
+        assertEquals("a\"b", keyword.unquoteName("\"a\"\"b\""));
+        assertEquals("\"\"\"name\"\"\"", keyword.quoteUnquotedName("\"name\""));
         assertEquals("\"name); DROP TABLE x;--\"", keyword.getQuoteName("name); DROP TABLE x;--"));
         assertThrows(IllegalArgumentException.class, () -> keyword.getQuoteName("\"a\"b\""));
         assertThrows(IllegalArgumentException.class, () -> keyword.getQuoteName("\"\""));

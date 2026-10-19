@@ -57,6 +57,7 @@ HANA 底层模块保持与 Proxy DSL 解耦。专属 DSL 可以组合已有函�
 8. APT 继续使用上游 processor。必要的上游 SPI 变化须以复现和最小方案处理，不在本包中复制 APT 或修改上游私有状态。
 9. 原有 HANA 函数按字符串、时间、CAST、JSON 职责组织；`HanaSQLFunc` 只作上游工厂适配，辅助类保持包内可见。需要共享语义的函数不因 SQL 长度被拆成大量独立类型。
 10. `HanaOptions` 为每个 client 的不可变配置。HANA 2.0 的 JSON 数组长度需要显式部署一个 SQLScript 函数；`HanaJsonSupport` 仅生成 DDL，不在安装、渲染或首次查询时修改 schema。部署权限、输出容量与错误策略见 [HANA 函数说明](hana-functions.md)。
+11. 生成键插入由 `HanaInsertExecution` 在既有准备阶段传递结构化目标，不引入全局 SQL-to-metadata 缓存。JDBC 层在回调前完成回填，触发器不安全组合在写入前拒绝；成本、权限与限制见 [生成键契约](hana-generated-keys.md)。
 
 ## 代码审计入口
 

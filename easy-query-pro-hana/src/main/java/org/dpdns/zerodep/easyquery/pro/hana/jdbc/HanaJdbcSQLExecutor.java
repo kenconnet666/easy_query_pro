@@ -1,19 +1,26 @@
 package org.dpdns.zerodep.easyquery.pro.hana.jdbc;
 
+import com.easy.query.core.basic.extension.listener.JdbcExecuteAfterArg;
+import com.easy.query.core.basic.extension.listener.JdbcExecuteBeforeArg;
 import com.easy.query.core.basic.jdbc.conn.EasyConnection;
 import com.easy.query.core.basic.jdbc.executor.ExecutorContext;
+import com.easy.query.core.basic.jdbc.executor.internal.merge.result.impl.EasyStreamResultSet;
 import com.easy.query.core.basic.jdbc.executor.internal.props.BasicJdbcProperty;
 import com.easy.query.core.basic.jdbc.parameter.SQLParameter;
+import com.easy.query.core.enums.EasyBehaviorEnum;
+import com.easy.query.core.exception.EasyQuerySQLStatementException;
 import com.easy.query.core.metadata.ColumnMetadata;
 import com.easy.query.core.sql.DefaultJdbcSQLExecutor;
+import com.easy.query.core.util.EasyJdbcExecutorUtil;
 import org.dpdns.zerodep.easyquery.pro.hana.key.HanaSequenceGenerator;
 
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 
-/** Adapts generated-key retrieval while retaining upstream binding, transactions and listeners. */
+/** 仅扩展回填插入的 JDBC 生命周期，其余操作沿用上游执行器。 */
 public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
     @Override
     public <T> int insert(ExecutorContext context, EasyConnection connection, String sql, List<T> entities,
@@ -22,30 +29,88 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
         if (!fillKeys || entities.isEmpty()) {
             return super.insert(context, connection, sql, entities, parameters, fillKeys, sharding, replica);
         }
-        var metadata = context.getRuntimeContext().getEntityMetadataManager().getEntityMetadata(entities.get(0).getClass());
+        if (sharding) {
+            throw new SQLException("HANA session-key backfill requires a resolved physical table; use application-generated keys for sharded writes", "0A000");
+        }
+        var runtime = context.getRuntimeContext();
+        var metadata = runtime.getEntityMetadataManager().getEntityMetadata(entities.get(0).getClass());
         List<ColumnMetadata> columns = metadata.getGeneratedKeyColumns().stream()
                 .map(name -> metadata.getColumnNotNull(metadata.getPropertyNameNotNull(name))).toList();
         String keyQuery = generatedKeyQuery(columns);
+        var listener = runtime.getJdbcExecutorListener();
+        boolean listen = listener.enable() && context.getExpressionContext().getBehavior().hasBehavior(EasyBehaviorEnum.JDBC_LISTEN);
+        boolean print = EasyJdbcExecutorUtil.isPrintSQL(context);
+        var handlers = runtime.getJdbcTypeHandlerManager();
+        EasyJdbcExecutorUtil.logSQL(print, sql, connection, sharding, replica);
+        JdbcExecuteBeforeArg before = null;
+        PreparedStatement insert = null;
+        PreparedStatement keys = null;
+        Exception failure = null;
         int total = 0;
-        // ngdbc 不支持 JDBC generated keys；必须逐行在同一连接读取 session 值。
-        // 不能等批处理结束再读取，否则只能得到最后一行的键，导致实体回填错位。
-        for (T entity : entities) {
-            int affected = super.insert(context, connection, sql, List.of(entity), parameters, false, sharding, replica);
-            if (affected != 1) {
-                throw new SQLException("HANA generated-key insert expected one affected row, received " + affected);
+        try {
+            if (listen) {
+                String trace = listener.createTraceId();
+                context.setJdbcListenerTraceId(trace);
+                before = new JdbcExecuteBeforeArg(trace, sql, new ArrayList<>(entities.size()), context.getExecuteMethod());
+                listener.onExecuteBefore(before);
             }
-            try (var result = super.query(context, connection, keyQuery, List.of(), sharding, replica)) {
-                if (!result.next()) throw new SQLException("HANA did not return generated keys");
-                for (int i = 0; i < columns.size(); i++) {
-                    var column = columns.get(i);
-                    Object key = column.getJdbcTypeHandler().getValue(new BasicJdbcProperty(i, column.getPropertyType()), result);
-                    if (key == null) throw new SQLException("HANA generated key is null for " + column.getPropertyName());
-                    column.getSetterCaller().call(entity, key);
+            if (!(context instanceof HanaInsertExecution.Context insertContext)) {
+                throw new SQLException("HANA generated-key backfill requires HanaInsertExecution registration", "0A000");
+            }
+            insertContext.checkGeneratedKeySafety(connection.getConnection());
+            // INSERT 与键读取之间不能调用用户监听器，否则嵌套 SQL 会覆盖当前连接的 session 值。
+            // 同批复用两个 statement，但仍逐行读取键，避免 batch 只留下最后一个 identity。
+            keys = connection.getConnection().prepareStatement(keyQuery);
+            for (T entity : entities) {
+                var values = EasyJdbcExecutorUtil.extractParameters(entity, parameters, print,
+                        runtime.getSQLParameterPrintFormat(), connection, sharding, replica);
+                if (before != null) before.getSqlParameters().add(values);
+                if (insert == null) {
+                    insert = EasyJdbcExecutorUtil.createPreparedStatement(connection.getConnection(), sql, values, handlers);
+                } else {
+                    EasyJdbcExecutorUtil.setPreparedStatement(insert, values, handlers);
+                }
+                int affected = insert.executeUpdate();
+                total = Math.addExact(total, affected);
+                if (affected != 1) {
+                    throw new SQLException("HANA generated-key insert expected one affected row, received " + affected);
+                }
+                EasyJdbcExecutorUtil.logSQL(print, keyQuery, connection, sharding, replica);
+                fillKeys(keys, columns, entity);
+            }
+            EasyJdbcExecutorUtil.logResult(print, total, connection, sharding, replica);
+            return total;
+        } catch (SQLException exception) {
+            failure = exception;
+            throw new EasyQuerySQLStatementException(sql, exception);
+        } catch (RuntimeException exception) {
+            failure = exception;
+            throw exception;
+        } finally {
+            EasyJdbcExecutorUtil.clear(keys);
+            EasyJdbcExecutorUtil.clear(insert);
+            if (before != null) {
+                try {
+                    listener.onExecuteAfter(new JdbcExecuteAfterArg(before, null, total, failure));
+                } catch (RuntimeException callbackFailure) {
+                    if (failure == null) throw callbackFailure;
+                    failure.addSuppressed(callbackFailure);
                 }
             }
-            total = Math.addExact(total, affected);
         }
-        return total;
+    }
+
+    private <T> void fillKeys(PreparedStatement statement, List<ColumnMetadata> columns, T entity) throws SQLException {
+        // ResultSet 每行关闭；statement 留给下一行复用，由外层 finally 统一释放。
+        try (var result = new EasyStreamResultSet(statement.executeQuery(), null)) {
+            if (!result.next()) throw new SQLException("HANA did not return generated keys");
+            for (int i = 0; i < columns.size(); i++) {
+                var column = columns.get(i);
+                Object key = column.getJdbcTypeHandler().getValue(new BasicJdbcProperty(i, column.getPropertyType()), result);
+                if (key == null) throw new SQLException("HANA generated key is null for " + column.getPropertyName());
+                column.getSetterCaller().call(entity, key);
+            }
+        }
     }
 
     private String generatedKeyQuery(List<ColumnMetadata> columns) {

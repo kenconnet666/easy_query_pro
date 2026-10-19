@@ -29,6 +29,7 @@
         <mysql.version>9.7.0</mysql.version>
         <postgresql.version>42.7.14</postgresql.version>
         <ngdbc.version>2.30.11</ngdbc.version>
+        <hikari.version>7.0.2</hikari.version>
         <surefire.version>3.6.0</surefire.version>
     </properties>
 
@@ -105,6 +106,11 @@
                 <groupId>com.sap.cloud.db.jdbc</groupId>
                 <artifactId>ngdbc</artifactId>
                 <version>${ngdbc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.zaxxer</groupId>
+                <artifactId>HikariCP</artifactId>
+                <version>${hikari.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
