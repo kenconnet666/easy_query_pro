@@ -2,6 +2,8 @@
 
 完整功能、取舍和成熟度要求以 [完整交付蓝图](blueprint.md) 为准。本文件说明代码归属、依赖方向和实现约束，不单独缩小功能范围。
 
+通用 API、数据库类型 DSL、查询级方言与底层适配的五层划分，以及三库完整类型/操作清单，见 [DSL 设计](dsl-design.md)。
+
 ## 当前工程
 
 ```text
@@ -23,15 +25,17 @@ easy_query_pro/
 | 模块 | 允许的主要生产依赖 | 完整职责 |
 | --- | --- | --- |
 | `easy-query-pro-hana` | 上游 `sql-core` | HANA 配置、SQL 渲染、通用函数、JDBC 类型、元数据与迁移，蓝图 H01–H10 的主要实现 |
-| `easy-query-pro-dsl` | 上游 `sql-api-proxy` | 通用类型描述、精确 CAST、共同窗口能力、表达式互操作与公共契约 |
-| `easy-query-pro-dsl-hana` | 通用 DSL、HANA 模块 | HANA 类型、全文、层级、参数化视图/表函数等专属查询能力 |
-| `easy-query-pro-dsl-mysql` | 通用 DSL、上游 `sql-mysql` | MySQL 类型、JSON 与全文增强，复用原数据库后端 |
-| `easy-query-pro-dsl-pgsql` | 通用 DSL、上游 `sql-pgsql` | PostgreSQL 类型、JSONB、SQL 数组与全文增强，复用原数据库后端 |
+| `easy-query-pro-dsl` | 上游 `sql-api-proxy` | 精确类型/CAST、ROWS、JSON path 与组合、NULL-safe/NULLIF/日期截断、互操作和小型翻译接口 |
+| `easy-query-pro-dsl-hana` | 通用 DSL、HANA 模块 | 通用新增的 HANA 翻译，以及 HANA 类型、全文、层级、参数化视图/表函数 |
+| `easy-query-pro-dsl-mysql` | 通用 DSL、上游 `sql-mysql` | 通用新增的 MySQL 翻译，以及原生类型/JSON/时长、全文与 RANGE，复用后端 |
+| `easy-query-pro-dsl-pgsql` | 通用 DSL、上游 `sql-pgsql` | 通用新增的 PG 翻译，以及 JSONB/数组/interval/检索类型、全文与 RANGE，复用后端 |
 | `integration-tests` | 各模块和相应驱动，均按测试用途引用 | 编译、SQL、真实数据库、组合、并发、迁移和产物消费验证，不发布 |
 
 调用方向保持为：业务调用 → 原有 EasyQuery 或显式增强 DSL → 上游表达式/运行时协议 → 当前数据库翻译与绑定 → DataSource/JDBC。增强模块不得建立平行执行器或反向要求上游依赖增强包。
 
 HANA 底层模块保持与 Proxy DSL 解耦。专属 DSL 可以组合已有函数、查询和类型扩展；底层 SQL renderer 不反向依赖业务层 facade。
+
+原有函数的 HANA 翻译属于底层模块；本项目新增通用函数的 HANA 翻译属于 `dsl-hana`。共同核心不导入三库实现，由显式安装的增强服务完成翻译，不替换整套上游 SQLFunc，也不复制执行器。
 
 ## 命名与目录
 

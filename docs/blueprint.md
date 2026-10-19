@@ -4,6 +4,8 @@
 
 目标是交付一个基于 EasyQuery 3.2.17、使用 Java 17、面向 MySQL、PostgreSQL 和 SAP HANA 的成熟增强包。HANA 适配是核心交付；通用查询继续沿用 EasyQuery，确有差异的数据库类型和操作通过显式、可组合的 DSL 表达。完成条件包括功能、错误行为、类型安全、实际数据库验证、应用接入、性能证据、文档和可消费产物。
 
+公开 API 的分层、通用新增清单、三库类型目录与逐领域方言实现，详见 [通用 DSL 核心与数据库方言设计](dsl-design.md)。该文档细化本蓝图的能力归属，避免把全部功能都放进通用核心或全部复制成方言方法。
+
 ## 1 完成后的使用体验
 
 项目必须同时满足以下使用场景，不能只以某个示例能运行作为完成依据。
@@ -78,12 +80,13 @@ HANA 适配覆盖数据库层。SAP 应用自身的业务模型、ABAP 语义、
 | H11 | HANA 普通视图、参数化计算视图和选定表函数查询 | 必交付；面向读取、参数绑定与实体/DTO 映射 | 真计算视图 fixture、参数顺序/类型、外层组合；不能用普通表函数冒充计算视图验收 |
 | H12 | HANA 层级查询 | 有边界的必交付；邻接树/森林、根集合、深度、兄弟顺序、祖先/后代，明确循环与孤儿策略 | 与既有树查询可等价的部分复用入口，专属能力显式表达 |
 | D01 | 通用 SQL 类型描述与精确 CAST | 必交付；长度、precision/scale、表达式返回类型 | 普通需求不强制选方言；DDL 与 CAST 分别渲染 |
-| D02 | 三库方言类型与列视图 | 必交付；HANA/MySQL/PG 的专属类型只能进入相应入口 | 编译负例、运行时错库、查询上下文隔离、无隐式元数据修改 |
+| D02 | 三库方言类型与列视图 | 必交付；按 DSL 设计中的完整类型目录处理，区分 storage/cast/view/绑定角色 | 编译负例、运行时错库、查询上下文隔离、无隐式元数据修改；包含 unsigned、时长/interval 和 LOB 等边界 |
 | D03 | JSON 的完整选定能力 | 必交付；上游通用 JSON 能力、MySQL JSON/PG JSONB 的包含、路径判断及选定路径更新/删除 | 缺失键、JSON null、SQL NULL、数组、转义、布尔返回、绑定与更新组合 |
 | D04 | PostgreSQL SQL 数组 | 必交付；一维数组的绑定/读取、ANY、包含、重叠、长度，元素范围见第 10 节 | 空数组、NULL 数组、NULL 元素、泛型、JDBC Array 资源释放 |
 | D05 | 三库全文检索 | 有边界的必交付；MySQL MATCH/AGAINST，PG tsvector/tsquery 与 rank，HANA CONTAINS/FUZZY 与 SCORE | 真索引 fixture、查询模式、参数化、评分作用域；不承诺跨库分数可直接比较 |
-| C01 | 通用窗口 frame | 必交付；完整 ROWS 边界组合和可等价的 RANGE 契约，复用已有窗口函数 | 分组/排序/同值行、默认 frame、首末值、NULL、非法边界；细则见第 10 节 |
+| C01 | 共同与原生窗口 frame | 必交付；三库完整选定 ROWS，MySQL/PG 原生 RANGE，HANA 当前基线明确拒绝不支持的 RANGE | 分组/排序/同值行、默认 frame、首末值、NULL、非法边界；不能以 ROWS 代替 RANGE |
 | C02 | 组合与错误契约 | 必交付；所有增强表达式可进入受支持的原生查询位置 | 函数嵌套、别名、相关子查询、复制、参数计数、聚合类型；明确限制而非错误 SQL |
+| C03 | 缺失的通用标量能力 | 必交付；NULL-safe equality/distinct、NULLIF、数据库端日期截断 | 与既有 equalsWith、nullOrDefault、Java 日期工具的语义区别；三库一致的定义域和结果 |
 | I01 | Java/Spring 接入与独立消费者 | 必交付 | 使用发行 JAR 而非 reactor 源码替代；文档示例实际编译运行 |
 | Q01 | 稳定性、性能、诊断与维护 | 必交付 | 资源释放、并发隔离、代表性压力/性能报告、异常上下文和依赖升级流程 |
 | R01 | 可交付产物、完整文档与最终 CI | 必交付 | 当前 commit 的全部强制检查、源码包/API 文档/二进制包、兼容表、迁移与使用说明 |
@@ -128,6 +131,8 @@ MySQL/PG 的适配器继续使用上游实现；需要安装增强服务时采�
 
 生产模块不强制带入 Spring、连接池、JSON 序列化库和所有 JDBC 驱动。绑定行为如确需驱动专属类，优先用标准 JDBC；确实无法避免时只对相应模块使用明确的可选依赖，并验证驱动缺失时的错误。
 
+新增通用 DSL 的契约和小型函数工厂接口放在通用模块，MySQL/PG/HANA 实现分别放在对应 `dsl-*` 模块。HANA 底层适配器只处理上游契约，不反向依赖 Proxy DSL；原有 SQLFunc 与新增操作工厂分别管理，避免完整转发或替换整套原有服务。
+
 目录按 `config`、`expression`、`function`、`type`、`migration` 等真实职责建立。测试按 `sql`、`contract`、`hana`、`mysql`、`pgsql`、`consumer` 分组。可运行示例放入独立消费工程，不发布测试库。没有实际重复和调用收益时，不增加 `core`、`spi`、注册中心或泛化插件框架。
 
 ## 7 类型化 DSL 的具体设计约束
@@ -141,7 +146,7 @@ MySQL/PG 的适配器继续使用上游实现；需要安装增强服务时采�
 order.name().contains(keyword);
 
 // Proposed precise, portable conversion.
-ProExpressions.cast(order.amount(), CommonTypes.decimal(19, 4));
+ProDsl.of(order).cast(order.amount(), CommonTypes.decimal(19, 4));
 
 // Proposed explicit dialect operations.
 HanaDsl.of(order).cast(order.name(), HanaTypes.nvarchar(200));
@@ -211,9 +216,9 @@ PgSqlDsl.of(order).jsonb(order.attributes()).containsJson(jsonText);
 
 ### 窗口 frame
 
-完整 ROWS 支持 unbounded/current row/前后 N 行和合法的起止组合；RANGE 明确 peer group 语义、排序列类型和允许的偏移形式。先用三库对照证明共同部分；数据库专属形式在方言入口暴露或明确拒绝，不能以 ROWS 代替 RANGE。
+完整 ROWS 支持 unbounded/current row/前后 N 行和合法的起止组合。RANGE 明确归入 MySQL/PG 原生窗口能力，检查 peer group、排序列类型和允许的偏移形式。当前 HANA 2.00.088 的 SUM RANGE 实测返回不支持，同一查询使用 ROWS 正常；不再把 RANGE 宣称为三库共同能力，也不能以 ROWS 代替 RANGE。只读验证记录见 DSL 设计第 13 节。
 
-保留已有 row number、rank、lag/lead 等入口。若上游 window 对象没有 frame 挂接点，允许增加薄的窗口规格和函数组合入口，内部复用现有函数及表达式节点；不通过给已有 SQL 字符串追加片段实现。GROUPS、EXCLUDE 等未列入共同契约的语法不自动扩展范围。
+保留已有 row number、rank、lag/lead 等入口。若上游 window 对象没有 frame 挂接点，允许增加薄的窗口规格和函数组合入口，内部复用现有函数及表达式节点；不通过给已有 SQL 字符串追加片段实现。GROUPS、EXCLUDE 等未列入确定范围的语法不自动扩展范围。
 
 ### JSON 与 PostgreSQL 数组
 
@@ -291,7 +296,7 @@ DebugTools 可用于运行中的函数实现调试。实体签名、APT、类型
 | G1 | 验证 HANA 最关键的执行通路 | 安装、基础查询写入、identity/批量键、事务与类型的纵向实现和测试 | 必须经过 EasyQuery HANA 适配器，原生 JDBC 冒烟不能代替 |
 | G2 | 完成 HANA 通用查询、函数、业务机制与错误边界 | H01–H09 完整实现、函数审计、组合/并发测试 | 必交付核心项全部通过，不存在“先默认使用其他方言” |
 | G3 | 完成元数据和 Code First | H10、受限应用用户、schema/迁移与失败路径 | 可预览、可验证、可重复，无法判定状态时明确失败 |
-| G4 | 完成三库类型 DSL 和 JSON/数组 | D01–D04、C02；先用三库真实样例固定公开 API，再统一实现 | 类型正负例、三库组合、绑定/读取和 runtime 隔离全部成立 |
+| G4 | 完成通用新增、三库类型 DSL 和 JSON/数组 | D01–D04、C02/C03；先用三库真实样例固定公开 API，再实现通用/类型专属边界 | 类型正负例、三库组合、绑定/读取和 runtime 隔离全部成立 |
 | G5 | 完成选定高级能力 | H11、H12、D05、C01 的真实 fixture、实现和测试 | 计算视图/层级/全文/窗口都不能只交付未验证包装 |
 | G6 | 应用接入、可靠性、性能和独立产物消费 | I01、Q01、完整示例、性能与依赖报告 | 新应用可独立接入，没有已知未处理的正确性/资源问题 |
 | G7 | 完整交付验收 | R01、当前 commit 的报告、API 文档、兼容表、限制与发布产物 | 第 15 节全部满足后才能停止并报告项目可用 |
@@ -345,6 +350,7 @@ DebugTools 可用于运行中的函数实现调试。实体签名、APT、类型
 ## 17 交付文档与导航
 
 - 本文件是完整范围、取舍和完成条件的唯一主文档。
+- [dsl-design.md](dsl-design.md) 细化 API 层级、三库类型与操作目录、翻译器归属，必须与本文件的能力 ID 一致。
 - [architecture.md](architecture.md) 维护模块和依赖边界，引用本文件的能力契约。
 - [plan.md](plan.md) 维护可执行工作单元、依赖和实际状态，不重新定义范围。
 - [development.md](development.md) 维护已可运行的环境和命令，不能把计划中的功能写成现有能力。
