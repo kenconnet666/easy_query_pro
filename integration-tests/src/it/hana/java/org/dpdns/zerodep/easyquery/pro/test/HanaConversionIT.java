@@ -2,7 +2,12 @@ package org.dpdns.zerodep.easyquery.pro.test;
 
 import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 import com.easy.query.core.basic.api.database.CodeFirstCommandTxArg;
+import com.easy.query.core.bootstrapper.EasyQueryBootstrapper;
 import com.easy.query.core.enums.SQLExecuteStrategyEnum;
+import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.HanaExtensions;
+import org.dpdns.zerodep.easyquery.pro.dsl.type.CommonTypes;
+import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.test.entity.CodecRecord;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +31,9 @@ class HanaConversionIT {
             var rows = query.queryable(CodecRecord.class).asSchema(s -> schema.name()).orderBy(row -> row.id().asc()).toList();
             assertEquals(first.getId(), rows.get(0).getId());
             assertEquals(second.getId(), rows.get(1).getId());
+            var numericId = query.queryable(CodecRecord.class).asSchema(s -> schema.name()).orderBy(row -> row.id().asc())
+                    .selectColumn(row -> ProDsl.of(row).nativeCast(row.id(), CommonTypes.decimal(19, 0))).toList();
+            assertEquals(List.of(new BigDecimal("1"), new BigDecimal("2")), numericId);
         }
     }
 
@@ -85,11 +93,15 @@ class HanaConversionIT {
             query.updatable(loaded).asSchema(s -> schema.name()).executeRows();
             assertEquals(0, new BigDecimal("2345").compareTo(client.sqlQuery("SELECT \"price\" FROM " + schema.qualified("eqp_codec"), BigDecimal.class).get(0)));
             assertEquals(0, new BigDecimal("23.45").compareTo(query.queryable(CodecRecord.class).asSchema(s -> schema.name()).selectColumn(value -> value.price()).toList().get(0)));
+            assertEquals(0, new BigDecimal("23.45").compareTo(query.queryable(CodecRecord.class).asSchema(s -> schema.name())
+                    .selectColumn(value -> ProDsl.of(value).nativeCast(value.price(), CommonTypes.decimal(19, 2))).singleNotNull()));
         }
     }
 
     private static DefaultEasyEntityQuery client(String prefix) throws SQLException {
-        var query = HanaTestDatabase.client();
+        var query = new DefaultEasyEntityQuery(EasyQueryBootstrapper.defaultBuilderConfiguration()
+                .setDefaultDataSource(HanaTestDatabase.dataSource()).useDatabaseConfigure(new HanaDatabaseConfiguration())
+                .customConfigure(HanaExtensions::configure).build());
         var configuration = query.getEasyQueryClient().getRuntimeContext().getQueryConfiguration();
         configuration.applyValueConverter(new CodecRecord.IdConverter());
         configuration.applyValueConverter(new CodecRecord.LabelConverter(prefix));

@@ -3,6 +3,7 @@ package org.dpdns.zerodep.easyquery.pro.test;
 import com.easy.query.mysql.config.MySQLDatabaseConfiguration;
 import com.mysql.cj.jdbc.MysqlDataSource;
 import org.junit.jupiter.api.Test;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.MySqlExtensions;
 
 import java.sql.SQLException;
 
@@ -16,5 +17,6 @@ class MySqlConnectionIT {
         dataSource.setConnectTimeout(10_000);
         dataSource.setSocketTimeout(30_000);
         JdbcContract.verify(dataSource, new MySQLDatabaseConfiguration());
+        DecimalDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
     }
 }

@@ -198,9 +198,23 @@ IDEA 编译通过，MCP 确认 EQP_CONVERT_% schema 遗留为 0；自建诊断�
 
 IDEA 格式化和编译通过；MCP 确认 EQP_BUSINESS_% / EQP_JOIN_PROBE_% schema 遗留为 0。一次 hdbsql 清理命令因同一行包含两个语句而失败，已根据精确 schema 名重新清理并验证，未遗留探测对象；本轮自建日志删除，保留标准报告和持久实例。
 
+## 精确 DECIMAL 表达式与类型负例
+
+提交 `291d0e026a8719b455a401241a4c124bc64b043a` 的 [CI 39338105761](https://github.com/kenconnet666/easy_query_pro/actions/runs/39338105761) 已通过全部强制任务，包含关联 DML 与业务机制。
+
+新增 client 隔离的增强安装、DDL/CAST 描述分离、`ProDsl.of` 的 DECIMAL typed value/NULL 与 `nativeCast`。结果继续使用上游 NumberTypeExpression；绑定、算术、谓词和 setter 均复用既有实现。当前只收敛这一条类型路径，完整 U01 和三库类型目录没有标为完成。
+
+真实验证确认三库原生降 scale/溢出并不等价，因此保留原生行为的入口显式命名为 nativeCast。typed value 则预先校验精确表示，规范化 JDBC scale，避免隐式精度损失和极端 scale 扩展。完整规则与消费示例见 [类型表达式说明](dsl-types.md)。
+
+组合测试复现“相关子查询尚未附着时误拒绝外层引用”，校验改为使用最终 SQL 的表上下文；不放开跨 client 使用，也不把表别名当身份。另一个真实失败是函数原始列路径绕过 SQL 属性转换器，现使用上游 EasyColumnSegmentUtil 构造属性值，再做 CAST；业务主键的 ValueConverter 不会重新套在数字输出上。
+
+本地 `DecimalDslTest,DslCompilationTest` 共 18 项通过，后者运行 JDK 17 javac 验证 1 个正例和 4 个编译负例；HANA `HanaDecimalDslIT,HanaConversionIT` 共 4 项通过，同次 36 个离线测试通过。MySQL/PostgreSQL 通过共享 DecimalDslContract 验证真实绑定、NULL、关联子查询、克隆、原生舍入和溢出；IDEA 数据库 MCP 也独立核实了两个实例的原生 DECIMAL 结果。IDEA 格式化和编译通过。三库长期测试交由本次提交的 CI，不把上一 SHA 的绿色状态当作新功能验收。
+
+最后一次 MySQL/PostgreSQL 运行包含极端零值 scale 归一化，共 2 个真实契约和 18 个选定离线测试通过。MCP 确认本轮 EQP_CONVERT_% schema 遗留为 0；自建三份诊断日志已删除，标准测试报告和持久开发数据库保留。
+
 ## 下一步
 
-1. 检查新提交的业务主键/转换器 CI，继续 HANA 业务机制与精确类型 DSL 原型。
+1. 检查新提交的精确类型 DSL CI，继续 HANA 未关闭的函数/写入边界与其他通用类型。
 2. 继续收敛 G0 高风险接口：计算视图正式查询源和参数绑定 SPI、类型转换器以及编译负例。
 3. 完成函数审计、类型桥接的转换器/编译负例与 SQL 组合失败覆盖，明确不等价能力与剩余风险。
 4. 按依赖进入完整 HANA 函数/查询/类型实现，再实施通用 DSL 与三库类型增强。

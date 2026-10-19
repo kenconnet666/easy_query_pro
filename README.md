@@ -33,6 +33,7 @@ HANA 使用独立 Docker 部署和持久卷，内存上限 12 GiB、无额外 sw
 
 - [完整成熟交付蓝图](docs/blueprint.md)
 - [通用 DSL 核心、数据库类型与方言清单](docs/dsl-design.md)
+- [已实现的精确类型表达式及三库转换边界](docs/dsl-types.md)
 - [开发环境与运行方式](docs/development.md)
 - [分包与设计方案](docs/architecture.md)
 - [实施计划与验证条件](docs/plan.md)
