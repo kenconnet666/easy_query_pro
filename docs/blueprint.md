@@ -224,6 +224,8 @@ PgSqlDsl.of(order).jsonb(order.attributes()).containsJson(jsonText);
 
 普通提取、key 判断、数组索引/长度优先通过 EasyQuery。新增 MySQL JSON 包含和 one/all 路径判断，PG JSONB 包含、key 与路径操作；路径赋值/删除组合进原有表达式更新，分别验证 MySQL JSON_SET/JSON_REMOVE 和 PG jsonb_set/路径删除。JSON 文档值和普通 SQL 字符串必须可明确区分。HANA 不伪装成拥有其他数据库的 JSON 原生修改操作。
 
+HANA 2.0 的数组长度通过显式部署的 SQLScript 标量函数承接既有通用 API，原因是原生 `JSON_TABLE` 无法直接关联外层表别名。函数使用原生 JSON 解析器和调用者权限；部署 SQL 由库提供，应用显式执行并配置 schema。它不引入客户端解析或逐行网络往返，也不会在查询期间自动建库。该部署要求属于支持契约，必须随非管理员验收和迁移说明交付；其他 JSON 提取能力不依赖此函数。
+
 PG SQL 数组支持 String、Integer、Long、BigDecimal、Boolean、UUID、LocalDate、LocalDateTime 的一维绑定/读取，以及 ANY/包含/重叠/长度。`byte[]` 的二进制含义不自动改成 SQL 数组；多维数组不隐式展平。SQL 数组和 JSON 数组不能共用一个会掩盖语义的 API。
 
 共享名称只在输入、NULL、数组和比较语义足够一致时使用。否则保留 `MySqlDsl`、`PgSqlDsl` 的明确边界。JSON path 使用结构化参数和受控渲染，验证引号、反斜线、特殊 key 和非法路径。[MySQL JSON](https://dev.mysql.com/doc/refman/8.4/en/json-search-functions.html)；[PostgreSQL JSON](https://www.postgresql.org/docs/17/functions-json.html)

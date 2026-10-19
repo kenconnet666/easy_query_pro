@@ -2,19 +2,38 @@ package org.dpdns.zerodep.easyquery.pro.hana.function;
 
 import com.easy.query.core.enums.SQLLikeEnum;
 import com.easy.query.core.expression.lambda.SQLActionExpression1;
+import com.easy.query.core.expression.parser.core.SQLTableOwner;
 import com.easy.query.core.func.SQLFuncImpl;
 import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.func.column.ColumnExpression;
 import com.easy.query.core.func.column.ColumnFuncSelector;
+import com.easy.query.core.func.column.impl.ColumnFuncFormatExpressionImpl;
 import com.easy.query.core.func.def.AnySQLFunction;
 import com.easy.query.core.func.def.enums.MathMethodEnum;
+import com.easy.query.core.func.def.enums.DateTimeDurationEnum;
+import com.easy.query.core.func.def.enums.DateTimeUnitEnum;
+import com.easy.query.core.func.def.enums.TimeUnitEnum;
+import org.dpdns.zerodep.easyquery.pro.hana.config.HanaOptions;
+import org.dpdns.zerodep.easyquery.pro.hana.json.HanaJsonSupport;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /** 只覆盖 HANA 与上游默认 SQL 不同的函数，参数与表达式组合继续由上游处理。 */
 public final class HanaSQLFunc extends SQLFuncImpl {
+    private final HanaOptions options;
+
+    public HanaSQLFunc() {
+        this(HanaOptions.DEFAULT);
+    }
+
+    public HanaSQLFunc(HanaOptions options) {
+        this.options = Objects.requireNonNull(options, "options");
+    }
+
     @Override
     public SQLFunction concat(List<ColumnExpression> expressions) {
         if (expressions.isEmpty()) throw new IllegalArgumentException("concat requires at least one argument");
@@ -31,13 +50,17 @@ public final class HanaSQLFunc extends SQLFuncImpl {
 
     @Override
     public SQLFunction indexOf(SQLActionExpression1<ColumnFuncSelector> arguments) {
-        // HANA 的 LOCATE 参数顺序与 MySQL 相反；Proxy API 仍然返回从 0 开始的位置。
-        return anySQLFunction("(LOCATE({0},{1}) - 1)", arguments);
+        return HanaStringFunctions.indexOf(getColumnExpressions(arguments));
     }
 
     @Override
     public SQLFunction length(SQLActionExpression1<ColumnFuncSelector> arguments) {
-        return new HanaLengthSQLFunction(getColumnExpressions(arguments));
+        return HanaStringFunctions.length(getColumnExpressions(arguments));
+    }
+
+    @Override
+    public SQLFunction subString(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaStringFunctions.substring(getColumnExpressions(arguments));
     }
 
     @Override
@@ -73,6 +96,93 @@ public final class HanaSQLFunc extends SQLFuncImpl {
             default -> null;
         };
         return template == null ? super.math(arguments, method) : anySQLFunction(template, arguments);
+    }
+
+    @Override
+    public SQLFunction plusDateTime(SQLActionExpression1<ColumnFuncSelector> arguments, long duration, TimeUnit unit) {
+        return HanaDateTimeFunctions.plus(getColumnExpressions(arguments), duration, unit);
+    }
+
+    @Override
+    public SQLFunction plusDateTime2(SQLActionExpression1<ColumnFuncSelector> arguments, TimeUnitEnum unit) {
+        return HanaDateTimeFunctions.plus(getColumnExpressions(arguments), unit);
+    }
+
+    @Override
+    public SQLFunction plusDateTimeMonths(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaDateTimeFunctions.plus(getColumnExpressions(arguments), TimeUnitEnum.MONTHS);
+    }
+
+    @Override
+    public SQLFunction plusDateTimeYears(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaDateTimeFunctions.plus(getColumnExpressions(arguments), TimeUnitEnum.YEARS);
+    }
+
+    @Override
+    public SQLFunction dateTimeProperty(SQLActionExpression1<ColumnFuncSelector> arguments, DateTimeUnitEnum unit) {
+        return HanaDateTimeFunctions.property(getColumnExpressions(arguments), unit);
+    }
+
+    @Override
+    public SQLFunction duration(SQLActionExpression1<ColumnFuncSelector> arguments, DateTimeDurationEnum unit) {
+        return HanaDateTimeFunctions.duration(getColumnExpressions(arguments), unit, false);
+    }
+
+    @Override
+    public SQLFunction duration2(SQLActionExpression1<ColumnFuncSelector> arguments, DateTimeDurationEnum unit) {
+        return HanaDateTimeFunctions.duration(getColumnExpressions(arguments), unit, true);
+    }
+
+    @Override
+    public SQLFunction dateTimeFormat(SQLActionExpression1<ColumnFuncSelector> arguments, String javaFormat) {
+        return HanaDateTimeFormat.format(getColumnExpressions(arguments), javaFormat);
+    }
+
+    @Override
+    public SQLFunction dateTimeSQLFormat(SQLTableOwner owner, String property, String format) {
+        Objects.requireNonNull(format, "format");
+        return anySQLFunction("TO_NVARCHAR({0},{1})", args -> args.column(getTable(owner), property).value(format));
+    }
+
+    @Override
+    public SQLFunction cast(SQLActionExpression1<ColumnFuncSelector> arguments, Class<?> target) {
+        return HanaCastFunctions.cast(getColumnExpressions(arguments), target);
+    }
+
+    @Override
+    public SQLFunction jsonObjectField(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaJsonFunction.object(getColumnExpressions(arguments), options, false);
+    }
+
+    @Override
+    public SQLFunction jsonObjectExtract(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaJsonFunction.object(getColumnExpressions(arguments), options, true);
+    }
+
+    @Override
+    public SQLFunction jsonObjectContainsKey(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaJsonFunction.object(getColumnExpressions(arguments), options, true).containsKey();
+    }
+
+    @Override
+    public SQLFunction jsonArrayByIndex(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaJsonFunction.array(getColumnExpressions(arguments), options, false);
+    }
+
+    @Override
+    public SQLFunction jsonArrayExtractByIndex(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaJsonFunction.array(getColumnExpressions(arguments), options, true);
+    }
+
+    @Override
+    public SQLFunction jsonArrayLength(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        var expressions = getColumnExpressions(arguments);
+        if (expressions.size() != 1) throw new IllegalArgumentException("JSON array length requires one document");
+        if (options.jsonSupportSchema() == null) {
+            throw new IllegalStateException("HANA JSON array length requires explicit HanaJsonSupport deployment and jsonSupportSchema configuration");
+        }
+        return new AnySQLFunction("{1}({0})", List.of(expressions.get(0),
+                new ColumnFuncFormatExpressionImpl(HanaJsonSupport.arrayLengthFunctionName(options.jsonSupportSchema()))));
     }
 
     private static String placeholders(int count, String separator) {

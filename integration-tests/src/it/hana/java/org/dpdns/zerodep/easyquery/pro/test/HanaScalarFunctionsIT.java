@@ -69,6 +69,19 @@ class HanaScalarFunctionsIT {
         assertDecimal("2", source("math", new BigDecimal("1.2")).selectColumn(p -> p.amount().ceiling()).toList().get(0));
     }
 
+    @Test
+    void supplementaryCharactersUseCodePointLengthsAndOffsets() {
+        String value = "a😀中\nz";
+        assertEquals(5, source(value, BigDecimal.ONE).selectColumn(p -> p.name().length()).toList().get(0));
+        assertEquals("😀", source(value, BigDecimal.ONE).selectColumn(p -> p.name().subString(1, 1)).toList().get(0));
+        assertEquals("中\n", source(value, BigDecimal.ONE).selectColumn(p -> p.name().subString(2, 2)).toList().get(0));
+        assertEquals("中\nz", source(value, BigDecimal.ONE).selectColumn(p -> p.name().subString(2, Integer.MAX_VALUE)).toList().get(0));
+        assertEquals(2, source(value, BigDecimal.ONE).selectColumn(p -> p.name().indexOf("中")).toList().get(0));
+        assertEquals("", source(value, BigDecimal.ONE).selectColumn(p -> p.name().subString(99, 1)).toList().get(0));
+        assertEquals("", source(value, BigDecimal.ONE).selectColumn(p -> p.name().subString(0, 0)).toList().get(0));
+        assertNull(source(null, BigDecimal.ONE).selectColumn(p -> p.name().subString(0, 1)).toList().get(0));
+    }
+
     private EntityQueryable<TestProductProxy, TestProduct> source(String text, BigDecimal number) {
         // 真实执行派生表即可验证表达式，不为只读函数测试创建和清理实体表。
         return query.queryable("SELECT 1 AS \"id\",CAST(? AS NVARCHAR(255)) AS \"name\","

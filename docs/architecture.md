@@ -55,6 +55,8 @@ HANA 底层模块保持与 Proxy DSL 解耦。专属 DSL 可以组合已有函�
 6. 迁移实现复用现有命令模型，先生成/检查，后显式执行；不建立自动修改外部业务 schema 的后台过程。
 7. Spring 接入优先现有 `StarterConfigurer` 或显式 Bean；需要同时处理 `optionConfigure` 和服务注册的生命周期，不能只复制一段 configure 调用后认为等价。
 8. APT 继续使用上游 processor。必要的上游 SPI 变化须以复现和最小方案处理，不在本包中复制 APT 或修改上游私有状态。
+9. 原有 HANA 函数按字符串、时间、CAST、JSON 职责组织；`HanaSQLFunc` 只作上游工厂适配，辅助类保持包内可见。需要共享语义的函数不因 SQL 长度被拆成大量独立类型。
+10. `HanaOptions` 为每个 client 的不可变配置。HANA 2.0 的 JSON 数组长度需要显式部署一个 SQLScript 函数；`HanaJsonSupport` 仅生成 DDL，不在安装、渲染或首次查询时修改 schema。部署权限、输出容量与错误策略见 [HANA 函数说明](hana-functions.md)。
 
 ## 代码审计入口
 

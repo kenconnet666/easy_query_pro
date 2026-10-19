@@ -2,7 +2,7 @@
 
 基线：EasyQuery 3.2.17，SQLFuncImpl 的 67 个不同公开工厂方法。SQLFunc 接口中的便捷重载最终依赖这些实现；窗口接口和高级函数还需单独审计。
 
-已覆盖表示翻译路径已加入，不表示该函数的全部边界已经验收。当前组合证据为 HanaScalarFunctionsIT、ExpressionInteropTest 和执行记录中的 MCP SELECT。其余方法未通过前，G2.2/H08 不关闭。
+已覆盖表示翻译路径已加入，不表示该函数的全部边界已经验收。当前证据包括 HanaScalarFunctionsIT、HanaDateTimeFunctionsIT、HanaCastFunctionsIT、HanaJsonFunctionsIT、ExpressionInteropTest 和执行记录中的 MCP SELECT。部署及边界语义见 [函数契约](hana-functions.md)。其余方法未通过前，G2.2/H08 不关闭。
 
 | 方法 | 当前状态 |
 | --- | --- |
@@ -13,28 +13,28 @@
 | bank | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | booleanConstantSQLFunction | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | booleanSQLFunction | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| cast | 待完成语义审计及真实执行；当前仍继承上游默认 |
+| cast | 已覆盖基础 Java 类型及长文本、Byte 范围；HanaCastFunctionsIT |
 | concat | 已覆盖 HANA 差异；见 HanaSQLFunc |
 | constValue | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | count | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | countOver | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| dateTimeFormat | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| dateTimeProperty | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| dateTimeSQLFormat | 待完成语义审计及真实执行；当前仍继承上游默认 |
+| dateTimeFormat | 已覆盖 HANA 差异；HanaDateTimeFunctionsIT |
+| dateTimeProperty | 已覆盖 HANA 差异；HanaDateTimeFunctionsIT |
+| dateTimeSQLFormat | 已覆盖 HANA 差异；HanaDateTimeFunctionsIT |
 | denseRankNumberOver | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| duration | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| duration2 | 待完成语义审计及真实执行；当前仍继承上游默认 |
+| duration | 已覆盖 HANA 差异；HanaDateTimeFunctionsIT |
+| duration2 | 已覆盖 HANA 差异；HanaDateTimeFunctionsIT |
 | empty | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | equalsWith | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | exists | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | indexOf | 已覆盖 HANA 差异；见 HanaSQLFunc |
 | joining | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| jsonArrayByIndex | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| jsonArrayExtractByIndex | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| jsonArrayLength | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| jsonObjectContainsKey | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| jsonObjectExtract | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| jsonObjectField | 待完成语义审计及真实执行；当前仍继承上游默认 |
+| jsonArrayByIndex | 已覆盖标量/片段/NULL/路径与容量；HanaJsonFunctionsIT |
+| jsonArrayExtractByIndex | 已覆盖标量/片段/NULL/路径与容量；HanaJsonFunctionsIT |
+| jsonArrayLength | 已实现，要求显式部署 HanaJsonSupport 函数；HanaJsonFunctionsIT |
+| jsonObjectContainsKey | 已覆盖标量/片段/NULL/路径与容量；HanaJsonFunctionsIT |
+| jsonObjectExtract | 已覆盖标量/片段/NULL/路径与容量；HanaJsonFunctionsIT |
+| jsonObjectField | 已覆盖标量/片段/NULL/路径与容量；HanaJsonFunctionsIT |
 | leftPad | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | length | 已覆盖 HANA 差异；见 HanaSQLFunc |
 | like | 已覆盖 HANA 差异；见 HanaSQLFunc |
@@ -52,10 +52,10 @@
 | nullOrDefault | 已覆盖 HANA 差异；见 HanaSQLFunc |
 | numberCalc | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | orderByNullsMode | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| plusDateTime | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| plusDateTime2 | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| plusDateTimeMonths | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| plusDateTimeYears | 待完成语义审计及真实执行；当前仍继承上游默认 |
+| plusDateTime | 已覆盖 HANA 差异；HanaDateTimeFunctionsIT |
+| plusDateTime2 | 已覆盖 HANA 差异；HanaDateTimeFunctionsIT |
+| plusDateTimeMonths | 已覆盖 HANA 差异；HanaDateTimeFunctionsIT |
+| plusDateTimeYears | 已覆盖 HANA 差异；HanaDateTimeFunctionsIT |
 | random | 已覆盖 HANA 差异；见 HanaSQLFunc |
 | rankNumberOver | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | replace | 待完成语义审计及真实执行；当前仍继承上游默认 |
@@ -64,7 +64,7 @@
 | rowNumberOver | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | stringCompareTo | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | subQueryValue | 待完成语义审计及真实执行；当前仍继承上游默认 |
-| subString | 待完成语义审计及真实执行；当前仍继承上游默认 |
+| subString | 已覆盖 Unicode 码点边界；HanaScalarFunctionsIT |
 | sum | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | sumOver | 待完成语义审计及真实执行；当前仍继承上游默认 |
 | toLower | 待完成语义审计及真实执行；当前仍继承上游默认 |

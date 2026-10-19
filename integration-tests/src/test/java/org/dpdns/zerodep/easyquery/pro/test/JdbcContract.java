@@ -54,6 +54,16 @@ final class JdbcContract {
                 assertEquals(1L, query.updatable(product).executeRows());
                 assertEquals(product.getAmount(), query.queryable(TestProduct.class).toList().get(0).getAmount());
 
+                var unicode = new TestProduct(4, "a😀中", BigDecimal.ONE);
+                query.insertable(unicode).executeRows();
+                assertEquals(3, query.queryable(TestProduct.class).where(p -> p.id().eq(4))
+                        .selectColumn(p -> p.name().length()).toList().get(0));
+                assertEquals("😀", query.queryable(TestProduct.class).where(p -> p.id().eq(4))
+                        .selectColumn(p -> p.name().subString(1, 1)).toList().get(0));
+                assertEquals(2, query.queryable(TestProduct.class).where(p -> p.id().eq(4))
+                        .selectColumn(p -> p.name().indexOf("中")).toList().get(0));
+                query.deletable(unicode).allowDeleteStatement(true).executeRows();
+
                 try (Transaction transaction = client.beginTransaction()) {
                     query.insertable(new TestProduct(2, "rolled back", BigDecimal.ONE)).executeRows();
                     transaction.rollback();

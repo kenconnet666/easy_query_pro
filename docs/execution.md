@@ -61,6 +61,29 @@ HDI 检查发现 HXE 未启用 diserver，已按 SAP HANA Platform 2.0 的官方
 
 提交 `d6adb8cea5237bb48eb17bbf0547f83463dc1dd3` 的 [CI 39274828544](https://github.com/kenconnet666/easy_query_pro/actions/runs/39274828544) 已通过，涵盖修正后的 HXE 连接、并行 MySQL/PostgreSQL、双平台构建和当前标量函数；新的 HDI fixture 需要下一提交对应的 CI 验证。
 
+## 2026-10-20：日期、CAST、JSON 与 Unicode
+
+提交 `12a560fec059bd36987a78172cda41f95deef3b8` 的 [CI 39277882656](https://github.com/kenconnet666/easy_query_pro/actions/runs/39277882656) 已通过全部强制任务，包括真实 HDI 计算视图、HXE、MySQL/PostgreSQL 与 Windows/Linux。可选外部 HANA 未启用；此证据不用于声明以下尚未提交的改动已通过 CI。
+
+- 按职责拆分日期运算、格式转换、CAST、JSON；字符串长度、索引与截取归入同一辅助类，删除仅承载长度翻译的独立文件。补充中文注释解释精度、JSON 包装和 JDBC 非直观行为。
+- 日期加减支持常量和表达式，100ns 精度不可表示时明确拒绝；日期属性和完整单位差值保持上游编号及方向。数字格式 token、引号文本和原生格式分开处理。
+- CAST 保留 Java 结果类型，长 NCLOB 转字符串不截断，Byte 读取不允许驱动静默回绕。
+- JSON 标量/片段、存在性、数组索引和长度已接入原有 API。输出容量按 client 的不可变选项管理，区分 UTF-16 标量单位和片段字节；无效内容与容量不足报错。
+- HANA 2.0 无法直接关联 `JSON_TABLE`，数组长度改用显式部署的 SQLScript 函数。库只生成部署 DDL，不自动修改 schema；这是已记录的运行前提，非管理员和迁移仍需继续验收。详见 [函数契约](hana-functions.md)。
+- 补充字符的长度/截取/索引按码点对齐三库，公共 JDBC 契约增加相同用例，交由后续 CI 同时验证 MySQL/PG。
+
+本地范围证据：
+
+| 检查 | 结果 |
+| --- | --- |
+| `HanaDateTimeFunctionsIT` | 5 个测试通过，覆盖月末/闰日、精度、两种星期、负小数差值、格式/NULL/非法模式 |
+| `HanaCastFunctionsIT,HanaJsonFunctionsIT` | 修复 Byte 回绕、JSON 容量单位后，8 个测试全部通过 |
+| `HanaScalarFunctionsIT,HanaJsonFunctionsIT,HanaConnectionIT` | 最后一次执行 12 个测试通过；同次 11 个离线测试通过 |
+| IDEA MCP | 新函数与 handler 检查；补齐上游 @NotNull 契约 |
+| 清理 | MCP 查询 `EQP_JSON_SUPPORT_%` 遗留 schema 为 0；持久开发数据库保留 |
+
+H08/G2.2 尚未关闭：聚合、已有窗口函数及剩余默认函数仍需逐项核对和组合测试。
+
 ## 下一步
 
 1. 检查新提交的 HXE 租户/并行 CI，继续补 HANA 核心实现。
