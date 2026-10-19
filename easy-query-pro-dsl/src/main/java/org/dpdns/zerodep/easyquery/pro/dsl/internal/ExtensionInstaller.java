@@ -13,10 +13,11 @@ public final class ExtensionInstaller {
     private ExtensionInstaller() {
     }
 
-    public static void install(ServiceCollection services, SqlDialect dialect, Class<? extends SQLKeyword> backend) {
+    public static void install(ServiceCollection services, SqlDialect dialect, Class<? extends SQLKeyword> backend, NullSafeComparison comparison) {
         Objects.requireNonNull(services, "services");
         Objects.requireNonNull(dialect, "dialect");
         Objects.requireNonNull(backend, "backend");
+        Objects.requireNonNull(comparison, "comparison");
         Installed previous = null;
         try {
             // 只读取本类的私有实例标记；不会提前构造 DataSource 或任何业务服务。
@@ -30,6 +31,7 @@ public final class ExtensionInstaller {
             return;
         }
         services.addService(Installed.class, new Installed(dialect));
+        services.addService(NullSafeComparison.class, comparison);
         services.addServiceFactory(SqlDialect.class, provider -> {
             var keyword = provider.getService(SQLKeyword.class);
             if (!backend.isInstance(keyword)) {

@@ -60,6 +60,10 @@ class HanaConversionIT {
             var dto = firstClient.queryable(CodecRecord.class).asSchema(s -> schema.name()).where(row -> row.label().eq(first.getLabel())).select(CodecRecord.View.class).singleNotNull();
             assertEquals(loaded.getId(), dto.getId());
             assertEquals(first.getLabel(), dto.getLabel());
+            assertEquals(1L, firstClient.queryable(CodecRecord.class).asSchema(s -> schema.name())
+                    .where(row -> ProDsl.of(row).nullSafeEqualsValue(row.label(), first.getLabel()).eq(true)).count());
+            assertEquals(1L, firstClient.queryable(CodecRecord.class).asSchema(s -> schema.name())
+                    .where(row -> ProDsl.of(row).nullSafeEqualsValue(row.label(), null).eq(true)).count());
             var nullRow = firstClient.queryable(CodecRecord.class).asSchema(s -> schema.name()).where(row -> row.label().isNull()).singleNotNull();
             assertNull(nullRow.getLabel());
             assertNull(nullRow.getDocument());
@@ -89,6 +93,8 @@ class HanaConversionIT {
             assertEquals(0, new BigDecimal("1999").compareTo(stored), insertSql + "; stored=" + stored);
             var loaded = query.queryable(CodecRecord.class).asSchema(s -> schema.name()).where(value -> value.price().eq(new BigDecimal("19.99"))).singleNotNull();
             assertEquals(0, row.getPrice().compareTo(loaded.getPrice()));
+            assertEquals(1L, query.queryable(CodecRecord.class).asSchema(s -> schema.name())
+                    .where(value -> ProDsl.of(value).nullSafeEqualsValue(value.price(), row.getPrice()).eq(true)).count());
             loaded.setPrice(new BigDecimal("23.45"));
             query.updatable(loaded).asSchema(s -> schema.name()).executeRows();
             assertEquals(0, new BigDecimal("2345").compareTo(client.sqlQuery("SELECT \"price\" FROM " + schema.qualified("eqp_codec"), BigDecimal.class).get(0)));

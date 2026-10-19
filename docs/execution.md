@@ -212,6 +212,18 @@ IDEA 格式化和编译通过；MCP 确认 EQP_BUSINESS_% / EQP_JOIN_PROBE_% sch
 
 最后一次 MySQL/PostgreSQL 运行包含极端零值 scale 归一化，共 2 个真实契约和 18 个选定离线测试通过。MCP 确认本轮 EQP_CONVERT_% schema 遗留为 0；自建三份诊断日志已删除，标准测试报告和持久开发数据库保留。
 
+## NULL-safe 比较
+
+提交 `dd3c73e23b5ff9cd3b798630ffad7b7bb6f40885` 的 [CI 39341595785](https://github.com/kenconnet666/easy_query_pro/actions/runs/39341595785) 已通过全部五个强制任务，包含三库真实 DECIMAL、类型负例和转换器组合。
+
+新增 U04 的列/表达式比较与业务值比较，复用已验证的函数/表作用域。MySQL 和 PG 使用原生 NULL-safe 操作符；HANA 的 MAP 经独立 MCP 探测与真实契约确认两端 NULL 匹配，模板中每个输入只出现一次。布尔结果继续使用原有 BooleanTypeExpression，构造不暗中添加条件。
+
+业务值参数保留列元数据并走上游比较值链；不手工调用转换器后再重复绑定。HANA 的 Label、SQL 属性转换与 NULL 已执行。消费者编译复现 Java 对同名“表达式/值”重载传 null 的歧义，因此值入口使用明确的 Value 后缀。此调整在发布前完成，并纳入编译正例，避免把歧义留给使用者。
+
+本地 HANA `HanaNullSafeDslIT,HanaConversionIT` 共 4 项通过，同次 43 个离线测试通过；此前 HANA DECIMAL 与初始 NULL-safe 两个契约也通过。MySQL/PostgreSQL 共享真实契约共 2 项通过，同次 25 个选定离线测试通过；最后增加的 isDistinctFromValue(NULL) 用例已由这两库本地验证，HANA 交由本次 CI 验证。`DslCompilationTest` 现在覆盖 3 个正例、6 个负例，连同 17 个 DECIMAL 和 6 个 NULL-safe 离线用例构成选定检查集。使用说明见 [NULL-safe 比较](dsl-comparison.md)。
+
+IDEA 格式化和编译通过，MCP 确认本轮 EQP_CONVERT_% schema 遗留为 0；自建诊断日志已清理，保留持久开发数据库与标准报告。完整 U04 验收仍包含后续分片/类型目录组合，G4.3 的 NULLIF、日期截断和 JSON path 继续推进。
+
 ## 下一步
 
 1. 检查新提交的精确类型 DSL CI，继续 HANA 未关闭的函数/写入边界与其他通用类型。

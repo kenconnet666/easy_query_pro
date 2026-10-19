@@ -18,5 +18,6 @@ class MySqlConnectionIT {
         dataSource.setSocketTimeout(30_000);
         JdbcContract.verify(dataSource, new MySQLDatabaseConfiguration());
         DecimalDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+        NullSafeDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
     }
 }
