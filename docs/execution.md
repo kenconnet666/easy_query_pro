@@ -188,6 +188,16 @@ SQL 转换器测试还确认 HANA 会把 `? * 100` 的参数按 DECIMAL(19,0) �
 
 IDEA 编译通过，MCP 确认 EQP_CONVERT_% schema 遗留为 0；自建诊断日志已删除。后续继续依赖当前提交的完整 CI 验证，不阻塞等待。
 
+## 导航关联 DML 与业务机制
+
+提交 `9150c816b63cb50041251ee2b0875e900656a4d0` 的 [CI 39335227910](https://github.com/kenconnet666/easy_query_pro/actions/runs/39335227910) 已通过全部强制任务，包含业务主键回填及转换器。
+
+关联更新使用一条 MERGE，避免 HANA UPDATE FROM 对同一行多次赋值的非确定性；原生重复匹配 689 和零误写已经独立验证。关联删除使用相关 EXISTS + SYS.DUMMY 保留 join 语义，不依赖目标主键。原有表/谓词/SET 节点和参数顺序继续复用，没有反向解析 SQL。
+
+本地 `HanaBusinessIT` 的前 8 个测试通过，涵盖导航赋值、重复源、分组 LEFT JOIN、逻辑删除、复合键、乐观锁/回滚、租户/实体拦截器、include 和两 client 隔离；之后新增的无主键删除/别名冲突用例单独通过。同次 18 个离线测试通过。测试保留上游的物理删除授权、表达式版本号和普通导航 DML 使用 INNER JOIN 的规则，不为使测试通过而改写这些契约。更完整的边界见 [写入契约](hana-writes.md)。
+
+IDEA 格式化和编译通过；MCP 确认 EQP_BUSINESS_% / EQP_JOIN_PROBE_% schema 遗留为 0。一次 hdbsql 清理命令因同一行包含两个语句而失败，已根据精确 schema 名重新清理并验证，未遗留探测对象；本轮自建日志删除，保留标准报告和持久实例。
+
 ## 下一步
 
 1. 检查新提交的业务主键/转换器 CI，继续 HANA 业务机制与精确类型 DSL 原型。

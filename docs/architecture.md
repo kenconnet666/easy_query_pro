@@ -63,6 +63,7 @@ HANA 底层模块保持与 Proxy DSL 解耦。专属 DSL 可以组合已有函�
 14. `HanaCatalog` 只读目录，`migration` 复用上游 parser/data/command/executor；命令保存语句边界而不拆分已生成 SQL。ngdbc 的可选依赖只用于标准 JDBC 缺失的 DDL 状态读取，公开 unwrap API 与完整约束见 [迁移说明](hana-migrations.md)。
 15. JDBC 时间结果在进入上游分片聚合前转换为保留日历字段的逻辑值；原有查询执行、配置钩子、监听、预取与关闭过程继续复用上游。`HanaEntityMetadataManager` 仅补充 3.2.17 缺失的 Instant 标量分类，不修改私有状态或全局类型表；规则见 [类型契约](hana-types.md)。
 16. `HanaLobBindings` 管理每个 client、每次 JDBC 调用所打开的 LOB 输入流；允许监听器发起嵌套调用，退出时恢复前一作用域。它不拥有调用方的 Blob/Clob，不替代上游事务，也不将大对象提前读入内存。
+17. 关联 DML 复用上游结构化 SET/ON/WHERE：UPDATE 使用按根表主键匹配的 MERGE，DELETE 使用相关 EXISTS；保留上游决定的关联类型与过滤条件，避免解析 SQL 或实现并行的导航查询器。
 
 ## 代码审计入口
 
