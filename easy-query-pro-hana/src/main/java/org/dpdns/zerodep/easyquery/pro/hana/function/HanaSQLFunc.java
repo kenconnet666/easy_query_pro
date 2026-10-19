@@ -64,6 +64,42 @@ public final class HanaSQLFunc extends SQLFuncImpl {
     }
 
     @Override
+    public SQLFunction leftPad(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaStringFunctions.pad(getColumnExpressions(arguments), true);
+    }
+
+    @Override
+    public SQLFunction rightPad(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaStringFunctions.pad(getColumnExpressions(arguments), false);
+    }
+
+    @Override
+    public SQLFunction empty(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        // HANA 的字符比较忽略尾随空格，不能用 = '' 判断长度为零。
+        return anySQLFunction("({0} IS NULL OR LENGTH(TO_NVARCHAR({0})) = 0)", arguments);
+    }
+
+    @Override
+    public SQLFunction notEmpty(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return anySQLFunction("({0} IS NOT NULL AND LENGTH(TO_NVARCHAR({0})) > 0)", arguments);
+    }
+
+    @Override
+    public SQLFunction joining(SQLActionExpression1<ColumnFuncSelector> arguments, boolean distinct) {
+        return HanaAggregateFunctions.joining(getColumnExpressions(arguments), distinct);
+    }
+
+    @Override
+    public SQLFunction maxColumns(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaAggregateFunctions.extremeColumns(getColumnExpressions(arguments), true);
+    }
+
+    @Override
+    public SQLFunction minColumns(SQLActionExpression1<ColumnFuncSelector> arguments) {
+        return HanaAggregateFunctions.extremeColumns(getColumnExpressions(arguments), false);
+    }
+
+    @Override
     public SQLFunction like(SQLActionExpression1<ColumnFuncSelector> arguments, boolean like, SQLLikeEnum mode) {
         var function = new HanaLikeSQLFunction(getColumnExpressions(arguments), mode);
         return like ? function : not(selector -> selector.sqlFunc(function));
@@ -82,6 +118,14 @@ public final class HanaSQLFunc extends SQLFuncImpl {
     @Override
     public SQLFunction random() {
         return new AnySQLFunction("RAND()", List.of());
+    }
+
+    @Override
+    public SQLFunction booleanSQLFunction(String predicate, SQLActionExpression1<ColumnFuncSelector> arguments) {
+        var function = anySQLFunction(predicate, arguments);
+        // HANA 不能直接投影谓词；第二个 WHEN 保留 UNKNOWN，而不是把 SQL NULL 折成 false。
+        return anySQLFunction("(CASE WHEN {0} THEN TRUE WHEN NOT ({0}) THEN FALSE ELSE NULL END)",
+                args -> args.sqlFunc(function));
     }
 
     @Override

@@ -10,6 +10,7 @@ import com.easy.query.core.func.def.enums.TimeUnitEnum;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.extension.functions.type.impl.DateTimeTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
+import com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.test.entity.TestEvent;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;
@@ -95,6 +96,11 @@ class HanaDateTimeFunctionsIT {
         }
         assertNull(source(null, 0).selectColumn(e -> e.occurred().format("yyyy-MM-dd")).toList().get(0));
         assertNull(source(null, 0).selectColumn(e -> e.occurred().format("'literal'")).toList().get(0));
+        assertEquals("2024-03-03 15:04:05.123456", source(value, 0)
+                .selectColumn(e -> e.occurred().format(null)).toList().get(0));
+        assertEquals("2024/03/03 15:04:05", source(value, 0).selectColumn(e -> new StringTypeExpressionImpl<String>(
+                e.getEntitySQLContext(), e.getTable(), null,
+                fx -> fx.dateTimeSQLFormat(e, "occurred", "YYYY/MM/DD HH24:MI:SS"), String.class)).toList().get(0));
         assertThrows(IllegalArgumentException.class, () -> source(value, 0).selectColumn(e -> e.occurred().format("MMM")).toSQL());
         assertThrows(IllegalArgumentException.class, () -> source(value, 0).selectColumn(e -> e.occurred().format("yyyy-'open")).toSQL());
     }

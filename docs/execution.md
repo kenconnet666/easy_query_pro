@@ -82,11 +82,21 @@ HDI 检查发现 HXE 未启用 diserver，已按 SAP HANA Platform 2.0 的官方
 | IDEA MCP | 新函数与 handler 检查；补齐上游 @NotNull 契约 |
 | 清理 | MCP 查询 `EQP_JSON_SUPPORT_%` 遗留 schema 为 0；持久开发数据库保留 |
 
-H08/G2.2 尚未关闭：聚合、已有窗口函数及剩余默认函数仍需逐项核对和组合测试。
+提交 `0e72ef9fd14212515faa37809a3bd5e14130f1db` 的 [CI 39286570474](https://github.com/kenconnet666/easy_query_pro/actions/runs/39286570474) 已通过全部强制任务，涵盖上述日期/CAST/JSON、补充字符，以及三库与双平台。以下新增的聚合和查询组合需要下一提交的 CI。
+
+## 聚合、布尔投影与查询组合
+
+- `HanaAggregateFunctionsIT` 6 个测试通过：基础/去重/空集聚合、GROUP BY/HAVING/条件聚合、STRING_AGG 分隔符/排序、忽略 NULL 的多列极值、八种窗口与默认 peer frame。
+- `HanaScalarFunctionsIT` 扩展为 9 个测试，全部通过：增加左右补齐的码点边界、空字符串与纯空格的区分、基础字符串函数、18 个数学枚举和四则运算、保留三值逻辑的布尔投影。
+- `HanaDateTimeFunctionsIT` 的 5 个测试再次通过，增加默认格式和原生格式绑定。
+- `HanaQueryCompositionIT` 5 个测试通过：LEFT/RIGHT/INNER JOIN、相关子查询/EXISTS、UNION/UNION ALL、重复引用 CTE、分页和完整分组投影计数、NULL 排序。
+- 组合测试暴露的 revision 88 关联 UNION 极值优化器错误已避开；CTE 自连接使用独立 Proxy/表引用。细节与已有上游 count 契约见 [函数说明](hana-functions.md)。
+
+H08/G2.2 尚未关闭：去重字符串聚合需要查询级去重方案；少量旧 SQLFunc 工厂仍需独立组合证据。此次函数/查询测试使用派生表，没有创建持久数据库对象。
 
 ## 下一步
 
-1. 检查新提交的 HXE 租户/并行 CI，继续补 HANA 核心实现。
+1. 检查新提交的函数/查询组合 CI，继续补 HANA 核心实现。
 2. 继续收敛 G0 高风险接口：计算视图正式查询源和参数绑定 SPI、类型转换器以及编译负例。
 3. 完成函数审计、类型桥接的转换器/编译负例与 SQL 组合失败覆盖，明确不等价能力与剩余风险。
 4. 按依赖进入完整 HANA 函数/查询/类型实现，再实施通用 DSL 与三库类型增强。
