@@ -38,15 +38,28 @@
 - 已通过 Computer Use 确认 Maven `Sync Finished`，重新打开旧编辑器后黄色源根提示消失；IDEA 编译通过。
 - 提交 `e4a58efe31c10d89edebd2f9ab3c2e3d2e79260f` 的 CI [39266174287](https://github.com/kenconnet666/easy_query_pro/actions/runs/39266174287) 失败：提交中包含已引用新 HANA 类型的测试，但相应未跟踪源码遗漏。下一提交必须完整纳入该依赖闭包；不能把本地工作区通过当成该提交通过。
 
-## IDEA 数据源接入：继续处理
+## IDEA 数据源与 HXE 租户修正
 
-用户已明确允许读取本机测试容器密码，并要求配置 IDEA 数据库工具/MCP。只连接 loopback，凭据不输出、不进入仓库。已创建 HANA 数据源 `EasyQuery Pro - HANA (local)`，JDBC URL 为 `jdbc:sap://127.0.0.1:39017`，尚未完成认证和 MCP 查询，不能报告连接成功。
+已通过 Computer Use 将 IDEA 的 HANA 驱动指向本地 ngdbc 2.30.11 JAR，并填写本机凭据。用户随后完成并命名四个 IDEA 连接：`HANA-SYS`、`HANA-HXE`、`MYSQL`、`POSTGRES`。实际 MCP SELECT 已返回 MySQL 8.4.11 / eqp、PostgreSQL 17.11 / eqp、HANA HXE / 2.00.088；没有将数据库凭据写入仓库。
 
-用户下载了 IDEA 默认 ngdbc 2.17.12；当前连接对话框用户名为空，报 `getSubject is not supported`。下一步使用项目已验证的 ngdbc 2.30.11，配置本地凭据并通过 MCP 读版本。必要时直接控制 IDEA；用户已重新授权后离开。此前物理 Escape 使 Computer Use 在本轮保持 stopped，不能反复重试，应在下一轮恢复后继续。MySQL/PostgreSQL 的持久开发实例与 IDEA 连接随后配置；当前只有 HANA 实例持久运行。
+MCP 核对发现原 39017 实际指向 SYSTEMDB，39041 才是 HXE 租户。已保留数据卷重建 HANA 端口映射，改正脚本与 CI 的 JDBC URL，并在连接测试中加入禁止 SYSTEMDB 的断言。本地在 HXE 重新执行 6 个 CRUD/identity/sequence 测试全部通过。提交 `b0fc93172e554d30571c8aea2e43eaeb79423b30` 的 [CI 39268845999](https://github.com/kenconnet666/easy_query_pro/actions/runs/39268845999) 全部强制任务通过，但它连接的是旧 SYSTEMDB，不能作为 HXE 租户验收证据。
+
+MySQL/PostgreSQL 持久开发实例为 `eqp-dev-mysql-1` / `eqp-dev-postgres-1`，内存分别为 2 GiB / 1 GiB、无额外 swap，只绑定 127.0.0.1:53306 / 55432；容器和数据卷按开发环境保留。首次拉取的 TLS 超时已恢复，两个容器健康检查通过。密码复制脚本已用 Windows PowerShell 5.1 实际执行验证。
+
+## 表达式桥接与 HANA 标量函数
+
+- 新增 6 个跨三库离线互操作测试：显式构造的 String/Boolean 表达式复用上游类型接口，可接入已有函数、WHERE、排序、投影和 clone；构造布尔值本身不修改谓词。普通构建共 11 个测试通过。
+- 注册 `HanaSQLFunc`，已覆盖任意参数数量拼接、COALESCE、indexOf 参数顺序、字符长度、LIKE 转义、当前时间/UTC 时间、随机数及有差异的数学函数。
+- LIKE 复用上游的值/加密处理；在构造时转义私有副本，固定结果，避免重复渲染再转义。
+- HXE 上 3 个 `HanaScalarFunctionsIT` 测试通过，覆盖真实 Proxy 执行、中文和参数绑定、NULL 传播、substring/indexOf、LIKE 通配字符、重复渲染以及负数向零截断。
+- 函数清单见 [HANA 函数审计](hana-function-audit.md)。尚未覆盖的默认函数不能视为已支持；H08 与 G2.2 保持未完成。
+- CI 已拆分 MySQL/PostgreSQL matrix；不等待新 CI 完整结束，下一次提交前读取上一提交的结果。
+
+HDI 检查发现 HXE 尚未启用 diserver，因而没有 `_SYS_DI` 管理 API。已查 SAP HANA Platform 2.0 的官方启用步骤，后续需在测试 SYSTEMDB 为 HXE 启用该服务，再部署真实计算视图 fixture。参考：[按租户启用 HDI](https://help.sap.com/docs/SAP_HANA_PLATFORM/3823b0f33420468ba5f1cf7f59bd6bd9/6df24edbef3a4e039a7b0a7bf4acd6c8.html)。
 
 ## 下一步
 
-1. 完成 IDEA 数据源认证/驱动和 MCP 实际查询，补 MySQL/PG 本地开发连接。
-2. 检查新提交 CI，补齐 HANA 主键、离线诊断和 SQL 组合的失败覆盖。
-3. 完成 G0 函数审计、Proxy 类型桥接、真实计算视图部署原型，明确不等价能力与剩余风险。
+1. 检查新提交的 HXE 租户/并行 CI，继续补 HANA 核心实现。
+2. 为 HXE 配置可复现的 HDI 启用与真实计算视图 fixture，完成 G0 高风险验证。
+3. 完成函数审计、类型桥接的转换器/编译负例与 SQL 组合失败覆盖，明确不等价能力与剩余风险。
 4. 按依赖进入完整 HANA 函数/查询/类型实现，再实施通用 DSL 与三库类型增强。

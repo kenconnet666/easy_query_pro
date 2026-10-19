@@ -27,8 +27,8 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
                 .map(name -> metadata.getColumnNotNull(metadata.getPropertyNameNotNull(name))).toList();
         String keyQuery = generatedKeyQuery(columns);
         int total = 0;
-        // ngdbc exposes neither JDBC generated-key overload. Session values must be read
-        // immediately for each inserted row; a batched insert would retain only the last value.
+        // ngdbc 不支持 JDBC generated keys；必须逐行在同一连接读取 session 值。
+        // 不能等批处理结束再读取，否则只能得到最后一行的键，导致实体回填错位。
         for (T entity : entities) {
             int affected = super.insert(context, connection, sql, List.of(entity), parameters, false, sharding, replica);
             if (affected != 1) {
