@@ -14,7 +14,7 @@ public final class HanaTableSQLExpression extends TableSQLExpressionImpl {
 
     public InsertTarget insertTarget() {
         if (segmentAs != null || linkAs != null) {
-            throw new UnsupportedOperationException("HANA generated-key backfill requires a structured table target");
+            throw new UnsupportedOperationException("HANA guarded writes require a structured table target");
         }
         String name = entityTable.getTableName();
         if (tableNameAs != null) name = tableNameAs.apply(name);
@@ -22,7 +22,7 @@ public final class HanaTableSQLExpression extends TableSQLExpressionImpl {
         if (schemaAs != null) schema = schemaAs.apply(schema);
         if (schema != null && schema.isBlank()) schema = null;
         if ((name != null && name.contains(".")) || (schema != null && schema.contains("."))) {
-            throw new UnsupportedOperationException("HANA generated-key targets require separate schema and table identifiers; use asSchema");
+            throw new UnsupportedOperationException("HANA guarded writes require separate schema and table identifiers; use asSchema");
         }
         var keyword = new HanaSQLKeyword();
         return new InsertTarget(schema == null ? null : keyword.unquoteName(schema), keyword.unquoteName(name));

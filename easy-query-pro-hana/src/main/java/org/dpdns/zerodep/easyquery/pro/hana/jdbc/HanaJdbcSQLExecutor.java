@@ -26,6 +26,9 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
     public <T> int insert(ExecutorContext context, EasyConnection connection, String sql, List<T> entities,
                           List<SQLParameter> parameters, boolean fillKeys, boolean sharding, boolean replica)
             throws SQLException {
+        if (context instanceof HanaInsertExecution.Context insertContext) {
+            insertContext.checkConflictTarget(connection.getConnection());
+        }
         if (!fillKeys || entities.isEmpty()) {
             return super.insert(context, connection, sql, entities, parameters, fillKeys, sharding, replica);
         }
