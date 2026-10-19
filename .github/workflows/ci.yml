@@ -36,9 +36,6 @@ jobs:
       - name: Build and run SQL contracts
         shell: bash
         run: ./mvnw --batch-mode clean verify
-      - name: Compile the optional HANA JDBC check
-        shell: bash
-        run: ./mvnw --batch-mode -Phana -DskipTests test-compile
       - name: Preserve build outputs and reports
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

@@ -50,11 +50,13 @@ POM 使用 `release=17`，不启用 preview；Maven 堆上限 1 GiB，测试 JVM
 | `hana` | `EQP_HANA_JDBC_URL`、`EQP_HANA_USER`、`EQP_HANA_PASSWORD` | 真实 HANA 连接、临时列存表、绑定参数、中文/decimal 与事务验证，不代表 HANA 方言适配完成 |
 
 ```powershell
-.\mvnw.cmd clean verify -Pmysql,postgres
+.\mvnw.cmd clean verify '-Pmysql,postgres'
 .\mvnw.cmd clean verify -Phana
 ```
 
-切换 profile 时使用 clean，避免另一个 profile 留下的测试 class 被运行。主动启用的 profile 缺少环境变量会失败，不会静默跳过。当前驱动固定为 MySQL Connector/J 9.7.0、PostgreSQL JDBC 42.7.14、SAP ngdbc 2.30.11；它们只进入相应 profile 的测试 classpath。
+三库 `src/it/*/java` 始终注册为测试源根，三个驱动仅进入集成测试模块的 test classpath，IDEA 默认导入即可解析所有测试。Profile 只选择 Failsafe 执行范围：`MySql*IT`、`Postgres*IT`、`Hana*IT`，同时启用多个 profile 时合并范围；没有 profile 的 `verify` 只编译数据库测试而不连接数据库。切换 profile 不再依赖 clean 来避免误跑残留测试。主动启用的 profile 缺少环境变量会失败，不会静默跳过。
+
+当前测试驱动固定为 MySQL Connector/J 9.7.0、PostgreSQL JDBC 42.7.14、SAP ngdbc 2.30.11；生产模块不传递这些驱动。
 
 ## HANA Docker 开发实例
 

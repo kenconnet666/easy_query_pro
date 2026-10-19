@@ -1,12 +1,11 @@
 package org.dpdns.zerodep.easyquery.pro.test;
 
 import org.junit.jupiter.api.Test;
+import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
+import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseInfo;
 
 import java.math.BigDecimal;
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -16,10 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HanaConnectionIT {
     @Test
     void jdbcDriverConnectsToTheConfiguredHana() throws SQLException {
-        // This checks JDBC connectivity only; the HANA adapter is not implemented yet.
-        try (var connection = connect();
+        try (var connection = HanaTestDatabase.connect();
              var statement = connection.createStatement()) {
-            System.out.println("HANA database version: " + connection.getMetaData().getDatabaseProductVersion());
+            var info = HanaDatabaseInfo.inspect(connection);
+            System.out.println("HANA database version: " + info.productVersion());
             statement.setQueryTimeout(15);
             try (var result = statement.executeQuery("SELECT CURRENT_USER, CURRENT_SCHEMA FROM DUMMY")) {
                 assertTrue(result.next());
@@ -32,8 +31,8 @@ class HanaConnectionIT {
 
     @Test
     void jdbcBindsUnicodeAndDecimalsAndRollsBack() throws SQLException {
-        String table = "\"EQP_JDBC_" + UUID.randomUUID().toString().replace("-", "") + "\"";
-        try (var connection = connect(); var statement = connection.createStatement()) {
+        String table = '"' + HanaTestDatabase.uniqueName("JDBC") + '"';
+        try (var connection = HanaTestDatabase.connect(); var statement = connection.createStatement()) {
             statement.execute("CREATE COLUMN TABLE " + table
                     + " (\"id\" INTEGER PRIMARY KEY, \"name\" NVARCHAR(255), \"amount\" DECIMAL(19,4))");
             try {
@@ -63,8 +62,8 @@ class HanaConnectionIT {
         }
     }
 
-    private Connection connect() throws SQLException {
-        return DriverManager.getConnection(TestEnvironment.required("EQP_HANA_JDBC_URL"),
-                TestEnvironment.required("EQP_HANA_USER"), TestEnvironment.required("EQP_HANA_PASSWORD"));
+    @Test
+    void hanaAdapterExecutesTheSharedCrudAndTransactionContract() throws SQLException {
+        JdbcContract.verify(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), "NVARCHAR(255)");
     }
 }
