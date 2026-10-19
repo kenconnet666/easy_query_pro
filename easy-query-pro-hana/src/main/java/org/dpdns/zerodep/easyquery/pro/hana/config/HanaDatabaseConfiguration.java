@@ -15,10 +15,21 @@ import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaJdbcTypeHandlerManager;
 import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaInsertExecution;
 import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaConnectionFactory;
 import org.dpdns.zerodep.easyquery.pro.hana.function.HanaSQLFunc;
+import org.dpdns.zerodep.easyquery.pro.hana.metadata.HanaCatalog;
+import com.easy.query.core.migration.DatabaseMigrationProvider;
+import com.easy.query.core.migration.MigrationEntityParser;
+import com.easy.query.core.migration.MigrationsSQLGenerator;
+import com.easy.query.core.basic.api.database.DatabaseCodeFirst;
+import org.dpdns.zerodep.easyquery.pro.hana.migration.HanaDatabaseCodeFirst;
+import org.dpdns.zerodep.easyquery.pro.hana.migration.HanaDatabaseMigrationProvider;
+import org.dpdns.zerodep.easyquery.pro.hana.migration.HanaMigrationEntityParser;
+import org.dpdns.zerodep.easyquery.pro.hana.migration.HanaMigrationsSQLGenerator;
 
 import java.util.Objects;
 
-/** Installs the HANA backend without connecting to the database. */
+/**
+ * Installs the HANA backend without connecting to the database.
+ */
 public final class HanaDatabaseConfiguration implements DatabaseConfiguration {
     private final HanaOptions options;
 
@@ -39,5 +50,10 @@ public final class HanaDatabaseConfiguration implements DatabaseConfiguration {
         services.addService(JdbcTypeHandlerManager.class, HanaJdbcTypeHandlerManager.class);
         services.addService(EntityExpressionPrepareExecutor.class, HanaInsertExecution.class);
         services.addService(EasyConnectionFactory.class, HanaConnectionFactory.class);
+        services.addService(HanaCatalog.class);
+        services.addService(MigrationEntityParser.class, HanaMigrationEntityParser.class);
+        services.addService(DatabaseMigrationProvider.class, HanaDatabaseMigrationProvider.class);
+        services.addService(MigrationsSQLGenerator.class, HanaMigrationsSQLGenerator.class);
+        services.addService(DatabaseCodeFirst.class, HanaDatabaseCodeFirst.class);
     }
 }

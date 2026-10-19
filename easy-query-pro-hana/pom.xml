@@ -14,5 +14,10 @@
             <groupId>com.easy-query</groupId>
             <artifactId>sql-core</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.sap.cloud.db.jdbc</groupId>
+            <artifactId>ngdbc</artifactId>
+            <optional>true</optional>
+        </dependency>
     </dependencies>
 </project>

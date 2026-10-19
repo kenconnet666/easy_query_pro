@@ -139,9 +139,28 @@ MCP 最终确认本轮 MERGE/default/override 探测遗留表为 0。已删除�
 
 本地 `HanaTransactionIT,HanaConnectionPoolIT` 共 8 个测试及 13 个离线测试通过。新增的 2 个连接工厂离线测试覆盖多连接中途失败和清理异常保留；IDEA 编译通过。重复连接池配置收拢到测试设施，作为独立整理提交，与连接工厂修复分开记录后一起推送，减少重复 CI 启动。
 
+## HANA 目录与 Code First
+
+提交 `3dee36c125fa84e1cddda618eede71f6f6a4e42c` 的 [CI 39301892874](https://github.com/kenconnet666/easy_query_pro/actions/runs/39301892874) 已通过全部强制任务，包含上一节的连接泄漏修复和事务回归。
+
+新增只读 HANA 目录与完整的类型/DDL 纵向路径，复用上游 MigrationEntityParser、MigrationCommand、Code First 和 JDBC executor。修正上游生成器在重命名预览时读错表、漏传外键 action/schema、把 sequence 列建成 identity 的适配问题。表/索引先建、外键最后建；SQL 语句边界由结构保存，不按分号拆字符串。
+
+迁移沿用上游事务，并通过 HANA 连接包装在提交/回滚后恢复 DDL 模式。真实测试证明回调里的普通 DML 与迁移共同回滚；已有事务的 DDL 模式不满足前提时在回调前拒绝，避免隐式提交业务写入。ngdbc 是可选生产依赖，只用于公开的 DDL 状态 getter。
+
+本地证据：
+
+- 最后一次 `HanaCatalogIT,HanaCodeFirstIT,HanaDdlTransactionIT` 共 9 个测试全部通过，同次 17 个离线测试通过；覆盖创建/幂等/重命名/扩宽/default/nullability/注释、真实外键级联、权限和失败恢复。
+- 随后新增移除 ngdbc 的隔离类加载用例，`HanaMigrationTest` 共 5 个测试单独通过；不带 SAP 驱动仍可安装配置、解析类型并生成 DDL。IDEA 格式化后编译通过，检查无错误；保留 SQL 方言配置提示与反射访问测试 bean 的静态提示。
+- 连接包装变化后，7 个 `HanaTransactionIT` 测试通过；非管理员用例先因测试授权 SQL 未引用区分大小写的 schema 而失败，修正后单独重跑通过，最终并入上述 9 个测试通过。
+- native hdbsql 确认 BOOLEAN 默认值目录为 0/1、identity 生成表达式为空字符串；适配器已正确规范化比较。
+- revision 88 的双引号列名 ALTER 在原生 SQL 中复现错误 257/事务内 129。该变体在计划阶段明确拒绝，保留创建/目录支持，不绕过依赖关系重建表。完整边界见 [迁移说明](hana-migrations.md)。
+- IDEA 数据库 MCP 确认本轮 `EQP_DDL_%` / `EQP_CATALOG_%` schema、用户和 probe 表均为 0。持久开发数据库继续保留。
+
+G3 保持实施中：复杂依赖迁移、完整类型与 Spring/独立消费者还需验收；本地结果不替代新 SHA 的完整 CI。
+
 ## 下一步
 
-1. 检查新提交的函数/查询组合 CI，继续补 HANA 核心实现。
+1. 检查新提交的迁移与元数据 CI，继续补 HANA 核心实现。
 2. 继续收敛 G0 高风险接口：计算视图正式查询源和参数绑定 SPI、类型转换器以及编译负例。
 3. 完成函数审计、类型桥接的转换器/编译负例与 SQL 组合失败覆盖，明确不等价能力与剩余风险。
 4. 按依赖进入完整 HANA 函数/查询/类型实现，再实施通用 DSL 与三库类型增强。

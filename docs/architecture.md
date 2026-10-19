@@ -24,7 +24,7 @@ HANA 底层已经开始实现，其他生产模块尚处于接口定型前。以
 
 | 模块 | 允许的主要生产依赖 | 完整职责 |
 | --- | --- | --- |
-| `easy-query-pro-hana` | 上游 `sql-core` | HANA 配置、SQL 渲染、通用函数、JDBC 类型、元数据与迁移，蓝图 H01–H10 的主要实现 |
+| `easy-query-pro-hana` | 上游 `sql-core`；DDL 会话状态使用可选 ngdbc | HANA 配置、SQL 渲染、通用函数、JDBC 类型、元数据与迁移，蓝图 H01–H10 的主要实现 |
 | `easy-query-pro-dsl` | 上游 `sql-api-proxy` | 精确类型/CAST、ROWS、JSON path 与组合、NULL-safe/NULLIF/日期截断、互操作和小型翻译接口 |
 | `easy-query-pro-dsl-hana` | 通用 DSL、HANA 模块 | 通用新增的 HANA 翻译，以及 HANA 类型、全文、层级、参数化视图/表函数 |
 | `easy-query-pro-dsl-mysql` | 通用 DSL、上游 `sql-mysql` | 通用新增的 MySQL 翻译，以及原生类型/JSON/时长、全文与 RANGE，复用后端 |
@@ -59,7 +59,8 @@ HANA 底层模块保持与 Proxy DSL 解耦。专属 DSL 可以组合已有函�
 10. `HanaOptions` 为每个 client 的不可变配置。HANA 2.0 的 JSON 数组长度需要显式部署一个 SQLScript 函数；`HanaJsonSupport` 仅生成 DDL，不在安装、渲染或首次查询时修改 schema。部署权限、输出容量与错误策略见 [HANA 函数说明](hana-functions.md)。
 11. 生成键插入由 `HanaInsertExecution` 在既有准备阶段传递结构化目标，不引入全局 SQL-to-metadata 缓存。JDBC 层在回调前完成回填，触发器不安全组合在写入前拒绝；成本、权限与限制见 [生成键契约](hana-generated-keys.md)。
 12. 冲突写入沿用 `onConflictThen`，由 HANA renderer 生成原子 MERGE；执行前只核对真实唯一约束。目标解析与生成键共用既有准备阶段，不为 upsert 建立新的 Queryable 或执行协议，见 [写入契约](hana-writes.md)。
-13. `HanaConnectionFactory` 只负责数据源连接借用与初始化的所有权交接：初始化成功后沿用上游 `DefaultEasyConnection`；失败则归还整批。它不替换 `ConnectionManager`、不创建生产连接池，也不接管 Spring 事务。
+13. `HanaConnectionFactory` 负责连接借用与初始化的所有权交接，失败归还整批。`HanaEasyConnection` 继承上游包装，只在 Code First 新事务中临时改变 DDL 模式，结束后恢复；不替换 `ConnectionManager`、不创建生产连接池，也不接管 Spring 事务。
+14. `HanaCatalog` 只读目录，`migration` 复用上游 parser/data/command/executor；命令保存语句边界而不拆分已生成 SQL。ngdbc 的可选依赖只用于标准 JDBC 缺失的 DDL 状态读取，公开 unwrap API 与完整约束见 [迁移说明](hana-migrations.md)。
 
 ## 代码审计入口
 

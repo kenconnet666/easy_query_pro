@@ -2,7 +2,6 @@ package org.dpdns.zerodep.easyquery.pro.hana.jdbc;
 
 import com.easy.query.core.basic.jdbc.conn.EasyConnection;
 import com.easy.query.core.basic.jdbc.conn.EasyConnectionFactory;
-import com.easy.query.core.basic.jdbc.conn.impl.DefaultEasyConnection;
 import com.easy.query.core.configuration.EasyQueryOption;
 import com.easy.query.core.enums.conn.ConnectionStrategyEnum;
 import com.easy.query.core.exception.EasyQuerySQLCommandException;
@@ -15,7 +14,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
-/** 保留上游路由与连接包装，只补充隔离级别校验和初始化失败时的资源归还。 */
+/**
+ * 保留上游路由与连接包装，只补充隔离级别校验和初始化失败时的资源归还。
+ */
 public final class HanaConnectionFactory implements EasyConnectionFactory {
     private final EasyQueryDataSource dataSources;
     private final long waitTimeoutMillis;
@@ -27,7 +28,7 @@ public final class HanaConnectionFactory implements EasyConnectionFactory {
 
     @Override
     public List<EasyConnection> createEasyConnections(int count, String dataSource, Integer isolation,
-                                                     ConnectionStrategyEnum strategy) {
+                                                      ConnectionStrategyEnum strategy) {
         if (count < 1) throw new IllegalArgumentException("Connection count must be positive");
         return acquire(count, dataSource, isolation, strategy, true);
     }
@@ -50,7 +51,8 @@ public final class HanaConnectionFactory implements EasyConnectionFactory {
             borrowed = multiple ? unit.getConnections(count, waitTimeoutMillis, TimeUnit.MILLISECONDS)
                     : List.of(unit.getConnection(waitTimeoutMillis, TimeUnit.MILLISECONDS));
             var result = new ArrayList<EasyConnection>(borrowed.size());
-            for (var connection : borrowed) result.add(new DefaultEasyConnection(name, source.getStrategy(), connection, isolation));
+            for (var connection : borrowed)
+                result.add(new HanaEasyConnection(name, source.getStrategy(), connection, isolation));
             return result;
         } catch (SQLException failure) {
             release(borrowed, failure);

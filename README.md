@@ -36,5 +36,6 @@ HANA 使用独立 Docker 部署和持久卷，内存上限 12 GiB、无额外 sw
 - [开发环境与运行方式](docs/development.md)
 - [分包与设计方案](docs/architecture.md)
 - [实施计划与验证条件](docs/plan.md)
+- [HANA 元数据、Code First 与事务边界](docs/hana-migrations.md)
 
 源码基线：相邻 `easy-query` 仓库的 `3.2.17`，commit `2b25e9510868b4f9071365510393b0b02a451cda`。构建使用 Maven Central 的已发布依赖，不修改相邻源码仓库，也不要求先本地安装上游。
