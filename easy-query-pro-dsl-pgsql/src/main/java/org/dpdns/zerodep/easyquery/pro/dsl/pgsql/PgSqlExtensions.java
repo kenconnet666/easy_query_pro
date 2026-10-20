@@ -1,6 +1,7 @@
 package org.dpdns.zerodep.easyquery.pro.dsl.pgsql;
 
 import com.easy.query.core.inject.ServiceCollection;
+import com.easy.query.core.expression.sql.expression.factory.ExpressionFactory;
 import com.easy.query.pgsql.config.PgSQLSQLKeyword;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExtensionInstaller;
@@ -42,6 +43,14 @@ public final class PgSqlExtensions {
     public static void configureMappings(QueryConfiguration configuration) {
         configuration.applyColumnValueSQLConverter(new PgJsonColumnConverter());
         configuration.applyColumnValueSQLConverter(new PgJsonbColumnConverter());
+    }
+
+    /**
+     * 显式安装全文等查询级功能需要的根上下文；普通 configure 保留已有 ExpressionFactory。
+     * 自定义工厂应在本方法之后注册，并继承 PgSqlProExpressionFactory 或保留同等传播。
+     */
+    public static void configureQueryScope(ServiceCollection services) {
+        services.addService(ExpressionFactory.class, PgSqlProExpressionFactory.class);
     }
 
     public static void configureTypeHandlers(JdbcTypeHandlerManager handlers) {

@@ -261,7 +261,7 @@ HANA 已采用 [原子搜索来源](hana-fulltext.md)：CONTAINS 与 SCORE 在�
 
 MySQL 的 [MATCH 查询来源](mysql-fulltext.md) 使用 natural language/boolean 两模式，显式安装 query scope，匹配和 Double 分数同时构造。布尔负贡献仍按原生 MATCH 谓词处理，不硬编码分数大于零；InnoDB 的提交后索引可见性与 HANA 分别验证。PG 的 tsvector/tsquery 及 rank 继续作为专属类型/操作实现，不借用字符串 LIKE 或通用分数。
 
-PG 的 [tsvector/tsquery 值类型](pgsql-text-search-types.md) 已接入原生 JDBC、DDL/CAST 与基础标量映射。编码对象与普通文本分开，数据库语法/规范化留给 PostgreSQL；缓存读取保留 PGobject 的实际类型，未知二进制表示不会当作 SQL NULL。匹配、query 构造与 rank 继续依赖这项基础。
+PG 的 [tsvector/tsquery 值类型](pgsql-text-search-types.md) 已接入原生 JDBC、DDL/CAST 与基础标量映射。编码对象与普通文本分开，数据库语法/规范化留给 PostgreSQL；缓存读取保留 PGobject 的实际类型，未知二进制表示不会当作 SQL NULL。[PG 全文查询](pgsql-fulltext.md) 复用此基础，提供 plain/web/encoded query、受控 rank/cover-density 及归一化；配置名和输入保持绑定，匹配使用原生 @@，不以大于零的分数代替。
 
 查询来源的重复部分集中在内部 `CapturedQuerySourceBuilder`：构造时克隆原 ClientQueryable、提取 CTE/表依赖，渲染时沿同一 ToSQLContext 委托参数，保留 visitor 与 clone。空投影边界防止外层 SMART 展示筛选进入已经完成的匹配/评分层；各方言继续负责来源约束、原生评分和最终查询的分片检查。这是已有查询树的组合基础，不引入新的执行器或公开搜索类型体系。
 
@@ -315,7 +315,7 @@ var client = EasyQueryBootstrapper.defaultBuilderConfiguration()
 
 MySQL/PG 使用上游配置和各自增强安装入口。注册要校验方言身份、重复/冲突安装和版本，保留调用者已有选项与服务；不把插件加载到全局静态状态中。
 
-MySQL 依赖完整数据库来源的高级查询另有显式 `MySqlExtensions.configureQueryScope(services)`。普通 `configure` 不替换现有 ExpressionFactory，包括在 Pro 之前注册的应用工厂。需要查询作用域传播时按以下顺序安装：
+MySQL/PG 依赖完整数据库来源的高级查询另有显式 `MySqlExtensions.configureQueryScope(services)` / `PgSqlExtensions.configureQueryScope(services)`。普通 `configure` 不替换现有 ExpressionFactory，包括在 Pro 之前注册的应用工厂。以 MySQL 为例，需要查询作用域传播时按以下顺序安装：
 
 ```java
 services -> {
@@ -327,7 +327,7 @@ services -> {
 
 该显式方法注册 `MySqlProExpressionFactory`，只在 SELECT 渲染时把最外层查询标记放入 `ProQuerySQLContext`。参数、别名、SQLRewriteUnit 和根调用计数全部委托原 ToSQLContext；内层 CTE/子查询不能覆盖外层后来增加的分片状态。DML、表、CTE 和 UNION 的构造继续继承上游 MySQL 工厂。HANA adapter 使用自己的 sql-core 上下文，不反向依赖通用 Proxy DSL。
 
-应用若替换该工厂，应在 `configureQueryScope` 之后注册，并继承 `MySqlProExpressionFactory` 或在自定义 SELECT 表达式中保留 `ProQuerySQLContext.withQueryContext`。仅依赖普通逐行 DSL 的应用无需新增这项安装。新的数据库专属来源必须在渲染时检查标记存在，不能把缺失标记等同于非分片而绕过约束。
+应用若替换该工厂，应在 `configureQueryScope` 之后注册，并继承 `MySqlProExpressionFactory` / `PgSqlProExpressionFactory` 或在自定义 SELECT 表达式中保留 `ProQuerySQLContext.withQueryContext`。仅依赖普通逐行 DSL 的应用无需新增这项安装。新的数据库专属来源必须在渲染时检查标记存在，不能把缺失标记等同于非分片而绕过约束。
 
 ## 11 统一的使用方式
 

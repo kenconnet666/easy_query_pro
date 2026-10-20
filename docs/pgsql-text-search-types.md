@@ -65,4 +65,4 @@ var result = query.queryable(Document.class).select(row -> Select.DRAFT.of(
 - 模拟 PGobject 缓存的红绿回归，以及两分表在 `useShardingConfigure(1, CONNECTION_STRICTLY)` 下的真实物化读取。只设置模式但仍为一个执行组不足以证明走过缓存。
 - 强制不支持的 binary transfer 不会静默变成 SQL NULL。
 
-本批不扩展上游分片聚合算法。分组同时投影非分组的 Pro 常量时，上游可能拒绝 `ScalarColumn`；此组合没有被本次读取修复改为支持。分片全文评分也需另行证明查询语义。具体证据见 [执行记录](execution.md)；GIN 检索、query 构造与 rank 的查询级入口随后接入同一类型基础。
+本批不扩展上游分片聚合算法。分组同时投影非分组的 Pro 常量时，上游可能拒绝 `ScalarColumn`；此组合没有被本次读取修复改为支持。分片全文评分也需另行证明查询语义。具体证据见 [执行记录](execution.md)；GIN 检索、query 构造与 rank 的入口见 [PG 全文查询](pgsql-fulltext.md)，仍保留单库查询边界。

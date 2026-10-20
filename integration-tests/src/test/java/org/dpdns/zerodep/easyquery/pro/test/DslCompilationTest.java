@@ -203,6 +203,7 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.query.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.query.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.*;
@@ -294,6 +295,17 @@ class DslCompilationTest {
         compile(false, "MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.id()));");
         compile(false, "MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.name().toUpper()));");
         compile(false, "String score = MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.name())).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
+    }
+
+    @Test
+    void postgresSearchRequiresVectorColumnsAndTypedEncodedQueries() throws IOException {
+        String source = "com.easy.query.api.proxy.entity.select.EntityQueryable<org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgSearchDocumentProxy, org.dpdns.zerodep.easyquery.pro.test.entity.PgSearchDocument> sq = null;";
+        compile(true, source + "var search = PgSearch.from(sq, x -> PgSearchSpec.plain(\"pg_catalog.english\", \"coffee\", x.document()).rankedBy(PgSearchSpec.Ranking.COVER_DENSITY, PgSearchSpec.Normalization.DOCUMENT_LENGTH)); Double score = search.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
+        compile(true, source + "PgSearch.from(sq, x -> PgSearchSpec.query(new PgTsQuery(\"'coff':*\"), x.document()));");
+        compile(false, source + "PgSearch.from(sq, x -> PgSearchSpec.web(\"english\", \"coffee\", x.title()));");
+        compile(false, source + "PgSearch.from(sq, x -> PgSearchSpec.plain(\"english\", \"coffee\", x.condition()));");
+        compile(false, source + "PgSearch.from(sq, x -> PgSearchSpec.query(\"coffee\", x.document()));");
+        compile(false, source + "String score = PgSearch.from(sq, x -> PgSearchSpec.plain(\"english\", \"coffee\", x.document())).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
     }
 
     @Test

@@ -683,3 +683,15 @@ IDEA 格式与构建通过，MCP 确认 `eqp_pg_search_%` schema 遗留为零。
 先按 Maven 正常生命周期仅 clean 两个变动方言 DSL 模块，去除已删除内部类的旧产物；再用指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Pmysql,hana -Dtest=HanaSearchDslTest,MySqlSearchDslTest,DslCompilationTest#hanaSearchRequiresTextColumnsAndKeepsTheScoreType+mysqlSearchRequiresPhysicalTextAndKeepsTheScoreType -Dit.test=HanaSearchIT,MySqlSearchIT -Dsurefire.failIfNoSpecifiedTests=false`，14 个离线/消费者检查和 8 个实库用例全部通过。参数顺序、CTE、SMART、克隆、count/page、事务及晚加入分片的边界沿现有测试验收，没有为内部结构增加镜像测试。
 
 IDEA 格式与构建通过；MCP 确认 HANA `EQP_FULLTEXT_%` schema 与 MySQL `eqp_search_%` 测试表遗留均为零。两份本轮自有日志记录后清理，标准测试报告保留。前一 PG 类型提交 `addec1de8cb6e8c319346512cd1ee5981611b3aa` 的 [CI 39490002201](https://github.com/kenconnet666/easy_query_pro/actions/runs/39490002201) 检查时仍 in_progress，未阻塞等待，也未用其代替本批验收。
+
+## PostgreSQL 原生全文匹配、排名与 GIN
+
+继续使用 Context7 resolve/query PostgreSQL 17 官方文档核对 plain/websearch/encoded 输入、rank/cover-density 的 float4 返回值、归一化及 stored generated tsvector + GIN。PgSearchSpec 只保存受控函数模板、原参数和枚举规格，不实现 Java 搜索解析器；配置名按 regconfig 绑定，已编码 PgTsQuery 沿前批 native handler。PgSearch 同层安装 @@ 与 SEARCH_SCORE，输出通过已整理的 CapturedQuerySourceBuilder 进入原 EntityQueryable。
+
+PgSqlExtensions.configureQueryScope 显式安装继承原 PG 工厂的 PgSqlProExpressionFactory，普通 configure 仍保留已有工厂；后置自定义工厂、CTE/clone/UNION 与晚加入分片均验证根标记。原 WHERE 的根级 OR 整体包组，fresh DTO 不继承来源 reader。评分由 float4 显式转换到 Double，只保证结果类型，不增加计算精度。仅否定查询可以匹配且分数为零，因而不以 `score > 0` 替代 @@。
+
+离线 fixture 最初漏装实体显式 Vector/Query handler，在加载 metadata 时被拒绝；按已文档化的安装次序补齐测试初始化，未改变生产 handler 契约。指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Ppostgres -Dtest=PgSearchDslTest,DslCompilationTest#postgresSearchRequiresVectorColumnsAndTypedEncodedQueries -Dit.test=PostgresSearchIT -Dsurefire.failIfNoSpecifiedTests=false`，7 个离线/消费者检查及 4 个实库用例全部通过。
+
+prepareThreshold 0/-1 均覆盖三类输入、全部归一化标志的组合、默认词素权重、原生结果/分数对照、引号/中文/停用词、前缀/短语/否定、NULL vector、空 query、错误语法与不存在配置。English vector 与 Simple 查询不匹配的用例明确语言边界。组合测试覆盖根级 OR、SMART、参数快照、独立 reader、CTE/count/page、两个评分结果 JOIN/UNION、同事务新增可搜索、回滚消失与生成列更新后索引变化。另对完整 DSL SQL 和原绑定执行 EXPLAIN，在独立事务的 SET LOCAL enable_seqscan/search_path 下确认 GIN 可用，finally 回滚恢复；不宣称小表自然规划必选 GIN 或已有性能提升。
+
+只读复审未发现必修生产问题。IDEA 格式与构建通过；MCP 确认 `eqp_pg_search_query_%` schema 遗留为零，两份自有诊断日志记录后清理。前一整理提交 `4b56bbb10723e4443ba23e44cc7c2dac5f7752ca` 的 [CI 39491259410](https://github.com/kenconnet666/easy_query_pro/actions/runs/39491259410) 检查时为 cancelled，按原状态保留并继续推进；当前候选仍需自己的完整 CI。API 与边界见 [PG 全文查询](pgsql-fulltext.md)，后续继续独立消费者、非管理员和成熟运行验收。
