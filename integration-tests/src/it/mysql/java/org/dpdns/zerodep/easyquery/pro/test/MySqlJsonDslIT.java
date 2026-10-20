@@ -13,6 +13,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.mysql.MySqlTypes;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.MySqlJsonChange;
 import org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload;
 import org.dpdns.zerodep.easyquery.pro.test.entity.MySqlJsonRecord;
+import org.dpdns.zerodep.easyquery.pro.test.extension.ReportJson;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
@@ -48,6 +49,7 @@ class MySqlJsonDslIT {
             verifyMutations(query, table);
             verifyBusinessMappingAndRollback(query, table, converter, row.getPayload());
             verifyDerivedMappings(query, table, row.getPayload());
+            verifyCustomChain(query, table, row.getPayload());
             verifyNulls(query, table);
         }
     }
@@ -129,6 +131,25 @@ class MySqlJsonDslIT {
         var reordered = payloads.cloneQueryable().select(p -> Select.DRAFT.of(MySqlDsl.of(p).view(p.value2(), MySqlTypes.json()).asText(), p.value1()));
         assertEquals(1, reordered.singleNotNull().getValue2());
         assertEquals(original, payloads.singleNotNull().getValue2());
+    }
+
+    private static void verifyCustomChain(DefaultEasyEntityQuery query, String table, JsonPayload original) {
+        var selected = query.queryable(MySqlJsonRecord.class).asTable(table).select(p -> {
+            var mysql = MySqlDsl.of(p);
+            ReportJson<JsonPayload> json = mysql.view(p.payload(), (scope, source, expression) -> new ReportJson<>(scope, mysql, source, expression));
+            ReportJson<JsonPayload> changed = json.setPath(JsonPath.root().key("count"), JsonInput.encoded("8"))
+                    .removePath(JsonPath.root().key("absent"));
+            return Select.DRAFT.of(changed, changed.hasName(), p.id());
+        }).toCteAs("eqp_custom_json");
+        var row = selected.cloneQueryable().select(p -> Select.DRAFT.of(p.value3(), p.value1(), p.value2())).singleNotNull();
+        assertEquals(1, row.getValue1());
+        assertEquals(new JsonPayload(original.name(), 8), row.getValue2());
+        assertTrue(row.getValue3());
+        assertEquals(row.getValue2(), selected.singleNotNull().getValue1());
+        assertThrows(IllegalArgumentException.class, () -> query.queryable(MySqlJsonRecord.class).asTable(table).select(p -> {
+            var mysql = MySqlDsl.of(p);
+            return Select.DRAFT.of(mysql.view(p.plain(), (scope, source, expression) -> new ReportJson<>(scope, mysql, source, expression)));
+        }));
     }
 
     private static void verifyNulls(DefaultEasyEntityQuery query, String table) {

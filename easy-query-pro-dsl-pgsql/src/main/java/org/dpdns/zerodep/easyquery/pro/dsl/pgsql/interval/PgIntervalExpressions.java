@@ -5,19 +5,11 @@ import com.easy.query.core.expression.func.AggregationType;
 import com.easy.query.core.func.SQLFunc;
 import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.proxy.PropTypeColumn;
-import com.easy.query.core.proxy.extension.functions.type.BooleanTypeExpression;
-import com.easy.query.core.proxy.extension.functions.type.DateTimeTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.impl.AnyTypeExpressionImpl;
-import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
-import com.easy.query.core.proxy.extension.functions.type.impl.DateTimeTypeExpressionImpl;
 import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import com.easy.query.core.util.EasyClassUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionScope;
-import org.dpdns.zerodep.easyquery.pro.dsl.spi.MappedValueExpression;
-import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.function.Function;
 
@@ -29,6 +21,10 @@ public final class PgIntervalExpressions {
     }
 
     public static <T> PgIntervalExpression<T> view(ExpressionScope scope, PropTypeColumn<T> source) {
+        return new Expression<>(scope, source, factory -> scope.operand(source, factory));
+    }
+
+    static void requireView(ExpressionScope scope, PropTypeColumn<?> source) {
         scope.requireSource(source);
         if (!(source instanceof DSLSQLFunctionAvailable) && source.getValue() != null && source.getTable() != null) {
             var column = source.getTable().getEntityMetadata().getColumnNotNull(source.getValue());
@@ -39,7 +35,6 @@ public final class PgIntervalExpressions {
                 throw new IllegalArgumentException("Column " + column.getPropertyName() + " does not declare INTERVAL; use an explicit CAST");
             }
         }
-        return new Expression<>(scope, source, factory -> scope.operand(source, factory));
     }
 
     public static PgIntervalExpression<PgInterval> value(ExpressionScope scope, PgInterval value) {
@@ -55,80 +50,14 @@ public final class PgIntervalExpressions {
         return new Expression<>(scope, cast, factory -> scope.operand(cast, factory));
     }
 
-    private static final class Expression<T> extends MappedValueExpression<T> implements PgIntervalExpression<T> {
-
+    private static final class Expression<T> extends AbstractPgIntervalExpression<T, Expression<T>> {
         private Expression(ExpressionScope scope, PropTypeColumn<T> source, Function<SQLFunc, SQLFunction> function) {
             super(scope, source, function);
-            if (scope.dialect() != SqlDialect.POSTGRESQL)
-                throw new IllegalArgumentException("INTERVAL requires PostgreSQL");
         }
 
         @Override
-        public PgIntervalExpression<T> plus(PgIntervalExpression<?> other) {
-            return arithmetic(other, "+");
-        }
-
-        @Override
-        public PgIntervalExpression<T> minus(PgIntervalExpression<?> other) {
-            return arithmetic(other, "-");
-        }
-
-        private PgIntervalExpression<T> arithmetic(PgIntervalExpression<?> other, String operator) {
-            scope.requireSource(other);
-            return new Expression<>(scope, this, factory -> binary(factory, other, operator));
-        }
-
-        private SQLFunction binary(SQLFunc factory, PgIntervalExpression<?> other, String operator) {
-            return scope.scalar(factory, this, other, (left, right) -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
-                    args.sqlFunc(left).sqlFunc(right)));
-        }
-
-        @Override
-        public PgIntervalExpression<T> negated() {
-            return new Expression<>(scope, this, factory -> scope.scalar(factory, this, value -> factory.anySQLFunction("(-{0})", args -> args.sqlFunc(value))));
-        }
-
-        @Override
-        public BooleanTypeExpression<Boolean> equalTo(PgIntervalExpression<?> other) {
-            return comparison(other, "=");
-        }
-
-        @Override
-        public BooleanTypeExpression<Boolean> lessThan(PgIntervalExpression<?> other) {
-            return comparison(other, "<");
-        }
-
-        private BooleanTypeExpression<Boolean> comparison(PgIntervalExpression<?> other, String operator) {
-            scope.requireSource(other);
-            return new BooleanTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> binary(factory, other, operator), Boolean.class);
-        }
-
-        @Override
-        public DateTimeTypeExpression<LocalDateTime> addToDate(PropTypeColumn<LocalDate> date) {
-            return calendar(date, "+");
-        }
-
-        @Override
-        public DateTimeTypeExpression<LocalDateTime> subtractFromDate(PropTypeColumn<LocalDate> date) {
-            return calendar(date, "-");
-        }
-
-        @Override
-        public DateTimeTypeExpression<LocalDateTime> addToDateTime(PropTypeColumn<LocalDateTime> time) {
-            return calendar(time, "+");
-        }
-
-        @Override
-        public DateTimeTypeExpression<LocalDateTime> subtractFromDateTime(PropTypeColumn<LocalDateTime> time) {
-            return calendar(time, "-");
-        }
-
-        private DateTimeTypeExpression<LocalDateTime> calendar(PropTypeColumn<?> time, String operator) {
-            scope.requireSource(time);
-            return new DateTimeTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.scalar(factory, time, this, (date, interval) -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
-                            args.sqlFunc(date).sqlFunc(interval))), LocalDateTime.class);
+        protected Expression<T> recreate(PropTypeColumn<T> source, Function<SQLFunc, SQLFunction> expression) {
+            return new Expression<>(scope, source, expression);
         }
     }
 }

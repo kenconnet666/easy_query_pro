@@ -19,6 +19,8 @@ UNION 按输出位置检查读取兼容性。相同默认标量类型/handler �
 
 上游查询对象有可变构建状态。需要从同一中间查询创建多个独立分支时，调用 `cloneQueryable()`；增强包保留这一契约。正常的单链连续 select 不要求先 clone 或执行来触发读取器初始化。
 
+CTE 等查询的 `singleNotNull`、`toList` 和 `toSQL` 可能通过上游 compensateSelect 给原构建器补全选择列。若还要从该查询派生其他投影，应在终端调用前克隆，或提前构造各分支；终端调用之后才 clone 会连同补全列一起复制，后续 select 可能追加到已有列。测试与报表示例按这个公开可变构建契约使用查询。
+
 ## 安装与验证
 
 Pro 扩展注册 `ExpressionBuilderFactory` 与 `SQLExpressionInvokeFactory` 两个公开服务。可继承默认实现收纳于 `dsl.spi`，通过 protected 创建钩子替换局部 selector/关系构造，CTE clone 继续经过原工厂。应用已有自定义工厂时，需要在同一工厂中组合相关行为；服务注册顺序决定最终实现，不能用第二次替换悄悄丢掉已有能力。扩展方式和本次包迁移见 [DSL 扩展说明](dsl-extensions.md)。

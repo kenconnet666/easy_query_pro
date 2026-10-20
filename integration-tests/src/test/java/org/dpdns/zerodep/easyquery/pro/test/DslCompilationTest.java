@@ -164,6 +164,14 @@ class DslCompilationTest {
         compile(false, "StringTypeExpression<String> invalid = d.nativeCast(p.id(), CommonTypes.decimal(10, 2), (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl<String>(scope.context(), source.getTable(), source.getValue(), function, String.class));");
     }
 
+    @Test
+    void customWholeValueChainsKeepSelfButScalarResultsDoNot() throws IOException {
+        compile(true, "var mysql = MySqlDsl.of(m); ReportJson<org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload> json = mysql.view(m.payload(), (scope, source, function) -> new ReportJson<>(scope, mysql, source, function)); json.setPath(JsonPath.root().key(\"count\"), JsonInput.encoded(\"7\")).removePath(JsonPath.root().key(\"absent\")).hasName().eq(true);");
+        compile(true, "var pg = PgSqlDsl.of(p); ReportInterval<PgInterval> span = pg.view(pg.value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()), ReportInterval::new); span.plus(span).minus(span).negated().isZero().eq(false);");
+        compile(false, "var mysql = MySqlDsl.of(m); var json = mysql.view(m.payload(), (scope, source, function) -> new ReportJson<>(scope, mysql, source, function)); json.asText().hasName();");
+        compile(false, "var pg = PgSqlDsl.of(p); var span = pg.view(pg.value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()), ReportInterval::new); span.addToDate(e.eventDate()).isZero();");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
@@ -171,6 +179,7 @@ class DslCompilationTest {
                 import com.easy.query.core.proxy.extension.functions.type.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
                 import org.dpdns.zerodep.easyquery.pro.dsl.spi.*;
+                import org.dpdns.zerodep.easyquery.pro.test.extension.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.TruncationUnit;
                 import org.dpdns.zerodep.easyquery.pro.dsl.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.*;

@@ -10,7 +10,9 @@
 
 工厂必须消费这些输入，不能返回另一查询缓存的表达式。转换、参数校验和作用域仍由共同入口处理。自定义 Java 载体需要注册原有 JDBC handler，必要时配合 scalar EntityMetadataManager；一个类型描述符不会自动创造 JDBC 读取能力。
 
-没有返回自身的 facade 不强加 SELF 泛型。保持同族的 JSON/interval/duration 操作使用协变返回与 recreate 钩子逐步开放；改变类型的 `asText`、元素访问和日期运算继续返回相应标量族。当前通用挂载已具备，专属同族基类按 G4.7 继续实现，不把仅删除 final 当作链式扩展完成。
+没有返回自身的 facade 不强加 SELF 泛型。MySQL JSON 已提供 `AbstractMySqlJsonExpression<T,S>`，PG interval 已提供 `AbstractPgIntervalExpression<T,S>`；set/remove 与 plus/minus/negated 返回 S。应用只实现一个 recreate 钩子，连续操作后仍可调用自己的方法，原有公共接口的泛型数量保持不变。
+
+recreate 的 mappingSource 是上一层表达式，必须与 SQL 回调一起原样传给新实例；回到最初实体列会丢失已组合的操作或 reader。公开基类构造保留错库、跨 client 与已知物理声明检查。改变类型的 `asText`、元素访问和日期运算继续返回相应标量族，不能继续调用 JSON/interval 专属方法。PG JSONB、MySQL duration 等剩余同族基类按 G4.7 继续开放。
 
 ## 局部替换默认工厂
 
@@ -27,3 +29,5 @@ ExpressionScope、MappedValueExpression、AbstractJsonExpression、ProProjection
 `ColumnReaders` 保持包内实现，不是应用扩展接口；读取声明通过既有 ColumnReader 和上述 factory 契约组合。JsonInput/JsonPath 等值对象及纯校验工具保持既有值语义，不需要为了工厂扩展而变为可继承状态容器。
 
 `DslExtensionTest` 验证具体 facade/表达式返回类型、共同能力继承、错库/跨 client/参数校验、局部 selector 替换和 CTE 克隆。`DslCompilationTest.extensionFactoriesRetainTheirDeclaredValueTypes` 验证泛型正负例，禁止把数字工厂挂到 String 结果上。
+
+测试消费者 ReportJson/ReportInterval 复用上述基类，仅实现 recreate 和一个业务方法。`customWholeValueChainsKeepSelfButScalarResultsDoNot` 验证连续链的具体类型与标量负例；MySQL/PG 实库把自定义链放入 Draft、CTE 和列重排，检查业务对象、interval、布尔和时间结果。

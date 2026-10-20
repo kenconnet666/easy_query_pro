@@ -474,3 +474,13 @@ ExpressionScope 新增单输入/双输入的标量组合辅助，操作数仅构
 本地 17 个既有 DECIMAL 检查通过；最终聚焦验证为 6 个离线/消费者检查、27 个三库实库用例通过。完整消费者套件交 CI；本轮只重跑新增的 2 个正例和 2 个负例。统计子代理另通过少量只读 SELECT 核查三库方差/标准差精度，结果写入统计报表蓝图，未据此宣称 A03 DSL 已实现。G4.7 的 JSON/interval 等同族 SELF 重建仍继续推进。
 
 IDEA 首次构建等待超时，随后重试成功且无构建问题；新 JAR 仅包含新的 spi 路径，没有旧内部扩展类残留。三库 MCP 确认本轮 JSON fixture 遗留为 0；已删除自有泛型 javac 探测文件，未清理持久开发库。
+
+## 同族表达式 SELF 与查询分支时机
+
+提交 `f19bef7ec633fb4dfeb3c364a0a6dd8b089913a1` 的 [CI 39416170802](https://github.com/kenconnet666/easy_query_pro/actions/runs/39416170802) 已完成成功。MySQL JSON 和 PG interval 从私有实现中抽出公开泛型基类；默认实现只负责构造和 recreate。同族操作返回具体 S，标量结果保持原类型。扩展作者不必复制 SQL、绑定、校验或读取映射。
+
+新增两个消费者扩展同时用于编译和实库验证。9 个离线/消费者检查通过，MySQL JSON 与两库分片回归通过。PG 新 CTE 测试最初在终端读取后再次 select，SQL 证实旧列与新列被追加在一起；对照 3.2.17 compensateSelect/clone 契约修正为先 clone 再终端执行，5 个 PG interval 用例随后全部通过。合计 13 个实库用例分批验证，未修改 reader 算法去隐藏多余列。
+
+一次尝试直接执行 reactor Failsafe 目标因父项目强制 failIfNoTests 在测试开始前退出，该尝试不计为验证。最终使用正常 Maven verify 路径完成上述 PG 回归。查询复用说明同步记录 toSQL/single/list/page 的构建状态影响，下一步窗口报表按此时机建立独立分支。
+
+IDEA 构建通过；MySQL/PG MCP 确认本轮 JSON、interval 与分片 fixture 遗留为 0。子代理仅复审并建议补全 recreate 契约注释，未写入代码；对应注释已由主线程补入。

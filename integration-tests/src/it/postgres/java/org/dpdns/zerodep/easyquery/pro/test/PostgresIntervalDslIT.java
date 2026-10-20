@@ -8,6 +8,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlExtensions;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlTypes;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgInterval;
 import org.dpdns.zerodep.easyquery.pro.test.entity.PgIntervalRecord;
+import org.dpdns.zerodep.easyquery.pro.test.extension.ReportInterval;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -96,6 +97,23 @@ class PostgresIntervalDslIT {
         assertEquals(PgInterval.of(1, 0, 0), outer.singleNotNull().getValue1());
         assertEquals(PgInterval.of(1, 0, 0), outer.cloneQueryable().singleNotNull().getValue1());
         assertEquals(PgInterval.of(-1, 0, 0), inner.singleNotNull().getValue2());
+    }
+
+    @Test
+    void customIntervalChainKeepsItsTypeAndMappedValueThroughCte() {
+        var selected = query.queryable(PgIntervalRecord.class).select(p -> {
+            var pg = PgSqlDsl.of(p);
+            ReportInterval<PgInterval> span = pg.view(p.span(), ReportInterval::new);
+            ReportInterval<PgInterval> changed = span.plus(pg.value(PgInterval.of(0, 2, 3), PgSqlTypes.interval()))
+                    .minus(pg.value(PgInterval.of(0, 1, 1), PgSqlTypes.interval())).negated();
+            return Select.DRAFT.of(p.id(), changed, changed.isZero(), changed.addToDate(p.eventDate()));
+        }).toCteAs("eqp_custom_interval");
+        var row = selected.cloneQueryable().singleNotNull();
+        assertEquals(PgInterval.of(-1, -1, -2), row.getValue2());
+        assertFalse(row.getValue3());
+        assertEquals(LocalDateTime.of(2023, 12, 29, 23, 59, 59, 999998000), row.getValue4());
+        var outer = selected.cloneQueryable().select(p -> Select.DRAFT.of(p.value4(), p.value2()));
+        assertEquals(row.getValue2(), outer.singleNotNull().getValue2());
     }
 
     @Test
