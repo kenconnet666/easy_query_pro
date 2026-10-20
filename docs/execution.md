@@ -340,9 +340,23 @@ PgInterval 使用 Java 17 sealed 类型区分精确有限三分量与正负 infi
 
 数组标量元数据整理为内部 PgScalarMetadataManager，为两类显式 PG 值复用；普通 Java 类型的默认映射不变。IDEA 构建通过；探测源文件和本轮三份诊断日志记录证据后清理，标准报告保留。说明见 [PostgreSQL interval](pgsql-interval.md)。完整原生类型目录、时区类型、组合和最终性能/消费者门槛继续执行。
 
+## PostgreSQL fixture 整理与 MySQL unsigned
+
+提交 `031a455d90d9d1fad0c63b3a510f6320f7f690f3` 的 [CI 39369679147](https://github.com/kenconnet666/easy_query_pro/actions/runs/39369679147) 已通过全部五个强制任务，包含 interval 四种格式、二进制及三库完整回归。
+
+独立提交 `515ff14` 将三组 PG fixture 的 schema 创建/销毁收拢到 PostgresTestDatabase.Schema，异常路径关闭连接，清理前回滚未完成事务。12 个相关实库用例和 3 个离线用例通过；该整理与功能分开提交。
+
+MySqlTypes 提供 TINYINT/SMALLINT/MEDIUMINT/INT/BIGINT 五种 unsigned 存储描述、适合完整值域的 Java 类型和参数范围检查。仅 unsignedBigint 实现 NumericType/CastTarget，因为 MySQL 原生 UNSIGNED CAST 固定为 64 位；较小宽度通过 MySqlDsl.value 生成经过校验的数字参数，其他运算复用上游表达式。
+
+原生测试证明 EasyQuery 3.2.17 对 BigInteger 的默认 Object handler 会将 SUM 的 DECIMAL 原样返回 BigDecimal，因此新增精确整数读取。初次尝试 setBigDecimal 写入导致服务端预处理将最大 unsigned 值截至 Long.MAX_VALUE；独立 JDBC 对比确认原有 setObject(BigInteger) 可保留完整 unsigned 标志。最终 handler 直接继承 ObjectTypeHandler，仅覆盖 getValue，不替换已正确的绑定。
+
+本地最初 12 个离线/消费者编译检查通过，最终修复后 MySqlUnsignedIT 的 4 组预处理/减法模式组合和 3 个离线检查通过。覆盖五种物理列上限、零/NULL、BigInteger/SUM、非整数拒绝、strict 写入越界保持原值、CAST 负数和 NO_UNSIGNED_SUBTRACTION。消费者编译现为 16 个正例、35 个负例。
+
+IDEA 构建通过，MCP 确认 eqp_unsigned_* 表遗留为 0。IDEA 的新文件加入 Git 提示再次阻塞工具，已在界面取消重复提示，后续由显式 git add 管理暂存。JDBC 探测文件与本轮编译/原生日志记录后清理，标准报告和开发数据库保留。说明见 [MySQL unsigned](mysql-unsigned.md)。
+
 ## 下一步
 
-1. 检查 PostgreSQL interval 提交的 CI，继续 MySQL unsigned/时长与三库原生类型目录。
+1. 检查 MySQL unsigned 提交的 CI，继续 MySQL TIME 时长和三库原生类型目录。
 2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
 3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
 4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。

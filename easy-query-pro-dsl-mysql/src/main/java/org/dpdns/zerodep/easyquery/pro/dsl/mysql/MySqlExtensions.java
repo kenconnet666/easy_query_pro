@@ -2,6 +2,11 @@ package org.dpdns.zerodep.easyquery.pro.dsl.mysql;
 
 import com.easy.query.core.inject.ServiceCollection;
 import com.easy.query.core.configuration.QueryConfiguration;
+import com.easy.query.core.basic.jdbc.types.JdbcTypeHandlerManager;
+import org.dpdns.zerodep.easyquery.pro.dsl.jdbc.ExactBigIntegerTypeHandler;
+
+import java.math.BigInteger;
+
 import com.easy.query.mysql.config.MySQLSQLKeyword;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExtensionInstaller;
@@ -23,5 +28,9 @@ public final class MySqlExtensions {
 
     public static void configureMappings(QueryConfiguration configuration) {
         configuration.applyColumnValueSQLConverter(new MySqlJsonColumnConverter());
+    }
+
+    public static void configureTypeHandlers(JdbcTypeHandlerManager handlers) {
+        handlers.appendHandler(BigInteger.class, new ExactBigIntegerTypeHandler(), false);
     }
 }

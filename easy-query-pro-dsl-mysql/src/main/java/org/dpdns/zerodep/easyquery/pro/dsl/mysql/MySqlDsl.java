@@ -7,7 +7,10 @@ import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.ProxyEntity;
 import com.easy.query.core.proxy.extension.functions.type.BooleanTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
+import com.easy.query.core.proxy.extension.functions.type.NumberTypeExpression;
+import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
+import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.AbstractJsonExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExpressionScope;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonInput;
@@ -25,12 +28,20 @@ public final class MySqlDsl {
 
     private MySqlDsl(ProxyEntity<?, ?> entity) {
         scope = new ExpressionScope(entity);
-        MySqlTypes.json().requireDialect(scope.dialect());
+        if (scope.dialect() != SqlDialect.MYSQL) throw new IllegalArgumentException("MySqlDsl requires MySQL");
         portable = ProDsl.of(entity);
     }
 
     public static MySqlDsl of(ProxyEntity<?, ?> entity) {
         return new MySqlDsl(entity);
+    }
+
+    public <N extends Number> NumberTypeExpression<N> value(N value, MySqlTypes.Unsigned<N> type) {
+        Objects.requireNonNull(type, "type");
+        N checked = type.prepareValue(value);
+        // The checked parameter fits its declared storage width; native UNSIGNED CAST itself is always 64-bit.
+        return new NumberTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
+                factory -> scope.function(factory.anySQLFunction("CAST({0} AS UNSIGNED)", args -> args.value(checked)), AggregationType.UNKNOWN, false), type.javaType());
     }
 
     public <T> MySqlJsonExpression<T> view(PropTypeColumn<T> source, MySqlTypes.Json type) {

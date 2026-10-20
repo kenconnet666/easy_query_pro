@@ -105,6 +105,14 @@ class DslCompilationTest {
         compile(false, "PgSqlDsl.of(p).value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()).plus(p.amount());");
     }
 
+    @Test
+    void unsignedStorageWidthsDoNotPretendToBeNarrowNativeCastTargets() throws IOException {
+        compile(true, "NumberTypeExpression<java.math.BigInteger> n = d.nativeCast(p.id(), MySqlTypes.unsignedBigint()); NumberTypeExpression<Long> small = MySqlDsl.of(p).value(4294967295L, MySqlTypes.unsignedInt());");
+        compile(false, "d.nativeCast(p.id(), MySqlTypes.unsignedInt());");
+        compile(false, "MySqlDsl.of(p).value(256, MySqlTypes.unsignedTinyint());");
+        compile(false, "NumberTypeExpression<Long> n = d.value(java.math.BigInteger.ONE, MySqlTypes.unsignedBigint());");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
