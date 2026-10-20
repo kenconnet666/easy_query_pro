@@ -4,7 +4,7 @@
 
 通用 API、数据库类型 DSL、查询级方言与底层适配的五层划分，以及三库完整类型/操作清单，见 [DSL 设计](dsl-design.md)。
 
-## 当前工程
+## Java 工程结构
 
 ```text
 easy_query_pro/
@@ -15,12 +15,14 @@ easy_query_pro/
   easy-query-pro-dsl-mysql/
   easy-query-pro-dsl-pgsql/
   integration-tests/
+  consumer-tests/
+  examples/
   infra/
   tools/
   docs/
 ```
 
-HANA 底层已经开始实现，其他生产模块尚处于接口定型前。以下是完整实现的职责分配，不代表功能已完成；实时状态见 [执行记录](execution.md)。
+五个生产模块已有实现与定向验收，职责与依赖如下。当前支持范围和仍开放的边界见 [兼容与迁移](compatibility.md)，具体证据见 [执行记录](execution.md)。
 
 | 模块 | 允许的主要生产依赖 | 完整职责 |
 | --- | --- | --- |
@@ -30,6 +32,7 @@ HANA 底层已经开始实现，其他生产模块尚处于接口定型前。以
 | `easy-query-pro-dsl-mysql` | 通用 DSL、上游 `sql-mysql` | 通用新增的 MySQL 翻译，以及原生类型/JSON/时长、全文与 RANGE，复用后端 |
 | `easy-query-pro-dsl-pgsql` | 通用 DSL、上游 `sql-pgsql` | 通用新增的 PG 翻译，以及 JSONB/数组/interval/检索类型、全文与 RANGE，复用后端 |
 | `integration-tests` | 各模块和相应驱动，均按测试用途引用 | 编译、SQL、真实数据库、组合、并发、迁移和产物消费验证，不发布 |
+| `consumer-tests` | 五个生产模块与 Maven Invoker，仅验证用途 | 隔离仓库、独立 Java/Spring/APT/附加工件消费者及错误依赖负例，不发布 |
 
 调用方向保持为：业务调用 → 原有 EasyQuery 或显式增强 DSL → 上游表达式/运行时协议 → 当前数据库翻译与绑定 → DataSource/JDBC。增强模块不得建立平行执行器或反向要求上游依赖增强包。
 

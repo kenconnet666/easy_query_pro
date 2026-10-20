@@ -1,5 +1,7 @@
 # Java 17 独立消费者
 
+附加源码与 API 文档的解析检查通过 `-Pconsumers,artifacts` 启用，见 [Java 产物](../../docs/artifacts.md)。默认数据库消费者继续只运行自身的二进制/APT/实库契约。
+
 这个工程没有本仓库 parent，也不引用其他模块的源码或 integration-tests。它明确选择三种数据库的增强包、JDBC 驱动和 HikariCP，方便对照安装位置；实际应用可以只保留使用的数据库分支与依赖。
 
 - `Clients` 展示“数据库配置 → 服务扩展 → 映射/handler → 首次实体 metadata”的顺序。MySQL/PG 的查询作用域显式安装，不覆盖没有采用该能力的应用工厂。

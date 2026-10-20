@@ -11,6 +11,7 @@
         <easyquerypro.version>1.0-SNAPSHOT</easyquerypro.version>
         <easyquery.version>3.2.17</easyquery.version>
         <consumer.database>none</consumer.database>
+        <consumer.classifiers>false</consumer.classifiers>
     </properties>
     <dependencies>
         <!-- This combined example deliberately selects all three backends. Applications can keep only one. -->
@@ -122,6 +123,7 @@
                     <argLine>-Xmx256m -Dfile.encoding=UTF-8</argLine>
                     <systemPropertyVariables>
                         <consumer.database>${consumer.database}</consumer.database>
+                        <consumer.classifiers>${consumer.classifiers}</consumer.classifiers>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
@@ -132,4 +134,53 @@
             </plugin>
         </plugins>
     </build>
+    <profiles>
+        <profile>
+            <id>verify-classifiers</id>
+            <activation>
+                <property>
+                    <name>consumer.classifiers</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <version>3.8.1</version>
+                        <configuration>
+                            <includeGroupIds>org.dpdns.zerodep.easy_query_pro</includeGroupIds>
+                            <includeScope>compile</includeScope>
+                            <type>jar</type>
+                            <failOnMissingClassifierArtifact>true</failOnMissingClassifierArtifact>
+                            <outputDirectory>${project.build.directory}/classifier-artifacts</outputDirectory>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>resolve-library-sources</id>
+                                <phase>process-test-resources</phase>
+                                <goals>
+                                    <goal>copy-dependencies</goal>
+                                </goals>
+                                <configuration>
+                                    <classifier>sources</classifier>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>resolve-library-javadocs</id>
+                                <phase>process-test-resources</phase>
+                                <goals>
+                                    <goal>copy-dependencies</goal>
+                                </goals>
+                                <configuration>
+                                    <classifier>javadoc</classifier>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

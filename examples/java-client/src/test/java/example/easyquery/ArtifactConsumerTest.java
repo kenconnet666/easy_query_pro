@@ -13,6 +13,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlTypes;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgInterval;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
@@ -21,15 +22,19 @@ import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.zip.ZipFile;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class ArtifactConsumerTest {
+    private static final List<Class<?>> LIBRARIES = List.of(ProDsl.class, HanaDatabaseConfiguration.class, HanaDsl.class, MySqlDsl.class, PgSqlDsl.class);
+
     @Test
     void librariesComeFromJarsAndTheConsumerGeneratesItsOwnProxy() throws Exception {
-        for (Class<?> type : List.of(ProDsl.class, HanaDatabaseConfiguration.class, HanaDsl.class, MySqlDsl.class, PgSqlDsl.class)) {
+        for (Class<?> type : LIBRARIES) {
             var location = Path.of(type.getProtectionDomain().getCodeSource().getLocation().toURI());
             assertTrue(location.getFileName().toString().endsWith(".jar"), () -> type.getName() + " came from " + location);
             assertTrue(Files.isRegularFile(location), location.toString());
@@ -37,6 +42,35 @@ class ArtifactConsumerTest {
         assertTrue(Files.isRegularFile(Path.of("target/generated-sources/annotations/example/easyquery/proxy/ProductProxy.java")));
         assertEquals(Product.class, ProductProxy.createTable().getEntityClass());
         assertThrows(ClassNotFoundException.class, () -> Class.forName("org.dpdns.zerodep.easyquery.pro.test.TestClients"));
+    }
+
+    @Test
+    @EnabledIfSystemProperty(named = "consumer.classifiers", matches = "true")
+    void sourcesAndJavadocsResolveAsRealDependencyClassifiers() throws Exception {
+        try (var files = Files.list(Path.of("target/classifier-artifacts"))) {
+            assertEquals(10L, files.filter(file -> file.toString().endsWith(".jar")).count());
+        }
+        for (Class<?> type : LIBRARIES) {
+            var binary = Path.of(type.getProtectionDomain().getCodeSource().getLocation().toURI()).getFileName().toString();
+            String base = binary.substring(0, binary.length() - ".jar".length());
+            String entry = type.getName().replace('.', '/');
+            try (var sources = new ZipFile(Path.of("target/classifier-artifacts", base + "-sources.jar").toFile());
+                 var javadoc = new ZipFile(Path.of("target/classifier-artifacts", base + "-javadoc.jar").toFile())) {
+                assertNotNull(sources.getEntry(entry + ".java"), type.getName());
+                assertFalse(sources.stream().anyMatch(file -> file.getName().endsWith(".class")));
+                assertNotNull(javadoc.getEntry("index.html"));
+                assertNotNull(javadoc.getEntry(entry + ".html"), type.getName());
+                if (type == ProDsl.class) {
+                    try (var source = sources.getInputStream(sources.getEntry(entry + ".java"));
+                         var html = javadoc.getInputStream(javadoc.getEntry(entry + ".html"))) {
+                        assertTrue(new String(source.readAllBytes(), StandardCharsets.UTF_8).contains("共同增强入口"));
+                        String documentation = new String(html.readAllBytes(), StandardCharsets.UTF_8);
+                        assertTrue(documentation.contains("共同增强入口"));
+                        assertTrue(documentation.contains("denseRank"), "Current public methods must be present in API documentation");
+                    }
+                }
+            }
+        }
     }
 
     @ParameterizedTest

@@ -13,6 +13,8 @@
     <properties>
         <maven.install.skip>true</maven.install.skip>
         <maven.deploy.skip>true</maven.deploy.skip>
+        <maven.source.skip>true</maven.source.skip>
+        <maven.javadoc.skip>true</maven.javadoc.skip>
         <consumer.database>none</consumer.database>
     </properties>
     <dependencies>
@@ -52,6 +54,7 @@
                     <profiles>
                         <!-- The outer reactor selector has no meaning in independent consumer POMs. -->
                         <profile>!consumers</profile>
+                        <profile>!artifacts</profile>
                     </profiles>
                     <goals>
                         <goal>clean</goal>
@@ -60,6 +63,7 @@
                     <properties>
                         <easyquerypro.version>${project.version}</easyquerypro.version>
                         <consumer.database>${consumer.database}</consumer.database>
+                        <consumer.classifiers>${consumer.classifiers}</consumer.classifiers>
                     </properties>
                 </configuration>
                 <executions>
@@ -74,4 +78,48 @@
             </plugin>
         </plugins>
     </build>
+    <profiles>
+        <profile>
+            <id>artifacts</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-invoker-plugin</artifactId>
+                        <configuration>
+                            <!-- Reactor dependencies contribute their main JAR; request their attached classifiers explicitly. -->
+                            <extraArtifacts>
+                                <extraArtifact>${project.groupId}:easy-query-pro-hana:${project.version}:jar:sources
+                                </extraArtifact>
+                                <extraArtifact>${project.groupId}:easy-query-pro-hana:${project.version}:jar:javadoc
+                                </extraArtifact>
+                                <extraArtifact>${project.groupId}:easy-query-pro-dsl:${project.version}:jar:sources
+                                </extraArtifact>
+                                <extraArtifact>${project.groupId}:easy-query-pro-dsl:${project.version}:jar:javadoc
+                                </extraArtifact>
+                                <extraArtifact>
+                                    ${project.groupId}:easy-query-pro-dsl-hana:${project.version}:jar:sources
+                                </extraArtifact>
+                                <extraArtifact>
+                                    ${project.groupId}:easy-query-pro-dsl-hana:${project.version}:jar:javadoc
+                                </extraArtifact>
+                                <extraArtifact>
+                                    ${project.groupId}:easy-query-pro-dsl-mysql:${project.version}:jar:sources
+                                </extraArtifact>
+                                <extraArtifact>
+                                    ${project.groupId}:easy-query-pro-dsl-mysql:${project.version}:jar:javadoc
+                                </extraArtifact>
+                                <extraArtifact>
+                                    ${project.groupId}:easy-query-pro-dsl-pgsql:${project.version}:jar:sources
+                                </extraArtifact>
+                                <extraArtifact>
+                                    ${project.groupId}:easy-query-pro-dsl-pgsql:${project.version}:jar:javadoc
+                                </extraArtifact>
+                            </extraArtifacts>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

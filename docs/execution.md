@@ -795,3 +795,17 @@ HDI 生命周期继续使用同一批已部署工件，再通过 GRANT_CONTAINER
 只整理测试公共设施：HanaTestDatabase.databaseCause 负责穿过上游 errorCode=0 包装，Search/Hierarchy 共用真实非零 HANA 诊断提取；生产源码未改动。指定 JBR 17 的定向 verify 先通过 2 个基础离线与 4 个 Search/Hierarchy 实库用例，随后再通过 2 个基础离线与完整 HanaHdiIT 生命周期 1 项。唯一实库用例共 5 项，HDI 最终运行在 2026-10-21 06:52:06 完成。
 
 IDEA 格式与构建通过，MCP 确认本轮全文/层级 schema、HDI 容器 schema 和三类测试用户全部为零；两份根诊断日志记录后清理。前一资源提交 `53bda76a37a4c3c23550d6a1ac93701a45ebd297` 的 [CI 39510512104](https://github.com/kenconnet666/easy_query_pro/actions/runs/39510512104) 为 cancelled，按真实状态保留，不阻塞 R01 产物与文档工作。
+
+## 源码/API 文档 classifier、兼容索引与 HANA CI 排队
+
+根 POM 新增显式 artifacts profile，五个生产模块在 package 阶段附加 sources/javadoc，默认本地 verify 不增加文档构建。通过 Context7 和 Maven 官方文档核对 Source 3.4.0、Javadoc 3.12.0、Invoker extraArtifacts 与 Dependency copy-dependencies；使用稳定插件，Javadoc 固定 JDK 17、UTF-8、384 MiB。doclint 仅排除机械 missing 标签，结构/引用错误继续失败。首次生成实际发现 PgSearchSpec 注释中未转义的 &，改用 code 标记，没有关闭检查。
+
+独立消费者先真实失败在缺失 sources classifier：Invoker 默认暂存 reactor 依赖的主 JAR，不会自动带齐其附加工件。随后在 consumer-tests artifacts profile 通过官方 extraArtifacts 指定十个 classifier；Java 消费者按 Maven dependency classifier 解析，缺失即失败，JUnit 核对十个包、源码/公开页面、中文和当前 denseRank API。消费者不读取主仓库源码或 target/classes。
+
+指定 JBR 17 的 `mvnw.cmd --batch-mode clean verify -Pconsumers,artifacts -pl consumer-tests -am` 完整通过四个独立构建：Java 的 5 个离线/产物检查、Spring 的 7 个离线/生命周期检查，以及两个核对原因的错误依赖构建；两个实库检查在默认 none 模式下明确跳过。本轮在 IDEA 格式化后又执行一次定向 Java 消费者 verify，确认最终 POM 已重新暂存。最终 180 个源码条目逐字节匹配工作树，15 个暂存 JAR 和 6 个生产/父 POM 匹配本次产物；独立进程的实际编译以 Invoker 为准。
+
+建立 artifacts.md 与 compatibility.md，按全部 28 个必交付 ID 链接实现/验收说明，补版本、安装迁移和诊断入口，并修正 architecture.md 仍称其他模块处于接口定型前的旧状态。H03 零列、H08 直接 distinct 字符串聚合、完整类型/复杂迁移/组合和重复性能测量仍明确开放，没有把文档或 classifier 通过当成整个蓝图完成。
+
+Windows/Linux consumer job 现在生成并上传二进制/源码/Javadoc/POM。针对连续提交反复取消 HANA 长验证的问题，按 GitHub 官方 job concurrency 默认单 pending 规则删除 workflow 级取消：快任务按 ref/矩阵取消旧；HANA Docker 保留 active、待测只留最新，外部 hana-test 按环境串行。没有开启 queue:max，没有更改12 GiB容器限制或HANA Node步骤；该配置不追溯旧workflow，也不把排队/取消视为通过。
+
+IDEA 构建、actionlint 与 diff 检查通过，未运行无关实库回归。本轮自有临时日志记录后清理，生成产物、API HTML 与标准消费者报告保留。权限提交 `d6fc08f4dc273ed592be596012820181ac1159f4` 自己的 [CI 39511708064](https://github.com/kenconnet666/easy_query_pro/actions/runs/39511708064) 为 cancelled；随后重新核实包含权限/资源批的后继 `bbfcd9e8ffed2c9c534ab5ae2dc53e00d57824f0` [Java CI 39513325131](https://github.com/kenconnet666/easy_query_pro/actions/runs/39513325131) 已成功。该基线不包含当前 R01 改动，本候选的完整 CI 和新排队行为仍需推送后验收。

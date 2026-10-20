@@ -61,7 +61,7 @@ public final class PgSearchSpec {
     }
 
     /**
-     * 普通文本的剩余词素以 AND 组合；不会把输入中的 &、| 或前缀标签当 tsquery 运算符。
+     * 普通文本的剩余词素以 AND 组合；不会把输入中的 {@code &}、{@code |} 或前缀标签当 tsquery 运算符。
      */
     public static PgSearchSpec plain(String configuration, String searchText, SQLColumn<?, PgTsVector> vector) {
         return text(configuration, searchText, vector, "plainto_tsquery");

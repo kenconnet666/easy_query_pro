@@ -13,13 +13,12 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
     name: Java 17 / ${{ matrix.os }}
+    concurrency:
+      group: ci-${{ github.workflow }}-build-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -48,6 +47,9 @@ jobs:
 
   consumers:
     name: Artifact consumer / ${{ matrix.os }}
+    concurrency:
+      group: ci-${{ github.workflow }}-consumers-${{ github.ref }}-${{ matrix.os }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -63,13 +65,16 @@ jobs:
           cache: maven
       - name: Build isolated JAR and APT consumers
         shell: bash
-        run: ./mvnw --batch-mode verify -Pconsumers -pl consumer-tests -am
+        run: ./mvnw --batch-mode clean verify -Pconsumers,artifacts -pl consumer-tests -am
       - name: Preserve independent build evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: artifact-consumer-${{ matrix.os }}
           path: |
+            pom.xml
+            easy-query-pro-*/pom.xml
+            easy-query-pro-*/target/*.jar
             consumer-tests/target/invoker-reports/
             consumer-tests/target/projects/**/build.log
             consumer-tests/target/projects/**/target/surefire-reports/
@@ -77,6 +82,9 @@ jobs:
 
   databases:
     name: Database / ${{ matrix.database }}
+    concurrency:
+      group: ci-${{ github.workflow }}-database-${{ github.ref }}-${{ matrix.database }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -144,6 +152,10 @@ jobs:
 
   hana-docker:
     name: HANA Docker / adapter
+    concurrency:
+      # Keep the active HANA run; the default single pending slot retains the newest candidate.
+      group: ci-${{ github.workflow }}-hana-docker-${{ github.ref }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -216,6 +228,10 @@ jobs:
 
   hana:
     name: Optional external HANA
+    concurrency:
+      # All refs share the same external environment.
+      group: hana-external-hana-test
+      cancel-in-progress: false
     if: github.event_name == 'workflow_dispatch' && inputs.hana
     runs-on: ubuntu-latest
     timeout-minutes: 10
