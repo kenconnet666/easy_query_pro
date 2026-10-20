@@ -131,3 +131,13 @@ HANA 首次实测返回 9 位小数秒，旧 7 位 parser 红测失败；读取�
 在 renderer 的实际 append 入口检查，覆盖 CTE、HANA 布尔投影、MySQL NULLS 排序和重复参数扩展。INSERT 原组超限才沿连续区间二分，固定 RETURNING 参数也参与每条预算；单行超限让整份计划在 acquire 前失败。其他查询不自动拆分。
 
 88 个单元与类型用例通过，含真实构造 65,535 绑定成功／65,536 绑定提前拒绝，后部大行失败时 acquire=0、变量绑定次数、编号复位、固定RETURNING开销及不泄露参数值。三库低预算真实写入验证五行按序落库与事务提交，PG每条RETURNING额外参数、MySQL多行拆分和HANA单行路径均通过；测试表finally删除。报文字节限制仍由驱动/服务器和业务codec处理，未做不可靠大小估算。
+
+## 2026-10-21：清洁 tarball 消费者
+
+ca8e50c7a1759a4e974dc93c853c8a1b4fc8c39c 的 [TS CI 39497347207](https://github.com/kenconnet666/easy_query_pro/actions/runs/39497347207) 成功；其 Java CI 被后续提交取消。继承其代码的公共映射修复 731cc9561355218c1c277d35780cdaace34c2b33 的 [Java/三库 CI 39498305188](https://github.com/kenconnet666/easy_query_pro/actions/runs/39498305188) 成功，包含已增加的独立 Java 消费者与 HANA Node 检查。
+
+新增 pnpm test:consumer，在独立临时目录安装真实 tarball；关闭 peer 自动安装、安装脚本和外部 pnpm hooks。检查核心及三驱动导出、十次 LEFT JOIN／四层 CTE、类型负例和运行时 SQL/decoder。编译器实际文件清单只允许消费者、编译器标准库与安装包 dist，防止开发源码或环境类型依赖掩盖问题。
+
+修正打包清单，包含 declaration map 引用的 src 源文件；仍从 dist 声明和运行时代码消费。遍历所有声明 map 验证目标存在且位于同包。首次工具运行分别遇到 TS 7 未开放 bin 子路径和 ESM-only 包不能用 require.resolve 解析，改用 package.json bin 元数据与真正 import.meta.resolve；没有通过开放内部模块或添加 CommonJS 导出规避问题。TS 7 标准库来自锁定平台包，文件边界也单独核对。
+
+本地清洁消费者成功，无数据库 peer/@types/node/@types/pg；观测 81 个编译文件、16,973 次类型实例化、约 17 MiB 编译器内存。临时安装/压缩包/输出在 finally 核对路径后清理，共享缓存保留。四个 Node/OS CI 任务追加同一流程与日志，真实数据库作业保持独立；候选不因本地单次成功就宣称新 CI 已通过。

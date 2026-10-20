@@ -141,4 +141,6 @@ HANA 示例：使用 `hana.createPool({ serverNode, uid, pwd, emptyTimestampIsNu
 
 在此目录运行 `pwsh -File tools/test-local.ps1` 可读取已有 Debian Docker 测试实例的进程内凭据并运行三库契约；不打印密码或写入环境文件。可用 `-Database hana` 只验证改动相关的数据库。普通 pnpm test 不要求数据库。
 
+`pnpm test:consumer` 验证真实 tarball 的离线安装、公开声明和运行时入口，包含十层 JOIN／四层 CTE、类型负例与源码导航目标检查。详见 [独立消费者](docs/package-consumer.md)。
+
 独立 CI 将 Node 22/24 与 Windows/Linux 检查并行，MySQL/PostgreSQL 分别使用已有 Compose 的 2 GiB/1 GiB 限制。HANA Node 契约复用 Java CI 的 12 GiB HANA 作业与临时实例，不再启动第二个大容器。长测试交 CI；本地只做改动相关的必要验证。

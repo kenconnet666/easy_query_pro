@@ -37,9 +37,9 @@ jobs:
           cache_dependency_path: ts-orm/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
-      - run: pnpm build
       - run: pnpm typecheck
       - run: pnpm test 2>&1 | tee unit-tests.log
+      - run: pnpm test:consumer 2>&1 | tee consumer-tests.log
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
@@ -47,6 +47,7 @@ jobs:
           path: |
             ts-orm/dist/
             ts-orm/unit-tests.log
+            ts-orm/consumer-tests.log
           retention-days: 7
 
   databases:
