@@ -41,8 +41,9 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
         } catch (SQLException | RuntimeException | Error failure) {
             if (result != null) try {
                 result.close();
-            } catch (SQLException cleanup) {
-                failure.addSuppressed(cleanup);
+            } catch (SQLException | RuntimeException | Error cleanup) {
+                // 清理只能补充诊断，不能覆盖包装失败；驱动也可能再次抛出同一异常实例。
+                if (cleanup != failure) failure.addSuppressed(cleanup);
             }
             throw failure;
         }

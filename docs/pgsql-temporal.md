@@ -25,7 +25,7 @@
 
 因此仅在分片结果进入 merger 之前，将真正的无时区 timestamp 保存为 LocalDateTime。普通查询继续保留 pgJDBC 无类型 getObject 返回 Timestamp 的契约，避免破坏读取该值的自定义 handler；默认 LocalDateTime handler 直接调用 typed getter 即可保留字段。
 
-包装保留 JDBC 分片标识，直接使用 StreamResultSet 已有的 typed getObject，不需要捕获 Statement 或复制 ExecutorContext。参数、Statement 配置、监听 trace、游标移动与关闭继续属于原执行链；包装失败时会关闭已经取得的结果，并保留原异常及清理异常。
+包装保留 JDBC 分片标识，直接使用 StreamResultSet 已有的 typed getObject，不需要捕获 Statement 或复制 ExecutorContext。参数、Statement 配置、监听 trace、游标移动与关闭继续属于原执行链；包装失败时会关闭已经取得的结果，并保留原异常及传播到包装层的清理异常。清理抛出 RuntimeException/Error 也不会覆盖原始失败，同一异常实例不会被重复抑制；上游结果集自行记录的 checked 关闭异常仍遵循其既有行为。
 
 分片内部的无时区时间规范值是 LocalDateTime，自定义分片处理器可用 typed getObject 获取它；这与普通查询中直接读取 pgJDBC 无类型 Timestamp 的契约不同。
 

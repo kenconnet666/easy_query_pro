@@ -613,3 +613,11 @@ PgSqlDsl.dateBin 只接受 LocalDateTime 来源、正且精确到微秒的 Durat
 指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana,mysql,postgres -Dtest=PgDateBinDslTest,DslCompilationTest#postgresFixedTimeBinsRequireLocalTimestampsAndDurations -Dit.test=PostgresDateBinIT,PostgresReportingIT#calendarMonthsKeepEmptyBucketsBeforeLagAndPaging,MySqlReportingIT#calendarMonthsKeepEmptyBucketsBeforeLagAndPaging,HanaReportingIT#calendarMonthsKeepEmptyBucketsBeforeLagAndPaging -Dsurefire.failIfNoSpecifiedTests=false`，5 个离线/消费者检查与 7 个实库用例通过。PG prepareThreshold 0/-1 覆盖负向归桶、精确边界、2 微秒步长、NULL、纽约 JVM DST 字段及东京会话、CTE 分组与分页；三库补月各一用例包含非空与空事实两条完整查询链。
 
 只读复审未发现必修问题，确认参数保持绑定、日期类型边界和补齐后窗口语义。IDEA 格式与构建通过。本批只使用少量常量关系，没有创建临时表/schema/容器；JVM 时区在 finally 恢复。自有 `date-bin-calendar-verification.log` 记录证据后清理，标准测试报告保留。文档见 [时间分桶与缺月报表](reporting-time-series.md)；当前候选提交完整 CI 仍由后续提交异步验收。
+
+## 结果包装失败与二次清理异常
+
+按主线程复审建议，新增离线 JDBC 故障注入：先令结果元数据读取失败，再令 PreparedStatement.close 抛 RuntimeException 或 Error。通过实际 PG/HANA executor→上游执行器→结果包装链复现四个用例丢失最初 SQLException；另两个同一异常实例的对照用例保持原异常。测试准备阶段补齐假连接的 getDataSourceName，以便原有 SQL 日志路径正常执行，未访问数据库。
+
+两个适配器的失败清理现同时捕获 SQLException/RuntimeException/Error，并在不同实例时附加 suppressed；不改变上游执行和资源所有权，不重试关闭或重复关闭原始 ResultSet。上游自己记录而不向外传播的 checked 关闭异常仍沿原行为，本修复不声称改变上游所有资源异常契约。
+
+指定 JBR 17 执行 `mvnw.cmd --batch-mode test -Dtest=QueryResultCleanupTest -Dsurefire.failIfNoSpecifiedTests=false`，六个故障注入用例通过，分别断言原异常身份、suppressed 及结果/Statement 各关闭一次。IDEA 格式与构建通过，未重复无关实库或完整 CI。前一提交 `d4bcee9bb1949584fdb0ec6d12f08aa14bcff8db` 的 [CI 39474709021](https://github.com/kenconnet666/easy_query_pro/actions/runs/39474709021) 在检查时仍 in_progress，未等待。两份本轮自有诊断日志记录后清理，标准报告保留。
