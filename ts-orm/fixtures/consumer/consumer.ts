@@ -3,6 +3,7 @@ import {
   column,
   createDatabase,
   Expression,
+  grouping,
   jsonNull,
   postgresDialect,
   postgresTypes,
@@ -159,3 +160,20 @@ const dispersion = db
   .compile();
 if (dispersion.decode({ _eq_0: "2.5e-9" }).variance !== 2.5e-9)
   throw new Error("The packed consumer lost the dispersion result domain");
+
+const rollup = db
+  .from({ a: accounts })
+  .rollupBy(({ a }) => ({ name: a.name }))
+  .select((_, __, keys) => ({
+    name: keys.name,
+    total: grouping(keys.name),
+    count: aggregate.count(),
+  }));
+function rollupDeclaration(row: Awaited<ReturnType<typeof rollup.execute>>[number]) {
+  // @ts-expect-error A subtotal name remains nullable in the installed package declarations.
+  const name: string = row.name;
+  void name;
+}
+void rollupDeclaration;
+if (rollup.compile().decode({ _eq_0: null, _eq_1: 1, _eq_2: "2" }).name !== null)
+  throw new Error("The packed consumer lost its ROLLUP NULL contract");

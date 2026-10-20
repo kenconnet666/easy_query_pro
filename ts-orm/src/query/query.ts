@@ -41,6 +41,13 @@ type SourceExpressions<S> =
 type NullableColumns<C> = {
   [P in keyof C]: C[P] extends Expression<infer T, infer K> ? Expression<T | null, K> : never;
 };
+type NullableScope<S extends Scope> = { [Alias in keyof S]: NullableColumns<S[Alias]> };
+
+function nullableExpressions<C extends Selection>(columns: C): NullableColumns<C> {
+  return Object.freeze(
+    Object.fromEntries(Object.entries(columns).map(([key, value]) => [key, value.nullable()])),
+  ) as NullableColumns<C>;
+}
 export type BoundSources<R extends Sources, Nullable extends boolean = false> = {
   [P in keyof R]: Nullable extends true
     ? NullableColumns<SourceExpressions<R[P]>>
@@ -137,6 +144,7 @@ export class Query<
         projection: Object.freeze([]),
         ordering: Object.freeze([]),
         grouping: Object.freeze([]),
+        groupingMode: "plain",
         offset: 0,
         distinct: false,
       }),
@@ -174,8 +182,36 @@ export class Query<
       this.scope,
       this.extensions,
       this.session,
-      Object.freeze({ ...this.state, grouping: Object.freeze(slots.map((slot) => slot.node)) }),
+      Object.freeze({
+        ...this.state,
+        grouping: Object.freeze(slots.map((slot) => slot.node)),
+        groupingMode: "plain",
+      }),
       selected,
+    );
+  }
+
+  /**
+   * 小计行的键可能新增 NULL；作用域和命名键都以可空类型返回，原表定义不变。
+   * 清除先前投影并要求重新 select，不能让旧的非空结果类型沿用到汇总行。
+   */
+  rollupBy<const K extends Selection>(
+    keys: (scope: S, extensions: E) => K & NoSymbolKeys<K>,
+  ): Query<NullableScope<S>, never, E, NullableColumns<K>> {
+    const grouped = this.groupBy(keys);
+    if (grouped.state.grouping.some((key) => key.kind !== "column"))
+      throw new TypeError("ROLLUP keys require projected columns; derive computed keys first");
+    const scope = Object.freeze(
+      Object.fromEntries(
+        Object.entries(this.scope).map(([alias, columns]) => [alias, nullableExpressions(columns)]),
+      ),
+    ) as NullableScope<S>;
+    return new Query(
+      scope,
+      this.extensions,
+      this.session,
+      Object.freeze({ ...grouped.state, groupingMode: "rollup", projection: Object.freeze([]) }),
+      nullableExpressions(grouped.groupKeys),
     );
   }
 
@@ -235,11 +271,7 @@ export class Query<
     if (left) {
       // ON 使用来源原类型，外连接完成后才使右侧列可空；原表和其他关系引用完全不变。
       for (const alias of Object.keys(bound.scope)) {
-        finalScope[alias] = Object.freeze(
-          Object.fromEntries(
-            Object.entries(bound.scope[alias]!).map(([key, value]) => [key, value.nullable()]),
-          ),
-        );
+        finalScope[alias] = nullableExpressions(bound.scope[alias]!);
       }
     }
     return new Query(

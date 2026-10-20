@@ -125,6 +125,8 @@ PostgreSQL 支持 `.returning(entry => ({ id: entry.id, name: entry.name }))`，
 
 分组、HAVING、条件聚合、CASE/COALESCE/NULLIF、ROWS 窗口和多层汇总的用法见 [报表查询](docs/reporting.md)。COUNT 与排名返回 bigint，MIN/MAX 和值窗口保留来源 codec 并允许 NULL，SUM 返回精确 decimal 字符串并检查共同值域。命名分组键在 select/having/orderBy 的第三个回调参数中保留具体类型。
 
+`rollupBy(keys)` 提供分级小计，键和 scope 自动变为可空，`grouping(key)` 区分真实 NULL 与汇总 NULL。三库共同空输入约定、派生计算键和旧投影限制见 [ROLLUP 报表](docs/rollup.md)。
+
 INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字符串，precision 为 1–38，scale 为 0–min(precision,30)。参数和结果都校验该范围；有效数字之外的尾随零不改变值域。NULL 在业务 codec 之前处理；nullable().map() 的静态结果仍包含 null。undefined 不等于 SQL NULL。
 
 `types.float64()` 用于有限双精度测量值，`aggregate.avgApprox()` 及总体/样本方差、标准差明确在近似域计算，复用条件/窗口/CTE。精确 SUM 不隐式接收浮点值；数值转换、DISTINCT 次序和 PG 输出精度前置条件见 [近似统计](docs/statistics.md)。

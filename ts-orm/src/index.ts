@@ -62,6 +62,7 @@ export {
 export type { CompiledWrite } from "./compiler/write.js";
 export { ParameterLimitError } from "./compiler/expression.js";
 export { aggregate, AggregateExpression } from "./expression/aggregate.js";
+export { grouping } from "./expression/grouping.js";
 export { caseWhen, coalesce, nullIf, nativeCast } from "./expression/control.js";
 export {
   windowSpec,

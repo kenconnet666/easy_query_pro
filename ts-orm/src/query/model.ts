@@ -55,6 +55,7 @@ export interface SelectNode {
   readonly projection: readonly ProjectionSlot[];
   readonly where?: Node;
   readonly grouping: readonly Node[];
+  readonly groupingMode: "plain" | "rollup";
   readonly having?: Node;
   readonly ordering: readonly Order[];
   readonly limit?: number;

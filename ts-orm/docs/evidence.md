@@ -205,3 +205,15 @@ float64 字段在三库严格往返 1.2345678901234567、Number.MAX_VALUE、最�
 沿用随机统计表与自有连接池，finally 正常清理；没有改数据库精度设置、没有用 Java 历史测试替代 TS 验证。更完整 CI 随候选提交异步执行。
 
 最终 123 个单元用例、类型检查、格式与清洁消费者通过。额外验证泛型 helper 透传 DISTINCT 能力：AVG 保持可用，统计经 helper/filter 后仍不可用。打包消费者观测 83 文件、16,966 类型实例化、约 18 MiB；一次 Windows 文件写入错误在重新读取确认文件完整后重试格式化即恢复，最终格式检查保持开启并通过。
+
+## 2026-10-21：ROLLUP 与汇总 NULL
+
+统计提交 bbfcd9e8ffed2c9c534ab5ae2dc53e00d57824f0 的 [TS CI 39513325063](https://github.com/kenconnet666/easy_query_pro/actions/runs/39513325063) 与 [Java/三库 CI 39513325131](https://github.com/kenconnet666/easy_query_pro/actions/runs/39513325131) 均成功；其中已覆盖 Java 权限和资源批，R01 独立产物候选另外提交验收。
+
+rollupBy 共用现有分组计划，scope/groupKeys 保留 codec 并可空化，清旧 projection 后重新 select。GROUPING 以专门节点表示，按当前 SQL scope 的键验证；普通 groupBy 复位模式，分组标记经过 CTE 后可继续精确 SUM。共同键范围先选择投影列，计算键用已有派生关系表达。
+
+三库原生空表与过滤后空集探针分别确认 PG 一行、MySQL/HANA 零行；沿 Java 已有合同只在 PG 增加 COUNT(*)>0，并整体括号化原 HAVING。五行 fixture 得七个明细/小计/总计，真实 NULL 城市与 subtotal NULL 通过0/1区分，总额42、事实5，业务国家对象 map 不接收总计NULL；NULL排序、HAVING、CTE、count/page、coalesce和派生UPPER键全通过。
+
+审查复现两个遗漏：nullable零参数call/CAST与旧非空键的coalesce掩盖NULL，以及renderer临时生成GROUPING绕过WHERE阶段检查。新增负例先在旧候选失败，再尊重node输出nullable信息、约束renderer局部GROUPING依赖边后通过。原非空列/UPPER捕获、不可见键、错误位置、SQL模式残留也有负例。随机表与自有池正常清理。
+
+最终 131 单元用例、类型与格式检查通过，真实 tarball 增加可空小计键声明负例和NULL解码；消费者观测84文件、17,625类型实例化、约18MiB内存，临时目录清理。提交前核实 R01 的 1471d05df428eea1a4f97cf80cd88aea7d25cc9f [Java CI 39515321177](https://github.com/kenconnet666/easy_query_pro/actions/runs/39515321177) 已成功；当前ROLLUP候选仍由自己的矩阵验收。

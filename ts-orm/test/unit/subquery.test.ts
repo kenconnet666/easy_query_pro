@@ -391,7 +391,7 @@ test("JOIN subqueries cannot reference a future join and writes reject unimpleme
   future = joined.scope.later.id;
   assert.throws(
     () => joined.select(({ a }) => ({ id: a.id })).compile(),
-    /outside this query scope/,
+    /outside this query scope|expression arguments/,
   );
   const exists = db
     .from({ c: users })

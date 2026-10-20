@@ -109,3 +109,5 @@ ROWS 偏移统一限定在本项目范围 0–2147483647；NTH 的位置从 1 �
 普通和窗口排序都可写 `.asc("first")`、`.desc("last")`。PG/HANA 使用原生 NULLS，MySQL 使用 NULL 标记排序键加原表达式；每次 SQL 出现位置独立绑定。未来 RANGE 的单排序键限制会继续按实际物理键计算。
 
 已有 GROUP BY/HAVING/普通聚合的查询先通过 as()/CTE 形成新的行来源，再施加窗口。同层窗口不允许嵌套，WHERE/HAVING 中也不能隐藏窗口。展示过滤放在窗口结果的外层，才能保留已经计算的累计值、全局总额和上一行；上例明确展示了这个层级。Query.count() 保留窗口和 DISTINCT 的实际输出语义。
+
+国家/地区等分级小计使用 [rollupBy 与 GROUPING](rollup.md)，沿同一分组与结果映射基础实现；任意分组集和 CUBE 仍单独规划。

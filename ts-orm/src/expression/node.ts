@@ -57,6 +57,7 @@ type NodeShape =
     }>
   | Readonly<{ kind: "in"; operand: Node; values: readonly Node[]; negated: boolean }>
   | Readonly<{ kind: "constant"; value: boolean }>
+  | Readonly<{ kind: "grouping"; operand: Node }>
   | Readonly<{
       kind: "subquery";
       mode: "exists" | "scalar";
@@ -135,6 +136,7 @@ export function visitNode(node: Node, visit: (node: Node) => void | boolean): vo
       break;
     case "unary":
     case "cast":
+    case "grouping":
       visitNode(node.operand, visit);
       break;
     case "call":
@@ -191,6 +193,7 @@ export function numericOrigin(node: Node): NumericOrigin {
       return node.numericOrigin ?? "computed";
     case "parameter":
     case "cast":
+    case "grouping":
       return "declared";
     case "case":
       return combineNumericOrigin(numericOrigin(node.whenTrue), numericOrigin(node.whenFalse));

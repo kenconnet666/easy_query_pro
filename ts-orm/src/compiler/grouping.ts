@@ -1,7 +1,7 @@
-import { visitNode, type Node } from "../expression/node.js";
+import { nodeOutputType, visitNode, type Node } from "../expression/node.js";
 import type { SelectNode } from "../query/model.js";
 import { requireRowExpression } from "./expression.js";
-import { freeQueryColumns } from "../query/analysis.js";
+import { freeQueryColumns, sameGroupingKey } from "../query/analysis.js";
 
 function isAggregate(node: Node): boolean {
   return (
@@ -39,17 +39,14 @@ export function validateGrouping(query: SelectNode): void {
         return false;
       }
     });
-  const matchesKey = (node: Node) =>
-    query.grouping.some(
-      (key) =>
-        key === node ||
-        (key.kind === "column" &&
-          node.kind === "column" &&
-          key.relation.id === node.relation.id &&
-          key.name === node.name),
-    );
+  const matchesKey = (node: Node) => query.grouping.some((key) => sameGroupingKey(key, node));
   for (const expression of expressions)
     visitNode(expression, (node) => {
+      if (node.kind === "grouping") {
+        if (query.groupingMode !== "rollup" || !matchesKey(node.operand))
+          throw new TypeError("GROUPING requires a key from this ROLLUP query");
+        return false;
+      }
       if (grouped && isWindow(node))
         throw new TypeError("Apply windows to grouped results through a derived source or CTE");
       if (
@@ -69,4 +66,62 @@ export function validateGrouping(query: SelectNode): void {
           "An ungrouped column appears outside an aggregate; reuse the named group key or add a derived query",
         );
     });
+  if (query.groupingMode === "rollup") {
+    for (const slot of query.projection) {
+      if (!slot.type.acceptsNull && rollupNullable(slot.node, matchesKey))
+        throw new TypeError(
+          "A ROLLUP projection must preserve subtotal NULL; use its nullable scope/group keys or explicit coalesce",
+        );
+    }
+  }
+}
+
+/** 旧 scope 可被闭包重新捕获；不能只修 decoder 后仍把小计键声明为非空值。 */
+function rollupNullable(node: Node, matchesKey: (node: Node) => boolean): boolean {
+  if (matchesKey(node)) return true;
+  if (nodeOutputType(node)?.acceptsNull) return true;
+  switch (node.kind) {
+    case "grouping":
+    case "constant":
+    case "identifier":
+      return false;
+    case "column":
+      return node.type.acceptsNull;
+    case "parameter":
+      return node.value === null;
+    case "aggregate":
+      return node.operator !== "COUNT";
+    case "subquery":
+      return node.mode === "scalar";
+    case "unary":
+      return node.operator === "NOT" && rollupNullable(node.operand, matchesKey);
+    case "cast":
+      return rollupNullable(node.operand, matchesKey);
+    case "nullif":
+      return true;
+    case "coalesce":
+      return rollupNullable(node.left, matchesKey) && rollupNullable(node.right, matchesKey);
+    case "case":
+      return (
+        rollupNullable(node.whenTrue, matchesKey) || rollupNullable(node.whenFalse, matchesKey)
+      );
+    case "binary":
+      return rollupNullable(node.left, matchesKey) || rollupNullable(node.right, matchesKey);
+    case "in":
+      return (
+        rollupNullable(node.operand, matchesKey) ||
+        node.values.some((value) => rollupNullable(value, matchesKey))
+      );
+    case "call":
+      return (
+        node.definition.phase === "row" &&
+        node.arguments.some((value) => rollupNullable(value, matchesKey))
+      );
+    case "fragment":
+      return node.parts.some(
+        (part) => typeof part !== "string" && rollupNullable(part, matchesKey),
+      );
+    case "window":
+      return true;
+  }
 }

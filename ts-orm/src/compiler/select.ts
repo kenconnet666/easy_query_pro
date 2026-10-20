@@ -129,6 +129,7 @@ function renderSelect(query: SelectNode, state: State, declared: CteSet, ancesto
       }
     });
   const scope = relationScope(query, ancestors);
+  if (query.groupingMode === "rollup") state.groupingScopes.set(scope, query.grouping);
   const quote = state.dialect.quote;
   for (const slot of query.projection) {
     requireNativeSupport(slot.type.storage, state.dialect.name);
@@ -167,9 +168,22 @@ function renderSelect(query: SelectNode, state: State, declared: CteSet, ancesto
     requireRowExpression(query.where, "WHERE");
     sql += ` WHERE ${renderNode(query.where, scope, state, "predicate")}`;
   }
-  if (query.grouping.length)
-    sql += " GROUP BY " + query.grouping.map((key) => renderNode(key, scope, state)).join(", ");
-  if (query.having) sql += " HAVING " + renderNode(query.having, scope, state, "predicate");
+  if (query.grouping.length) {
+    const keys = query.grouping.map((key) => renderNode(key, scope, state)).join(", ");
+    sql +=
+      " GROUP BY " +
+      (query.groupingMode === "rollup"
+        ? state.dialect.name === "mysql"
+          ? keys + " WITH ROLLUP"
+          : `ROLLUP (${keys})`
+        : keys);
+  }
+  const omitEmptyTotal = query.groupingMode === "rollup" && state.dialect.name === "postgres";
+  if (query.having || omitEmptyTotal) {
+    const having = query.having ? renderNode(query.having, scope, state, "predicate") : undefined;
+    sql +=
+      " HAVING " + (omitEmptyTotal ? (having ? `(${having}) AND ` : "") + "COUNT(*) > 0" : having);
+  }
   if (query.ordering.length) sql += " ORDER BY " + renderOrders(query.ordering, scope, state);
   return sql + state.dialect.pagination(query.limit, query.offset);
 }

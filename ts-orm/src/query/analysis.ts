@@ -15,6 +15,16 @@ export function queryExpressions(query: SelectNode): readonly Node[] {
 
 type ColumnNode = Extract<Node, { kind: "column" }>;
 
+export function sameGroupingKey(left: Node, right: Node): boolean {
+  return (
+    left === right ||
+    (left.kind === "column" &&
+      right.kind === "column" &&
+      left.relation.id === right.relation.id &&
+      left.name === right.name)
+  );
+}
+
 /**
  * 自由列是本查询没有绑定、必须从祖先作用域捕获的列。内部聚合不会改变列所属关系。
  * 普通 FROM/CTE 没有 LATERAL 合同，不能把捕获引用偷偷提升或当成兄弟关系读取。

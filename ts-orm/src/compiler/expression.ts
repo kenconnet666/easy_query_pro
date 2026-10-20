@@ -8,6 +8,7 @@ import {
 import { validateWindow, type RowBoundary } from "../expression/window.js";
 import type { Order, QueryNode } from "../query/model.js";
 import { requireNativeOperation, requireNativeSupport } from "../schema/native-type.js";
+import { sameGroupingKey } from "../query/analysis.js";
 
 export function requireNodeOperation(
   node: Node,
@@ -24,6 +25,7 @@ export interface State {
   owner: symbol;
   parameters: unknown[];
   parameterLimit: number;
+  groupingScopes: WeakMap<Scope, readonly Node[]>;
   /** 仅查询编译器安装；普通 command/写入尚未声明子查询与 CTE 的作用域合同。 */
   renderSubquery?: (query: QueryNode, scope: Scope) => string;
 }
@@ -42,7 +44,13 @@ export class ParameterLimitError extends RangeError {
 
 /** 手写 Dialect 也在编译入口校验，不能只保护标准工厂；每条语句固定预算快照。 */
 export function createState(dialect: Dialect, owner: symbol): State {
-  return { dialect, owner, parameters: [], parameterLimit: parameterBudget(dialect.maxParameters) };
+  return {
+    dialect,
+    owner,
+    parameters: [],
+    parameterLimit: parameterBudget(dialect.maxParameters),
+    groupingScopes: new WeakMap(),
+  };
 }
 
 export function requireRowExpression(node: Node, clause: string): void {
@@ -51,7 +59,7 @@ export function requireRowExpression(node: Node, clause: string): void {
       throw new TypeError(
         `${clause} cannot contain a same-level window; project it into a derived query first`,
       );
-    if (current.kind === "aggregate")
+    if (current.kind === "aggregate" || current.kind === "grouping")
       throw new TypeError(
         `${clause} cannot contain a same-level aggregate; project it into a derived query first`,
       );
@@ -95,6 +103,12 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
   // renderer 展开后也经过这里，不能让新产生的 typed fragment 绕过当前方言检查。
   if (node.outputType) requireNativeSupport(node.outputType.storage, dialect.name);
   switch (node.kind) {
+    case "grouping": {
+      const keys = state.groupingScopes.get(scope);
+      if (!keys?.some((key) => sameGroupingKey(key, node.operand)))
+        throw new TypeError("GROUPING requires a key from this ROLLUP query");
+      return `GROUPING(${renderNode(node.operand, scope, state)})`;
+    }
     case "subquery": {
       if (!state.renderSubquery)
         throw new TypeError("Expression subqueries currently require a SELECT query");
@@ -239,14 +253,32 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
       const rendered = renderer(node.arguments);
       // renderer 可重排/重复已声明操作数，不能通过闭包新增查询依赖边，否则 WITH 排序和分组分析会漏读。
       const declaredQueries = new Set<QueryNode>();
+      const declaredColumns: Extract<Node, { kind: "column" }>[] = [];
+      const declaredGroupingKeys: Node[] = [];
       for (const argument of node.arguments)
         visitNode(argument, (child) => {
           if (child.kind === "subquery") declaredQueries.add(child.query);
+          if (child.kind === "column") declaredColumns.push(child);
+          if (child.kind === "grouping") declaredGroupingKeys.push(child.operand);
         });
       visitNode(rendered, (child) => {
         if (child.kind === "subquery" && !declaredQueries.has(child.query))
           throw new TypeError(
             "A renderer must receive subqueries through its declared expression arguments",
+          );
+        if (
+          child.kind === "column" &&
+          !declaredColumns.some((column) => sameGroupingKey(column, child))
+        )
+          throw new TypeError(
+            "A renderer must receive column references through its declared expression arguments",
+          );
+        if (
+          child.kind === "grouping" &&
+          !declaredGroupingKeys.some((key) => sameGroupingKey(key, child.operand))
+        )
+          throw new TypeError(
+            "A renderer must receive GROUPING nodes through its declared expression arguments",
           );
       });
       const renderedType = nodeOutputType(rendered);

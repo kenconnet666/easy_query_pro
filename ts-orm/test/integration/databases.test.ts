@@ -36,6 +36,7 @@ import { verifyPgArrays } from "./postgres-array-contract.js";
 import { verifyJson } from "./json-contract.js";
 import { verifySubqueries } from "./subquery-contract.js";
 import { verifyStatistics } from "./statistics-contract.js";
+import { verifyRollup } from "./rollup-contract.js";
 
 interface Harness {
   driver: Driver;
@@ -356,6 +357,7 @@ async function verify(harness: Harness): Promise<void> {
     await verifyJson(db, dialect);
     await verifySubqueries(db, dialect);
     await verifyStatistics(db, dialect);
+    await verifyRollup(db, dialect);
     if (dialect.name === "postgres") await verifyPgArrays(db);
   } finally {
     try {
