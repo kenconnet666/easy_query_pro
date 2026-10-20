@@ -43,7 +43,7 @@
 | G4.6 | 编译负例、跨 client/错库负例、组合、类型传播与资源释放 | G4.3–G4.5 | 共同/原生逐行表达式、三库单/双 DataSource、Draft 分类、路由隔离和回滚已验证；派生关系及完整业务组合继续实施 |
 | G4.7 | C04 泛型挂载、开放 DSL/默认 SPI、同族表达式重建与 SELF、clone 保留定制 | G4.6 | facade/表达式泛型挂载、共同能力继承、selector/关系工厂、CTE 克隆及 MySQL JSON/PG interval SELF 已验证；其余同族和窗口规格继续实施 |
 | G5.1 | 共同 ROWS、无 partition 的全局窗口与 MySQL/PG RANGE；复用已有函数 | G4.6、G4.7 | 共同 ROWS/全局窗口已通过 CI；两库整数/精确小数及日期/微秒 RANGE 已通过实库和编译边界，待当前提交 CI 与完整报表组合 |
-| G5.2 | 三库全文检索、索引 fixture、模式与评分作用域 | G4.6 | HANA CONTAINS/SCORE 与 MySQL natural/boolean MATCH 已通过真实索引/评分/组合/事务；PG 专属全文类型和查询继续实施，当前提交完整 CI 待验收 |
+| G5.2 | 三库全文检索、索引 fixture、模式与评分作用域 | G4.6 | HANA/MySQL 查询及 PG tsvector/tsquery 值类型、JDBC/缓存基础已本地验证；PG 的 GIN/匹配/评分查询继续实施，当前提交完整 CI 待验收 |
 | G5.3 | HANA 邻接树/森林、祖先/后代、深度、顺序、循环/孤儿策略 | G2.5、G4.6 | 构树、祖先/后代、有符号距离、重叠起点与事实汇总本地通过；当前导航提交 CI、完整类型/权限与业务组合继续验收 |
 | G5.4 | HANA 参数化计算视图与表函数的真实 fixture、查询、绑定和组合 | G0.3、G4.6 | 标量与 NVARCHAR/INTEGER 多值计算视图、标量输入表函数已接入原 EntityQueryable；真实 HDI 验证默认值/NULL/命名绑定/CTE/JOIN/分页/事务，完整权限/模型精度/消费者继续验收 |
 | G5.5 | A01 销售/订单报表：条件指标、加权均价、累计/占比、Top N、缺月同比/环比、分组分页 | G4.6、G5.1 | 分组→累计/移动均值/全局总额→外层 EQ/IN/分页已验证；条件指标、Top N 与完整时间序列继续实施 |

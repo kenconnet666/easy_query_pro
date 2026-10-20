@@ -261,6 +261,8 @@ HANA 已采用 [原子搜索来源](hana-fulltext.md)：CONTAINS 与 SCORE 在�
 
 MySQL 的 [MATCH 查询来源](mysql-fulltext.md) 使用 natural language/boolean 两模式，显式安装 query scope，匹配和 Double 分数同时构造。布尔负贡献仍按原生 MATCH 谓词处理，不硬编码分数大于零；InnoDB 的提交后索引可见性与 HANA 分别验证。PG 的 tsvector/tsquery 及 rank 继续作为专属类型/操作实现，不借用字符串 LIKE 或通用分数。
 
+PG 的 [tsvector/tsquery 值类型](pgsql-text-search-types.md) 已接入原生 JDBC、DDL/CAST 与基础标量映射。编码对象与普通文本分开，数据库语法/规范化留给 PostgreSQL；缓存读取保留 PGobject 的实际类型，未知二进制表示不会当作 SQL NULL。匹配、query 构造与 rank 继续依赖这项基础。
+
 ## 9 L4 底层方言实现清单
 
 | 翻译/执行领域 | MySQL | PostgreSQL | HANA |

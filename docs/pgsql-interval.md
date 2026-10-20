@@ -28,7 +28,7 @@ private PgInterval span;
 
 普通 Duration/Period、String 及其他 handler 不会被替换。已有业务对象可通过列 ValueConverter 转成 PgInterval，并使用 PgIntervalTypeHandler 读取。view 保留原 Java 映射；nativeCast 明确生成 INTERVAL CAST 并以 PgInterval 读取。已知列声明冲突会拒绝，计算表达式或未声明物理类型的视图仍由调用者保证其含义。
 
-PgSqlExtensions 通过公开 EntityMetadataManager SPI，仅为 PgArrayValue/PgInterval 补齐基础标量元数据。自定义 metadata manager 的应用需要保留这两个包装类型的标量处理；不会通过反射修改上游内部字段。JDBC 驱动仍是调用应用的依赖，当前验证版本为 pgJDBC 42.7.14。
+PgSqlExtensions 通过公开 EntityMetadataManager SPI，为 PgArrayValue/PgInterval 和 [全文值类型](pgsql-text-search-types.md) 补齐基础标量元数据。自定义 metadata manager 的应用需要保留这些包装类型的标量处理；不会通过反射修改上游内部字段。JDBC 驱动仍是调用应用的依赖，当前验证版本为 pgJDBC 42.7.14。
 
 ## 运算和比较
 

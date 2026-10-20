@@ -6,6 +6,9 @@ import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NativeJsonType;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayType;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalType;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTextSearchType;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTsQuery;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTsVector;
 
 import java.math.BigDecimal;
 
@@ -108,6 +111,14 @@ public final class PgSqlTypes {
 
     public static PgIntervalType interval() {
         return PgIntervalType.INSTANCE;
+    }
+
+    public static PgTextSearchType<PgTsVector> tsvector() {
+        return PgTextSearchType.VECTOR;
+    }
+
+    public static PgTextSearchType<PgTsQuery> tsquery() {
+        return PgTextSearchType.QUERY;
     }
 
     public static final class Json extends NativeJsonType {

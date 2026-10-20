@@ -661,3 +661,17 @@ MySqlSearchSpec 保存不可变列集合、搜索词和模式，MySqlSearch 将 
 MySQL 两种 prepare 的真实对照覆盖短语/前缀/排除/负贡献、引号/Unicode、NULL/未命中、匹配索引、多列、根级 OR、SMART、CTE/count/page、两个评分来源 JOIN/UNION ALL、读取器隔离与原 client 事务提交。HANA 全文四个用例随共享 DTO 更名一起回归通过，包括其原生多评分 JOIN 限制。
 
 IDEA 格式与构建通过，MCP 确认 MySQL `eqp_search_%` 测试表与 HANA `EQP_FULLTEXT_%` schema 遗留均为零。三份自有诊断日志记录后清理，标准报告保留。说明与显式安装步骤见 [MySQL 全文查询](mysql-fulltext.md)；PG 全文类型、查询及完整消费者继续推进。
+
+## PostgreSQL tsvector/tsquery 值类型与缓存读取
+
+核实 MySQL 全文提交 `11a4700953b2a525a283e897c7ba24de3cb39b1b` 的 [CI 39483300377](https://github.com/kenconnet666/easy_query_pro/actions/runs/39483300377) 已成功。本批先交付 PG 值与 JDBC 基础；查询来源模板整理和 PG GIN/匹配/评分按依赖随后实施。
+
+新增 PgTsVector/PgTsQuery 两个编码 record、受控 PgTextSearchType DDL/CAST 描述和两个具体类型 handler，接入原 scalar metadata、value/nativeCast 与显式 configureTypeHandlers。编码通过 PGobject 绑定 native OID，不作为 SQL 片段；普通文本分词和搜索语法交 PostgreSQL。空编码与 SQL NULL 分开，服务器规范化后的编码不伪装成 Java equals 的语义等价。
+
+Context7 核对 PostgreSQL 17 与 pgJDBC 文档后，再读取本机锁定 42.7.14 sources.jar 的 PgResultSet/PgConnection/PGobject 路径：强制两个类型二进制传输时，未注册 binary codec 的非 NULL 对象可能没有文本。处理器明确报错，不转成 SQL NULL。普通 prepareThreshold 0/-1 的文本传输、实体写入/更新/筛选、scalar/Draft/CTE、引号中文、规范化、typed NULL、原生语法错误与错误 JDBC 类型均通过。
+
+两位只读复审指出上游部分内存结果集 getString 直接将 getObject 缓存强转 String。新增模拟真实 PGobject 缓存的离线用例复现 ClassCastException，再把修复限制在全文 handler：用 getObject 读取，核对 PGobject 类型和值，同时接受已验证类型的 String 缓存；没有修改执行器或 PG 时间包装器。最初尝试分组时混合投影常量，先被上游 `unknown aggregate column:ScalarColumn` 拒绝，因此该组合没有被宣称为本批支持。
+
+指定 JBR 17 的正常 verify 通过 7 个离线/消费者检查与 5 个实库用例后，继续收严真实缓存证据：仅设置 CONNECTION_STRICTLY 且仍只有一个执行组会走直接执行捷径。改为 `useShardingConfigure(1, CONNECTION_STRICTLY)`，使两分表经 executeMulti0→inMemoryMerge→DefaultMemoryResultSetRow 物化；以 `mvnw.cmd --batch-mode verify -Ppostgres -Dtest=PgTextSearchTypeTest#cachedDriverObjectsDoNotRequireAnUnsafeStringCast -Dit.test=PostgresTextSearchTypeIT#connectionLimitedShardCachingKeepsNativeDriverValuesReadable -Dsurefire.failIfNoSpecifiedTests=false` 再通过缓存离线 1 项与两个 prepare 实库。最终唯一用例为 7 个离线/消费者及 5 个实库；两个物化用例以最后收严后的结果为准。
+
+IDEA 格式与构建通过，MCP 确认 `eqp_pg_search_%` schema 遗留为零。四份本轮自有诊断日志记录后清理，标准报告保留。API、编码/NULL/二进制与分片边界见 [PG 全文值类型](pgsql-text-search-types.md)，当前候选仍需自己的完整 CI。

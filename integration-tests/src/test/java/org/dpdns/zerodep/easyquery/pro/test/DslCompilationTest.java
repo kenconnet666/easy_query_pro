@@ -202,6 +202,7 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.query.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.*;
@@ -293,6 +294,15 @@ class DslCompilationTest {
         compile(false, "MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.id()));");
         compile(false, "MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.name().toUpper()));");
         compile(false, "String score = MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.name())).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
+    }
+
+    @Test
+    void postgresTextSearchValuesCannotExchangeTheirTypes() throws IOException {
+        compile(true, "AnyTypeExpression<PgTsVector> vector = PgSqlDsl.of(p).value(new PgTsVector(\"'coffee':1\"), PgSqlTypes.tsvector()); AnyTypeExpression<PgTsQuery> query = PgSqlDsl.of(p).value(new PgTsQuery(\"'coffee'\"), PgSqlTypes.tsquery());");
+        compile(true, "AnyTypeExpression<PgTsVector> vector = PgSqlDsl.of(p).nativeCast(p.name(), PgSqlTypes.tsvector());");
+        compile(false, "PgSqlDsl.of(p).value(new PgTsQuery(\"'coffee'\"), PgSqlTypes.tsvector());");
+        compile(false, "AnyTypeExpression<PgTsQuery> query = PgSqlDsl.of(p).nativeCast(p.name(), PgSqlTypes.tsvector());");
+        compile(false, "PgSqlDsl.of(p).value(\"coffee\", PgSqlTypes.tsvector());");
     }
 
     @Test

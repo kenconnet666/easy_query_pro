@@ -8,6 +8,8 @@ import com.easy.query.core.metadata.DefaultEntityMetadataManager;
 import com.easy.query.core.metadata.EntityMetadata;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayValue;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgInterval;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTsQuery;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTsVector;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +23,9 @@ public final class PgScalarMetadataManager extends DefaultEntityMetadataManager 
             PgArrayValue.class, new ScalarMetadata(PgArrayValue.class),
             PgInterval.class, new ScalarMetadata(PgInterval.class),
             PgInterval.Finite.class, new ScalarMetadata(PgInterval.Finite.class),
-            PgInterval.Infinity.class, new ScalarMetadata(PgInterval.Infinity.class));
+            PgInterval.Infinity.class, new ScalarMetadata(PgInterval.Infinity.class),
+            PgTsVector.class, new ScalarMetadata(PgTsVector.class),
+            PgTsQuery.class, new ScalarMetadata(PgTsQuery.class));
 
     public PgScalarMetadataManager(ServiceProvider services, MapColumnNameChecker checker, MapKeyNameConversion conversion) {
         super(services, checker, conversion);

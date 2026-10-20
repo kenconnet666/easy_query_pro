@@ -20,6 +20,9 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.jdbc.PgJdbcSQLExecutor;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.jdbc.PgJdbcTypeHandlerManager;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.PgJsonColumnConverter;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.PgJsonbColumnConverter;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTextSearchTypeHandlers;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTsQuery;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTsVector;
 
 public final class PgSqlExtensions {
     private PgSqlExtensions() {
@@ -47,5 +50,7 @@ public final class PgSqlExtensions {
         handlers.appendHandler(PgInterval.class, interval, false);
         handlers.appendHandler(PgInterval.Finite.class, interval, false);
         handlers.appendHandler(PgInterval.Infinity.class, interval, false);
+        handlers.appendHandler(PgTsVector.class, new PgTextSearchTypeHandlers.Vector(), false);
+        handlers.appendHandler(PgTsQuery.class, new PgTextSearchTypeHandlers.Query(), false);
     }
 }

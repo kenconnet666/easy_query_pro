@@ -6,6 +6,7 @@ import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.ProxyEntity;
 import com.easy.query.core.proxy.extension.functions.type.BooleanTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.DateTimeTypeExpression;
+import com.easy.query.core.proxy.extension.functions.type.AnyTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.DateTimeTypeExpressionImpl;
 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
@@ -24,6 +25,8 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalType;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalExpressions;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.window.PgWindowSpec;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTextSearchType;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.MappedValueExpression;
 
 import java.util.Arrays;
 import java.time.Duration;
@@ -52,6 +55,23 @@ public class PgSqlDsl extends ProDsl {
 
     public PgWindowSpec<?> nativeWindow() {
         return PgWindowSpec.create(scope);
+    }
+
+    /**
+     * 绑定原生编码值，保留数据库对输入语法的规范化和错误行为。
+     * 原文分词及语言词典处理仍由 PostgreSQL 的文本分析函数完成。
+     */
+    public <T> AnyTypeExpression<T> value(T value, PgTextSearchType<T> type) {
+        return super.value(value, type, (bound, source, expression) -> new MappedValueExpression<T>(bound, source, expression) {
+        });
+    }
+
+    /**
+     * 执行真实 PostgreSQL CAST，语法错误、规范化和范围限制仍由数据库决定。
+     */
+    public <T> AnyTypeExpression<T> nativeCast(PropTypeColumn<?> source, PgTextSearchType<T> type) {
+        return super.nativeCast(source, type, (bound, mapping, expression) -> new MappedValueExpression<T>(bound, mapping, expression) {
+        });
     }
 
     /**
