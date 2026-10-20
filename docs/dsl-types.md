@@ -76,6 +76,8 @@ query.queryable(Product.class).selectColumn(p ->
 
 ### 映射与作用域
 
+派生表、CTE、UNION 和列重排的读取优先级及已验证范围见 [投影映射说明](dsl-projections.md)。这些查询继续使用上游执行器；普通 DTO 的目标映射与显式 valueConvert 不被自动传播覆盖。
+
 普通属性作为输入时使用上游 `EasyColumnSegmentUtil` 的 SQL 属性转换。例如存储为分、属性转换为元的列，先取得该属性的 SQL 值，再执行 CAST。已构造的函数表达式保留其原有 SQL 语义，不遍历并重写它的内部列。CAST 输出只按目标数字类型读取，不再把业务 RowId/整列 ValueConverter 套在结果上。
 
 返回表达式参与重复渲染、克隆、JOIN、相关子查询和写入 setter。相关子查询会先构造再挂入外层，表归属检查在最终 SQL 渲染时执行，使用上游表上下文；跨 client 使用立即拒绝。类型描述可以共享，查询表达式不能缓存为全局变量后用于无关查询。

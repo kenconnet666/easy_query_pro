@@ -446,7 +446,19 @@ ExpressionScope 新增单输入/双输入的标量组合辅助，操作数仅构
 
 ## 下一步
 
-1. 检查多 DataSource 验证提交的 CI，继续派生关系、UNION、类型传播与业务映射组合。
-2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
-3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
-4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。
+1. 核对本轮提交 CI，完善 DSL 泛型挂载和工厂扩展点，避免新增 final/private 创建链阻断定制。
+2. 按统计报表蓝图补窗口规格与分组→窗口→外层筛选/分页等复杂组合。
+3. 推进剩余类型目录，并继续关闭 HANA 历史历法、无显式列插入、distinct 聚合与派生 LOB 限制等已有问题。
+4. 完成全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。
+
+## 派生关系读取器与报表方向审查
+
+提交 `03f1b9ef1425b364648602cdacc8804b675deea2` 的 [CI 39403295050](https://github.com/kenconnet666/easy_query_pro/actions/runs/39403295050) 已通过全部五个强制任务。本轮三个子代理仅做只读研究/审查，所有编辑、复现和验证由主线程完成。
+
+实库复现并修复了派生 JSON/数组 reader 丢失、CTE 隐式 SELECT * 空快照、列重排串用旧 reader。审查进一步指出 DTO 目标 handler 被覆盖、显式 valueConvert 被覆盖、上游 SUM 继承 JSON reader，三项分别通过 ClassCast、错误返回值与解析错误完成复现后修复。复审的无预先 clone 连续投影和同源显式 reader UNION 也已复现后修复。
+
+读取注册在关系创建时复制，Draft 类型按上游赋值时序解析；CTE/UNION 按来源和输出位置保留映射。普通 DTO 保留目标契约，显式转换优先，标量/聚合不继承整列 converter。使用公开 ExpressionBuilderFactory、selector 和 ColumnReader SPI，没有私有反射或替换执行器。实现边界见 [投影映射说明](dsl-projections.md)。
+
+本地 10 个离线检查与 36 个三库实库用例通过；补充 33 个离线/消费者编译检查与 9 个 HANA 转换及三库单/双 DataSource 回归也通过。消费者检查本轮耗时约 85 秒，后续完整重跑交给 CI，局部改动仅运行对应消费者用例。IDEA 构建通过。IDEA 数据库 MCP 核实本轮 JSON、数组、interval 和分片 fixture 遗留为 0；持久开发实例未改动。
+
+蓝图增补 A01–A04 与 G5.5–G5.8，明确开窗、完整报表链、多级汇总、基础统计和时间序列的归属与验收。既有条件聚合、排名、偏移和普通日期截断继续复用；CUBE、动态 PIVOT、大而全统计目录不自动扩入。另修正文档中工程仍为空包、JsonDocument/DateBucket/cast 等旧状态或示意命名。新增计划不代表已完成，当前候选提交仍需自己的完整 CI。

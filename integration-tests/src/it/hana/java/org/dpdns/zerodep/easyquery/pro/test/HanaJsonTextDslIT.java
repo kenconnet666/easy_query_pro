@@ -105,4 +105,21 @@ class HanaJsonTextDslIT {
         assertThrows(RuntimeException.class, () -> query.queryable(HanaJsonTextRecord.class).asSchema(s -> schema.name())
                 .selectColumn(p -> HanaDsl.of(p).value(JsonInput.encoded("not-json"), HanaTypes.jsonNclob()).existsAt(JsonPath.root())).toList());
     }
+
+    @Test
+    void derivedCteJoinsKeepBusinessReadersSeparateFromText() {
+        var payloads = query.queryable(HanaJsonTextRecord.class).asSchema(s -> schema.name()).select(p -> Select.DRAFT.of(p.id(),
+                HanaDsl.of(p).view(p.payload(), HanaTypes.jsonNclob()))).toCteAs("eqp_payload_origin");
+        var documents = query.queryable(HanaJsonTextRecord.class).asSchema(s -> schema.name()).select(p -> Select.DRAFT.of(p.id(),
+                HanaDsl.of(p).view(p.wide(), HanaTypes.jsonNclob()))).toCteAs("eqp_document_origin");
+        var joined = payloads.cloneQueryable().innerJoin(documents, (left, right) -> left.value1().eq(right.value1())).select((left, right) -> Select.DRAFT.of(
+                HanaDsl.of(left).view(left.value2(), HanaTypes.jsonNclob()),
+                HanaDsl.of(right).view(right.value2(), HanaTypes.jsonNclob()).asText()));
+        assertEquals(new JsonPayload("business 中😀", 3), joined.singleNotNull().getValue1());
+        assertEquals(largeDocument, joined.cloneQueryable().singleNotNull().getValue2());
+        var reordered = payloads.cloneQueryable().select(p -> Select.DRAFT.of(HanaDsl.of(p).view(p.value2(), HanaTypes.jsonNclob()).asText(), p.value1()));
+        assertEquals(1, reordered.singleNotNull().getValue2());
+        assertEquals(new JsonPayload("business 中😀", 3), payloads.singleNotNull().getValue2());
+        assertEquals(1, converter.writes());
+    }
 }

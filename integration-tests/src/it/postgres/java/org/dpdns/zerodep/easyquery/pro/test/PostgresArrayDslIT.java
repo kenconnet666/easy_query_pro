@@ -117,6 +117,22 @@ class PostgresArrayDslIT {
     }
 
     @Test
+    void derivedCteColumnsRetainBusinessListsAndTypedArrays() {
+        var inner = query.queryable(PgArrayRecord.class).where(p -> p.id().eq(1)).select(p -> Select.DRAFT.of(p.id(),
+                PgSqlDsl.of(p).view(p.labels(), PgSqlTypes.array(String.class)),
+                PgSqlDsl.of(p).view(p.numbers(), PgSqlTypes.array(Integer.class)))).toCteAs("eqp_array_readers");
+        var projected = inner.cloneQueryable().select(p -> Select.DRAFT.of(
+                PgSqlDsl.of(p).view(p.value3(), PgSqlTypes.array(Integer.class)),
+                PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.array(String.class)), p.value1()));
+        var row = projected.singleNotNull();
+        assertEquals(PgSqlTypes.array(Integer.class).value(Arrays.asList(1, null, 2)), row.getValue1());
+        assertEquals(Arrays.asList("a", "中😀", "NULL", null), row.getValue2());
+        assertEquals(1, row.getValue3());
+        assertEquals(row.getValue2(), projected.cloneQueryable().singleNotNull().getValue2());
+        assertEquals(row.getValue2(), inner.singleNotNull().getValue2());
+    }
+
+    @Test
     void nativeArrayOperatorsRemainEligibleForGinIndexes() throws SQLException {
         var owner = schema.connection();
         try (var statement = owner.createStatement()) {

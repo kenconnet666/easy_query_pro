@@ -2,7 +2,7 @@ package org.dpdns.zerodep.easyquery.pro.dsl.internal;
 
 import com.easy.query.core.basic.api.select.provider.SQLExpressionProvider;
 import com.easy.query.core.basic.api.select.provider.SQLExpressionProviderImpl;
-import com.easy.query.core.basic.extension.conversion.ColumnReaderImpl;
+import com.easy.query.core.basic.extension.conversion.ColumnReader;
 import com.easy.query.core.context.QueryRuntimeContext;
 import com.easy.query.core.expression.builder.AsSelector;
 import com.easy.query.core.expression.builder.Selector;
@@ -28,7 +28,8 @@ import com.easy.query.core.metadata.ColumnMetadata;
 import com.easy.query.core.metadata.EntityMetadata;
 
 /**
- * Corrects only classified Pro scalar projections through the upstream selector/segment extension points.
+ * Preserves derived Draft readers and classifies known Pro scalars through upstream selector/segment SPI.
+ * DTO mappings and explicit valueConvert readers keep their own result contract.
  */
 public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
     @Override
@@ -75,30 +76,46 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
     private static final class ScalarAsSelector extends AsSelectorImpl {
         private ScalarAsSelector(EntityQueryExpressionBuilder query, SQLBuilderSegment projects, EntityMetadata result) {
             super(query, projects, result);
+            ColumnReaders.freezeSources(query);
+        }
+
+        @Override
+        public AsSelector columnAs(TableAvailable table, String property, String propertyAlias) {
+            var reader = ColumnReaders.source(entityQueryExpressionBuilder, table, property);
+            var result = super.columnAs(table, property, propertyAlias);
+            setReader(propertyAlias == null ? property : propertyAlias, reader);
+            return result;
+        }
+
+        private void setReader(String property, ColumnReader reader) {
+            ColumnReaders.setAutomatic(entityQueryExpressionBuilder, property,
+                    ColumnReaders.usesSourceReaders(resultEntityMetadata) ? reader : null);
         }
 
         @Override
         public AsSelector columnFunc(TableAvailable table, String property, SQLFunction function, String propertyAlias, SQLActionExpression before) {
-            if (!ExpressionScope.isRowLocal(function))
+            if (!ExpressionScope.isRowLocal(function)) {
+                setReader(propertyAlias == null ? property : propertyAlias, null);
                 return super.columnFunc(table, property, function, propertyAlias, before);
+            }
             before.apply();
             ColumnMetadata source = table == null || property == null ? null : table.getEntityMetadata().getColumnNotNull(property);
             if (source == null && (propertyAlias == null || propertyAlias.isBlank()))
                 throw new EasyQueryInvalidOperationException("A computed projection requires a property alias");
             var result = propertyAlias == null && source != null ? null : getResultColumnName(propertyAlias);
             String alias = result == null ? source.getName() : result.getColumnAsName();
-            if (source != null) {
-                // Draft does not derive a column reader from a computed expression.
-                expressionContext.getResultValueConverterMap(true).put(propertyAlias == null ? property : propertyAlias,
-                        new ColumnReaderImpl(table.getEntityMetadata(), source, null));
-            }
+            setReader(propertyAlias == null ? property : propertyAlias, source == null ? null : ColumnReaders.source(entityQueryExpressionBuilder, table, property));
             return appendScalar(table, source != null ? source : result.getColumnMetadata(), function, alias);
         }
 
         @Override
         public AsSelector columnFunc(TableAvailable table, SQLFunction function, String propertyAlias) {
-            if (!ExpressionScope.isRowLocal(function)) return super.columnFunc(table, function, propertyAlias);
+            if (!ExpressionScope.isRowLocal(function)) {
+                setReader(propertyAlias, null);
+                return super.columnFunc(table, function, propertyAlias);
+            }
             var result = propertyAlias == null ? null : getResultColumnName(propertyAlias);
+            setReader(propertyAlias, null);
             return appendScalar(table, result == null ? null : result.getColumnMetadata(), function, result == null ? null : result.getColumnAsName());
         }
 

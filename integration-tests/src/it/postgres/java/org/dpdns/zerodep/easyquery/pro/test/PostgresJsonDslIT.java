@@ -181,4 +181,137 @@ class PostgresJsonDslIT {
                 .selectColumn(p -> PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb())).singleNotNull());
         assertEquals(1, converter.writes());
     }
+
+    @Test
+    void derivedRelationsKeepBusinessMappingsThroughOuterOperations() {
+        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(List.of("name"), JsonInput.encoded("\"inner\""), true)));
+        var selected = inner.where(p -> PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb()).hasKey("name").eq(true))
+                .select(p -> Select.DRAFT.of(p.value1(), PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb())
+                        .setPath(List.of("name"), JsonInput.encoded("\"outer\""), true)));
+        assertEquals(new JsonPayload("outer", 3), selected.singleNotNull().getValue2());
+        assertEquals(new JsonPayload("outer", 3), selected.cloneQueryable().singleNotNull().getValue2());
+        assertEquals(1, converter.writes());
+    }
+
+    @Test
+    void unionAndCteKeepBusinessValuesInTheirProjectedColumn() {
+        var left = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(List.of("name"), JsonInput.encoded("\"left\""), true)));
+        var right = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(List.of("name"), JsonInput.encoded("\"right\""), true)));
+        var rows = left.unionAll(right).toCteAs("eqp_typed_payloads").select(p -> Select.DRAFT.of(p.value1(),
+                PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb()).setPath(List.of("count"), JsonInput.encoded("9"), true)));
+        assertEquals(java.util.Set.of(new JsonPayload("left", 9), new JsonPayload("right", 9)),
+                rows.toList().stream().map(row -> row.getValue2()).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(2, rows.cloneQueryable().toList().size());
+        assertEquals(1, converter.writes());
+    }
+
+    @Test
+    void reorderingColumnsAndConvertingToTextCannotReuseAnOldReader() {
+        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()), p.id()));
+        var rows = inner.cloneQueryable().select(p -> Select.DRAFT.of(p.value2(), PgSqlDsl.of(p).view(p.value1(), PgSqlTypes.jsonb()).asText()));
+        var row = rows.singleNotNull();
+        assertEquals(1, row.getValue1());
+        assertEquals(3, ((JsonNumber) JsonParser.parseDoc(row.getValue2()).get("count")).getInteger());
+        assertEquals(1, rows.cloneQueryable().singleNotNull().getValue1());
+        assertEquals(new JsonPayload("O'Reilly 中😀", 3), inner.singleNotNull().getValue1());
+        assertEquals(new JsonPayload("O'Reilly 中😀", 3), inner.cloneQueryable().singleNotNull().getValue1());
+    }
+
+    @Test
+    void independentCteOriginsWithTheSameAliasKeepDifferentMappings() {
+        var payloads = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()))).toCteAs("eqp_payload_origin");
+        var documents = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
+                PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb()))).toCteAs("eqp_document_origin");
+        var joined = payloads.innerJoin(documents, (left, right) -> left.value1().eq(right.value1())).select((left, right) -> Select.DRAFT.of(
+                PgSqlDsl.of(left).view(left.value2(), PgSqlTypes.jsonb()).setPath(List.of("count"), JsonInput.encoded("7"), true),
+                PgSqlDsl.of(right).view(right.value2(), PgSqlTypes.jsonb()).asText()));
+        assertEquals(new JsonPayload("O'Reilly 中😀", 7), joined.singleNotNull().getValue1());
+        assertTrue(JsonParser.parseDoc(joined.cloneQueryable().singleNotNull().getValue2()).containsKey("tags"));
+    }
+
+    @Test
+    void derivedArrayValuesKeepTheirRegisteredHandler() {
+        PgSqlExtensions.configureTypeHandlers(query.getRuntimeContext().getJdbcTypeHandlerManager());
+        var type = PgSqlTypes.array(Integer.class);
+        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(), PgSqlDsl.of(p).value(List.of(1, 2), type)));
+        var outer = inner.select(p -> Select.DRAFT.of(p.value1(), PgSqlDsl.of(p).view(p.value2(), type)));
+        assertEquals(type.value(List.of(1, 2)), outer.singleNotNull().getValue2());
+    }
+
+    @Test
+    void unionsAcceptEquivalentDefaultScalarReaders() {
+        var left = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(), p.plain()));
+        var right = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().abs(), p.plain()));
+        var rows = left.unionAll(right).toCteAs("eqp_scalar_readers").toList();
+        assertEquals(List.of(1, 1), rows.stream().map(row -> row.getValue1()).toList());
+        assertTrue(rows.stream().allMatch(row -> "ordinary text".equals(row.getValue2())));
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+    void ordinaryDtoProjectionKeepsItsTargetHandler() {
+        var row = query.queryable(PgJsonRecord.class).select(LongId.class, p -> p.id().as("id")).singleNotNull();
+        assertEquals(1L, row.getId());
+    }
+
+    @Test
+    void explicitValueConversionsKeepPriorityOverAutomaticReaders() {
+        var row = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
+                p.id().valueConvert(id -> "ID-" + id),
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).asText().valueConvert(text -> JsonParser.parseDoc(text).containsKey("name")),
+                p.payload().valueConvert(JsonPayload::name))).singleNotNull();
+        assertEquals("ID-1", row.getValue1());
+        assertTrue(row.getValue2());
+        assertEquals("O'Reilly 中😀", row.getValue3());
+    }
+
+    @Test
+    void upstreamAggregateProjectionCannotInheritAFormerJsonReader() {
+        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()), p.id()));
+        var row = inner.select(p -> Select.DRAFT.of(p.value2().toNumber(Integer.class).sum())).singleNotNull();
+        assertEquals(1, ((Number) row.getValue1()).intValue());
+    }
+
+    @Test
+    void freshOuterValueConvertCannotBecomeAnInheritedReader() {
+        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.payload(), p.id()));
+        var outer = inner.select(p -> Select.DRAFT.of(p.value2().valueConvert(id -> "ID-" + id), p.value1()));
+        var row = outer.singleNotNull();
+        assertEquals("ID-1", row.getValue1());
+        assertEquals(new JsonPayload("O'Reilly 中😀", 3), row.getValue2());
+    }
+
+    @Test
+    void unionAcceptsTheSameExplicitReaderAfterPropagation() {
+        var original = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().valueConvert(id -> "ID-" + id)));
+        var derived = original.cloneQueryable().select(p -> Select.DRAFT.of(p.value1()));
+        var rows = original.cloneQueryable().unionAll(derived).toCteAs("eqp_same_explicit_reader").toList();
+        assertEquals(List.of("ID-1", "ID-1"), rows.stream().map(row -> row.getValue1()).toList());
+    }
+
+    @Test
+    void unionRejectsDifferentExplicitMappingsBeforeExecution() {
+        var left = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().valueConvert(id -> "LEFT-" + id)));
+        var right = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().valueConvert(id -> "RIGHT-" + id)));
+        var error = assertThrows(IllegalArgumentException.class, () -> left.unionAll(right).toCteAs("eqp_different_readers").toSQL());
+        assertTrue(error.getMessage().contains("compatible"), error.getMessage());
+    }
+
+    public static final class LongId {
+        private Long id;
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+    }
 }

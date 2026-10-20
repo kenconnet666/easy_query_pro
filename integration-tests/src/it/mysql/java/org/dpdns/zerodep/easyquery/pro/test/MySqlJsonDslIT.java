@@ -47,6 +47,7 @@ class MySqlJsonDslIT {
             verifyPredicates(query, table);
             verifyMutations(query, table);
             verifyBusinessMappingAndRollback(query, table, converter, row.getPayload());
+            verifyDerivedMappings(query, table, row.getPayload());
             verifyNulls(query, table);
         }
     }
@@ -113,6 +114,21 @@ class MySqlJsonDslIT {
             transaction.rollback();
         }
         assertEquals(original, query.queryable(MySqlJsonRecord.class).asTable(table).singleNotNull().getPayload());
+    }
+
+    private static void verifyDerivedMappings(DefaultEasyEntityQuery query, String table, JsonPayload original) {
+        var payloads = query.queryable(MySqlJsonRecord.class).asTable(table).select(p -> Select.DRAFT.of(p.id(),
+                MySqlDsl.of(p).view(p.payload(), MySqlTypes.json()))).toCteAs("eqp_payload_origin");
+        var documents = query.queryable(MySqlJsonRecord.class).asTable(table).select(p -> Select.DRAFT.of(p.id(),
+                MySqlDsl.of(p).view(p.document(), MySqlTypes.json()))).toCteAs("eqp_document_origin");
+        var joined = payloads.cloneQueryable().innerJoin(documents, (left, right) -> left.value1().eq(right.value1())).select((left, right) -> Select.DRAFT.of(
+                MySqlDsl.of(left).view(left.value2(), MySqlTypes.json()).setPath(JsonPath.root().key("count"), JsonInput.encoded("7")),
+                MySqlDsl.of(right).view(right.value2(), MySqlTypes.json()).asText()));
+        assertEquals(new JsonPayload(original.name(), 7), joined.singleNotNull().getValue1());
+        assertTrue(JsonParser.parseDoc(joined.cloneQueryable().singleNotNull().getValue2()).containsKey("tags"));
+        var reordered = payloads.cloneQueryable().select(p -> Select.DRAFT.of(MySqlDsl.of(p).view(p.value2(), MySqlTypes.json()).asText(), p.value1()));
+        assertEquals(1, reordered.singleNotNull().getValue2());
+        assertEquals(original, payloads.singleNotNull().getValue2());
     }
 
     private static void verifyNulls(DefaultEasyEntityQuery query, String table) {

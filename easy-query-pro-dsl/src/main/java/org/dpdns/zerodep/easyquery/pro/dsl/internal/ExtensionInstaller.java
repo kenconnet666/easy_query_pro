@@ -3,6 +3,7 @@ package org.dpdns.zerodep.easyquery.pro.dsl.internal;
 import com.easy.query.core.configuration.dialect.SQLKeyword;
 import com.easy.query.core.inject.ServiceCollection;
 import com.easy.query.core.expression.parser.factory.SQLExpressionInvokeFactory;
+import com.easy.query.core.expression.sql.builder.factory.ExpressionBuilderFactory;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 
 import java.util.Objects;
@@ -33,6 +34,7 @@ public final class ExtensionInstaller {
         }
         services.addService(Installed.class, new Installed(dialect));
         services.addService(SQLExpressionInvokeFactory.class, ProProjectionFactory.class);
+        services.addService(ExpressionBuilderFactory.class, ProExpressionBuilderFactory.class);
         services.addService(NullSafeComparison.class, comparison);
         services.addServiceFactory(SqlDialect.class, provider -> {
             var keyword = provider.getService(SQLKeyword.class);

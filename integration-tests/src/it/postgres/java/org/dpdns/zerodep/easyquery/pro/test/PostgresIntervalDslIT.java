@@ -89,6 +89,16 @@ class PostgresIntervalDslIT {
     }
 
     @Test
+    void derivedCteIntervalRetainsItsHandlerThroughArithmetic() {
+        var inner = query.queryable(PgIntervalRecord.class).select(p -> Select.DRAFT.of(p.id(),
+                PgSqlDsl.of(p).view(p.span(), PgSqlTypes.interval()).negated())).toCteAs("eqp_interval_readers");
+        var outer = inner.cloneQueryable().select(p -> Select.DRAFT.of(PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.interval()).negated(), p.value1()));
+        assertEquals(PgInterval.of(1, 0, 0), outer.singleNotNull().getValue1());
+        assertEquals(PgInterval.of(1, 0, 0), outer.cloneQueryable().singleNotNull().getValue1());
+        assertEquals(PgInterval.of(-1, 0, 0), inner.singleNotNull().getValue2());
+    }
+
+    @Test
     void nullInfinityAndArithmeticErrorsRemainDistinct() {
         assertNull(query.queryable(PgIntervalRecord.class).selectColumn(p -> PgSqlDsl.of(p).value(null, PgSqlTypes.interval()).negated()).toList().get(0));
         assertSame(PgInterval.Infinity.NEGATIVE, query.queryable(PgIntervalRecord.class)
