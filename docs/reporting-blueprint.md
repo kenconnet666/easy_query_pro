@@ -71,6 +71,14 @@ HANA 多值计算视图输入按模型声明的列表协议编码为一个绑定
 
 ## 官方语义依据
 
+### A02 的公开 SPI 与空输入边界
+
+2026-10-20 核查：既有 GroupKeys/GroupingN 已保存强类型键及原表，公开 group builder 的结构化 segment 可承接 ROLLUP/GROUPING SETS。因此采用修饰原分组查询的方向，继续返回原 EntityQueryable，不复制分组代理。入口应同时完成显式投影，避免上游把分组片段作为默认 SELECT 时产生 `SELECT ROLLUP(...)`；count/page/clone 必须随原型一起验证。
+
+只读三行 fixture 含真实 NULL，三库 ROLLUP 均返回六行；MySQL 8.4.11 支持 `GROUP BY ROLLUP(a,b)`，无需专门后缀。HANA GROUPING_ID 与 MySQL/PG GROUPING 的多键位掩码均为明细 0、末键小计 1、总计 3。PG/HANA 的 `GROUPING SETS ((a),(b),())` 返回五行。真实 NULL 不能用 isNull 当作汇总标识。
+
+空输入有差异：MySQL/HANA 的 ROLLUP 返回零行，PG 保留一行空总计。共同入口拟规定没有输入则返回空报表，PG 通过受控 HAVING COUNT(*) > 0 对齐；原生 grouping sets 保留各库明确语义。此处仍是已核查的设计决策，增强实现、绑定计算键、JOIN 键、分组总行数和分页尚待正式测试。无跨分片合并证明时拒绝汇总执行，不套用普通 GROUP BY 合并器。
+
 ### A03 的原生精度核查
 
 2026-10-20 只读 MCP 常量查询确认：MySQL 8.4.11、PG 17.11、HANA 2.00.088.00.1760424921 的 VAR_POP/VAR_SAMP/STDDEV_POP/STDDEV_SAMP 都忽略 NULL；空集/全 NULL 返回 NULL，单样本的总体结果为 0、样本结果为 NULL。此为原生语义探测，不是增强 DSL 或 CI 验收。
