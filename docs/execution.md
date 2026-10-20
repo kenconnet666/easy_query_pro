@@ -284,6 +284,12 @@ MySQL 前缀类型检查抑制自动数组包装；PostgreSQL 经 JSON 类型读
 
 IDEA 格式化、编译和关键文件检查通过；MCP 确认本轮 HANA JSON 探测/文档/种类/路径 schema 与 PostgreSQL fixture schema 遗留均为 0。探测 Java 文件及本轮五份诊断日志已清理；标准报告与开发实例保留。HANA parser 的非标准宽松输入、输出容量、显式部署和性能边界见 [JSON 路径说明](dsl-json.md)。原生 MySQL JSON/PG JSONB 修改和完整性能/分片矩阵继续实施。
 
+## 表达式作用域整理
+
+提交 `e2d6a6447d94551c76b0037b587a6db4213777bf` 的 [CI 39358012526](https://github.com/kenconnet666/easy_query_pro/actions/runs/39358012526) 已通过全部五个强制任务，包含 JSON 路径、HANA 辅助函数和 MySQL 编码模式回归。
+
+将 client 身份、原有 SQL 属性/参数转换、最终表归属和派生分片保护移入内部 ExpressionScope，公共 ProDsl 保留操作入口和返回类型。后续原生类型视图直接复用这层规则，避免各模块重新实现自己的上下文检查。47 个相关离线 SQL 契约通过，IDEA 格式化和编译通过；本次诊断日志清理，未创建数据库资源。
+
 ## 下一步
 
 1. 检查新提交的文本类型 CI，继续结构化 JSON path 与三库原生类型 DSL，并保持 HANA 未关闭项的跟踪。

@@ -67,6 +67,7 @@ HANA 底层模块保持与 Proxy DSL 解耦。专属 DSL 可以组合已有函�
 18. 精确类型表达式通过现有 SQLFunction/SQLSegment 接入，DDL 与 CAST 描述分开。typed value 校验无损表示，`nativeCast` 明确原生舍入/溢出；表归属在完整查询渲染时检查，兼容先构造后挂接的相关子查询。完整接口和当前边界见 [类型表达式说明](dsl-types.md)。
 19. 简单公共标量描述通过显式 SqlDialect 标识选择物理类型名称，不依赖数据库 Java 实现；有差异的函数翻译由方言模块注册。模板参数渲染复用上游 SQLFormatArgument，不维护第二套占位符展开、计数或参数重排逻辑。
 20. 公共 JSON 路径区分字面 key 与数组 index，JSON 值与 SQL 文本分开呈现。HANA 的单值/种类检查通过显式部署的原生 SQLScript 辅助函数实现，基础层不依赖 DSL；路径读取在增强层复用其原有 JSON 函数。其他数据库通过当前方言服务实现相同的结构与 NULL 契约。
+21. ExpressionScope 集中管理增强表达式的 client 身份、原有属性/参数转换和最终表归属；公共与原生类型 DSL 复用它，不为每个方言维护平行的作用域或执行上下文。
 
 ## 代码审计入口
 
