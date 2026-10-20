@@ -24,6 +24,31 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class HanaCodeFirstIT {
     @Test
+    void nativeNumericAndCharacterTypesProduceAnIdempotentSecondPlan() throws SQLException {
+        var client = HanaTestDatabase.client().getEasyQueryClient();
+        var context = client.getRuntimeContext();
+        try (var schema = HanaTestDatabase.createSchema("DDL_NATIVE_TYPES")) {
+            var data = table(schema.name(), "native_types", column("tiny", "TINYINT"), column("small", "SMALLDECIMAL"),
+                    column("floating", "DECIMAL"), column("fixed", "DECIMAL(38,38)"), column("alpha", "ALPHANUM(6)"),
+                    column("short", "SHORTTEXT(20)"), column("ascii", "VARCHAR(20)"), column("unicode", "NVARCHAR(20)"));
+            client.getDatabaseCodeFirst().createTableCommandByMigrationData(List.of(data)).executeWithTransaction(CodeFirstCommandTxArg::commit);
+            var actual = context.getService(HanaCatalog.class).describe(schema.name(), "native_types").orElseThrow();
+            assertEquals(List.of("TINYINT", "SMALLDECIMAL", "DECIMAL", "DECIMAL", "ALPHANUM", "SHORTTEXT", "VARCHAR", "NVARCHAR"),
+                    actual.columns().stream().map(HanaRelationMetadata.Column::type).toList());
+            assertNull(actual.columns().get(2).scale(), "Floating decimal must not acquire a fixed scale");
+            assertEquals(List.of(), context.getMigrationsSQLGenerator().generateMigrationSQL(new MigrationContext(List.of(data))));
+            try (var indexQuery = schema.connection().prepareStatement("SELECT COUNT(*) FROM SYS.FULLTEXT_INDEXES WHERE SCHEMA_NAME=? AND TABLE_NAME=?")) {
+                indexQuery.setString(1, schema.name());
+                indexQuery.setString(2, "native_types");
+                try (var indexes = indexQuery.executeQuery()) {
+                    assertTrue(indexes.next());
+                    assertEquals(1, indexes.getInt(1), "SHORTTEXT's generated fulltext index is retained by an empty second plan");
+                }
+            }
+        }
+    }
+
+    @Test
     void createsRelatedTablesRegardlessOfInputOrderAndProducesAnEmptySecondPlan() throws SQLException {
         var client = HanaTestDatabase.client().getEasyQueryClient();
         var context = client.getRuntimeContext();

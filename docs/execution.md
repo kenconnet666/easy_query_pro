@@ -406,9 +406,19 @@ MCP 确认 EQP_DEFAULT_VALUES/EQP_EMPTY_TUPLE/EQP_NULL_ID 本轮 schema 遗留�
 
 本地首轮 39 个离线/消费者检查、7 个三库实库用例通过；补充 HANA raw entity/回滚/失败写入后，7 个离线检查和 6 个 HANA 实库用例通过，包含原有转换器回归。消费者编译现在为 20 个正例、50 个负例。IDEA 构建通过，MCP 确认三库本轮表/schema 遗留均为 0。实现及边界见 [原生数值目录](native-numeric.md)。
 
+## HANA 字符目录与 Code First 复用
+
+提交 `eb254541e96ca5ed933936c2cba3ace7f148f411` 的 [CI 39390670439](https://github.com/kenconnet666/easy_query_pro/actions/runs/39390670439) 已通过全部五个强制任务，包含新的数值目录和 HANA 指数修复。
+
+HanaTypes 增加 ASCII VARCHAR、Unicode NVARCHAR、ALPHANUM 和仅用于存储的 SHORTTEXT 描述。前面三项复用通用字符串表达式。ALPHANUM 的纯数字补零通过 nativeCast 显式请求，typed value 只接受无表示变化的内容；SHORTTEXT 不暴露不存在的 CAST。普通字符串查询与业务实体继续沿用上游 API。
+
+真实 JDBC 探测确认目录保留 SHORTTEXT、浮点 DECIMAL scale 为 NULL，现有 HanaCatalog/HanaColumnType 已能正确处理，因此没有添加平行元数据逻辑。新增 Code First 用例同时覆盖八种原生类型、再次生成空计划和 SHORTTEXT 自动全文索引保留。
+
+本地 18 个离线/消费者编译检查和 3 个实库用例通过；补上 ALPHANUM UTF-16 满容量与自动索引断言后，2 个离线检查、3 个实库用例再次通过。消费者编译现为 21 个正例、53 个负例。IDEA 构建通过，MCP 确认本轮表/schema 遗留为 0。说明见 [HANA 字符目录](hana-characters.md)，Cloud 与本地部署的 ALPHANUM 能力明确区分。
+
 ## 下一步
 
-1. 检查原生数值提交的 CI，继续原生字符目录，并关闭 HANA 核心写入未决项。
+1. 检查 HANA 字符目录提交的 CI，推进 G4.6 组合/分片基础，并关闭 HANA 核心写入未决项。
 2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
 3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
 4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。

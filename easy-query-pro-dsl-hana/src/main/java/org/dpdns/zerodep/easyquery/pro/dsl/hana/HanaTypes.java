@@ -4,6 +4,8 @@ import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.DecimalValues;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.numeric.HanaDecimalFloatType;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.text.HanaCharacterType;
+import org.dpdns.zerodep.easyquery.pro.dsl.type.TextType;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.UnicodeStrings;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.CastTarget;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.StorageType;
@@ -18,6 +20,41 @@ public final class HanaTypes {
     private static final BinaryLob BLOB = new BinaryLob();
 
     private HanaTypes() {
+    }
+
+    public static TextType varchar(int asciiCapacity) {
+        return new HanaCharacterType(HanaCharacterType.Kind.VARCHAR, asciiCapacity);
+    }
+
+    public static TextType nvarchar(int utf16Capacity) {
+        return new HanaCharacterType(HanaCharacterType.Kind.NVARCHAR, utf16Capacity);
+    }
+
+    public static TextType alphanum(int utf16Capacity) {
+        return new HanaCharacterType(HanaCharacterType.Kind.ALPHANUM, utf16Capacity);
+    }
+
+    public static StorageType<String> shortText(int utf16Capacity) {
+        return new ShortText(utf16Capacity);
+    }
+
+    private record ShortText(int capacity) implements StorageType<String> {
+        private ShortText {
+            if (capacity < 1 || capacity > 5000)
+                throw new IllegalArgumentException("HANA SHORTTEXT requires 1 <= capacity <= 5000");
+        }
+
+        @Override
+        public Class<String> javaType() {
+            return String.class;
+        }
+
+        @Override
+        public String ddlType(SqlDialect dialect) {
+            if (dialect != SqlDialect.HANA)
+                throw new IllegalArgumentException("SHORTTEXT requires HANA COLUMN TABLE storage");
+            return "SHORTTEXT(" + capacity + ")";
+        }
     }
 
     public static NumericType<Short> tinyint() {

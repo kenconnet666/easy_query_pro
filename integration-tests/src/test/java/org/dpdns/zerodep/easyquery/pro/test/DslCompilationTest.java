@@ -37,6 +37,14 @@ class DslCompilationTest {
     }
 
     @Test
+    void hanaCharacterValuesUseStringOperationsWhileShorttextOnlyDescribesStorage() throws IOException {
+        compile(true, "StringTypeExpression<String> alpha = d.nativeCast(p.name(), HanaTypes.alphanum(6)); alpha.toUpper(); d.value(\"中😀\", HanaTypes.nvarchar(20)).isNull(); StorageType<String> stored = HanaTypes.shortText(20);");
+        compile(false, "d.nativeCast(p.name(), HanaTypes.shortText(20));");
+        compile(false, "d.value(\"text\", HanaTypes.shortText(20));");
+        compile(false, "NumberTypeExpression<Integer> text = d.value(\"ascii\", HanaTypes.varchar(20));");
+    }
+
+    @Test
     void nullSafeComparisonRequiresCompatibleOperandsAndReturnsBoolean() throws IOException {
         compile(true, "var type = CommonTypes.decimal(9, 2); BooleanTypeExpression<Boolean> result = d.nullSafeEquals(d.value(BigDecimal.ONE, type), d.nullValue(type)); result.eq(true);");
         compile(true, "d.nullSafeEqualsValue(d.nullValue(CommonTypes.decimal(9, 2)), null).eq(true); d.isDistinctFromValue(d.nullValue(CommonTypes.decimal(9, 2)), BigDecimal.ONE).eq(false);");
