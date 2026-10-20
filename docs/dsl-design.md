@@ -315,6 +315,8 @@ var client = EasyQueryBootstrapper.defaultBuilderConfiguration()
 
 MySQL/PG 使用上游配置和各自增强安装入口。注册要校验方言身份、重复/冲突安装和版本，保留调用者已有选项与服务；不把插件加载到全局静态状态中。
 
+`MySqlExtensions.configureMappings` / `PgSqlExtensions.configureMappings` 仅补齐缺少的默认 converter，重复调用不会替换已有实例。应用提供同类 converter 时先注册应用实例，再调用该方法补缺；上游原生 `applyColumnValueSQLConverter` 仍按具体类拒绝重复注册，并不是覆盖容器。这些初始化应在首次实体 metadata 加载前完成。
+
 MySQL/PG 依赖完整数据库来源的高级查询另有显式 `MySqlExtensions.configureQueryScope(services)` / `PgSqlExtensions.configureQueryScope(services)`。普通 `configure` 不替换现有 ExpressionFactory，包括在 Pro 之前注册的应用工厂。以 MySQL 为例，需要查询作用域传播时按以下顺序安装：
 
 ```java

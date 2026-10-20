@@ -707,3 +707,11 @@ prepareThreshold 0/-1 均覆盖三类输入、全部归一化标志的组合、�
 随后用相同命令分别追加 `-Dconsumer.database=mysql`、`postgres`、`hana`，每个正例均为 5 个检查全部通过、零跳过，并重复通过两个构建负例。实库覆盖从独立实体生成的 CRUD、Unicode/DECIMAL、NULL-safe、CAST、分页、原 EasyQuery 事务回滚和 Hikari 连接恢复。MySQL 首轮触发上游默认物理删除保护，测试只在带主键条件的自有表删除链添加 allowDeleteStatement(true)，未改客户端默认保护。三库最终都断言只余 fixture owner 借出，关闭 owner 后活动连接归零，复用连接 autoCommit 正确。
 
 CI 新增 Windows/Linux 独立消费者任务，并在原 MySQL/PG/HANA 数据库 job 中复用既有实例运行对应实库消费者；没有新增数据库服务，原内存限制和 HANA Node 验证步骤保持。actionlint、IDEA 格式和现有工程构建通过；独立示例的实际编译证据来自 Invoker。MCP 确认三库 `EQP_CONSUMER_%` 表遗留均为零。五份本轮根目录诊断日志记录后清理，标准 Invoker/测试报告与 target 内隔离构建缓存保留供后续 Spring 消费者复用，并由正常 clean 生命周期管理。使用入口见 [独立 Java 消费者](../examples/java-client/README.md)。
+
+## 默认 converter 安装保留应用实例
+
+Spring 接入复审发现上游按具体类拒绝重复 ColumnValueSQLConverter，不能把默认安装当作覆盖操作。先在 MySqlJsonDslTest/PgJsonDslTest 添加直接回归，均复现 `column value sql converter:...,repeat`；PG 额外验证只注册 JSONB 时仍应补齐 JSON，而第二次安装必须保留两者身份。
+
+将三个默认映射的注册收敛到既有 ExtensionInstaller 的小型 installDefaultMapping 方法，通过上游公开 get/apply API 检查并补缺。MySqlExtensions/PgSqlExtensions.configureMappings 现为幂等默认安装，已注册的同类实例保持；没有改变上游主动重复注册的错误行为，没有删除或反射改写应用注册表。
+
+指定 JBR 17 执行 `mvnw.cmd --batch-mode test -Dtest=MySqlJsonDslTest,PgJsonDslTest -Dsurefire.failIfNoSpecifiedTests=false`，两个新红测与四个已有 JSON 契约全部通过。IDEA 格式与构建通过；只涉及初始化注册，未重复无关实库测试，两个自有诊断日志记录后清理。公共契约修复独立于后续 Spring 示例提交。前一消费者提交 `70098e247dadeccc673c02e7df16b20af5d59ae4` 的 [CI 39495405959](https://github.com/kenconnet666/easy_query_pro/actions/runs/39495405959) 检查时 cancelled，按原状态保留，不视为当前候选成功。

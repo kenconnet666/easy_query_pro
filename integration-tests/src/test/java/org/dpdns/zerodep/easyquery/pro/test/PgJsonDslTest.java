@@ -8,6 +8,8 @@ import org.dpdns.zerodep.easyquery.pro.dsl.mysql.MySqlExtensions;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlDsl;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlExtensions;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlTypes;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.PgJsonColumnConverter;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.PgJsonbColumnConverter;
 import org.dpdns.zerodep.easyquery.pro.test.entity.PgJsonRecord;
 import org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload;
 import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
@@ -19,6 +21,20 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PgJsonDslTest {
+    @Test
+    void defaultMappingsPreserveRegisteredInstancesAndFillMissingTypes() {
+        var query = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+        var configuration = query.getRuntimeContext().getQueryConfiguration();
+        var application = new PgJsonbColumnConverter();
+        configuration.applyColumnValueSQLConverter(application);
+        PgSqlExtensions.configureMappings(configuration);
+        var addedJson = configuration.getColumnValueSQLConverter(PgJsonColumnConverter.class);
+        assertNotNull(addedJson);
+        PgSqlExtensions.configureMappings(configuration);
+        assertSame(application, configuration.getColumnValueSQLConverter(PgJsonbColumnConverter.class));
+        assertSame(addedJson, configuration.getColumnValueSQLConverter(PgJsonColumnConverter.class));
+    }
+
     @Test
     void viewsAndConversionsUseDifferentContractsAndBoundValues() {
         var client = client();

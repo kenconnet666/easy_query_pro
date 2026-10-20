@@ -1,6 +1,8 @@
 package org.dpdns.zerodep.easyquery.pro.dsl.internal;
 
 import com.easy.query.core.configuration.dialect.SQLKeyword;
+import com.easy.query.core.configuration.QueryConfiguration;
+import com.easy.query.core.basic.extension.conversion.ColumnValueSQLConverter;
 import com.easy.query.core.inject.ServiceCollection;
 import com.easy.query.core.expression.parser.factory.SQLExpressionInvokeFactory;
 import com.easy.query.core.expression.sql.builder.factory.ExpressionBuilderFactory;
@@ -19,6 +21,17 @@ import java.util.Objects;
  */
 public final class ExtensionInstaller {
     private ExtensionInstaller() {
+    }
+
+    /**
+     * 默认映射只补缺项。上游按具体类拒绝重复注册，因此不能覆盖应用已经提供的同类实例。
+     * 与上游注册一样，应在首次实体 metadata 加载前完成。
+     */
+    public static void installDefaultMapping(QueryConfiguration configuration, ColumnValueSQLConverter converter) {
+        Objects.requireNonNull(configuration, "configuration");
+        Objects.requireNonNull(converter, "converter");
+        if (configuration.getColumnValueSQLConverter(converter.getClass()) == null)
+            configuration.applyColumnValueSQLConverter(converter);
     }
 
     public static void install(ServiceCollection services, SqlDialect dialect, Class<? extends SQLKeyword> backend, NullSafeComparison comparison) {

@@ -43,8 +43,11 @@ public final class MySqlExtensions {
         services.addService(ExpressionFactory.class, MySqlProExpressionFactory.class);
     }
 
+    /**
+     * 只补齐默认映射，保留应用已注册的同类 converter；应在首次实体 metadata 加载前调用。
+     */
     public static void configureMappings(QueryConfiguration configuration) {
-        configuration.applyColumnValueSQLConverter(new MySqlJsonColumnConverter());
+        ExtensionInstaller.installDefaultMapping(configuration, new MySqlJsonColumnConverter());
     }
 
     public static void configureTypeHandlers(JdbcTypeHandlerManager handlers) {

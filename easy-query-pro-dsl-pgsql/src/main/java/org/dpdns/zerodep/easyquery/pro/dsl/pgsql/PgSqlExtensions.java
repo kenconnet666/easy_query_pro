@@ -40,9 +40,12 @@ public final class PgSqlExtensions {
         services.addService(JdbcSQLExecutor.class, PgJdbcSQLExecutor.class);
     }
 
+    /**
+     * 只补齐默认映射，保留应用已注册的同类 converter；应在首次实体 metadata 加载前调用。
+     */
     public static void configureMappings(QueryConfiguration configuration) {
-        configuration.applyColumnValueSQLConverter(new PgJsonColumnConverter());
-        configuration.applyColumnValueSQLConverter(new PgJsonbColumnConverter());
+        ExtensionInstaller.installDefaultMapping(configuration, new PgJsonColumnConverter());
+        ExtensionInstaller.installDefaultMapping(configuration, new PgJsonbColumnConverter());
     }
 
     /**

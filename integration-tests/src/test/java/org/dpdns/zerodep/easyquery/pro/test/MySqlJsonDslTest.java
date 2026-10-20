@@ -10,6 +10,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.mysql.MySqlDsl;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.MySqlExtensions;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.MySqlTypes;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.MySqlJsonChange;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.MySqlJsonColumnConverter;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlExtensions;
 import org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload;
 import org.dpdns.zerodep.easyquery.pro.test.entity.MySqlJsonRecord;
@@ -21,6 +22,17 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MySqlJsonDslTest {
+    @Test
+    void defaultMappingsPreserveRegisteredInstances() {
+        var query = TestClients.offline(new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+        var configuration = query.getRuntimeContext().getQueryConfiguration();
+        var application = new MySqlJsonColumnConverter();
+        configuration.applyColumnValueSQLConverter(application);
+        MySqlExtensions.configureMappings(configuration);
+        MySqlExtensions.configureMappings(configuration);
+        assertSame(application, configuration.getColumnValueSQLConverter(MySqlJsonColumnConverter.class));
+    }
+
     @Test
     void nativeChangesBindDataInOrderAndSnapshotCallerArrays() {
         var key = JsonPath.root().key("a'\\{0}中😀");
