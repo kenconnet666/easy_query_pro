@@ -577,3 +577,15 @@ JOIN 原型还确认 EasyQuery 3.2.17 的两个同源 clone 共享 Proxy，ON �
 IDEA 格式与构建通过，MCP 确认本轮 HDI schema 遗留为零。七份自有诊断日志在记录红绿证据后清理，标准测试报告保留；持久三库实例未修改。只读复审确认 root context 委托与公开 converter 路径无新增阻塞问题，完整 CI 随新提交异步执行。
 
 生成器文档见 [HANA 层级来源](hana-hierarchy.md)。祖先/后代导航、距离与组织事实汇总仍继续实施，当前生成器不能替代完整 H12/G5.3/G5.8 验收。除现有 HDI 回归自有容器生命周期外，新增层级测试只使用常量关系，不创建持久对象或数据库实例。
+
+## HANA 祖先/后代导航与组织事实汇总
+
+生成器提交 `1ba0738dcccb114f01f3a6bb377e49afe3021fd3` 对应同一 push 有两个运行：`39465419959` 已取消；同 SHA 的 [CI 39465420218](https://github.com/kenconnet666/easy_query_pro/actions/runs/39465420218) 成功。已读取后一个运行的 SHA 与结论，不将取消的运行写成成功，也未阻塞等待 CI。
+
+HanaHierarchy 增加不可变 descendantsOf/ancestorsOf 和有符号 distanceBetween，键类型、绑定、根定义与 clone 继续保留。两方向包含自身，重叠子树按 START_RANK 分别输出，重复输入键采用 IN 集合语义。距离为 JDBC 参数的闭区间，保留原生负数和反向空区间；不取绝对值或改变原层级 TREE_SIZE。导航 SOURCE 直接组合受控 HIERARCHY 函数节点，绕开 HANA 不接受任意普通子查询的语法边界，未解析或改写最终 SQL 文本。
+
+组织报表选择复用既有聚合：事实先按节点预聚合，再 LEFT JOIN 后代关系，最后按 START_RANK 汇总。真实 fixture 含一节点多条事实、重叠起点、空叶、NULL 金额、完全无事实新根及不属于树的事实。断言事实金额、节点自身金额、节点数、事实记录数分别正确；无事实记录数显式使用既有 nullOrDefault(0L)，金额 SUM 保留 NULL。该组合没有另建 MEASURES AST、SUM/COUNT 包装或报表执行器。
+
+最初消费者编译暴露 Draft 的 Long 槽是 SQLAnyTypeColumn，按已有 API 显式 asLong 后聚合。最终使用指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana -Dtest=HanaHierarchyDslTest,DslCompilationTest#hanaHierarchyKeysRootsAndOutputRemainTyped -Dit.test=HanaHierarchyIT -Dsurefire.failIfNoSpecifiedTests=false`，8 个离线/消费者检查与 7 个实库用例通过。覆盖起点/距离参数顺序、类型负例、业务键、空来源、缺失起点、重复及重叠、CTE/count/page、SMART 展示和既有生成器回归。只读复审补充无事实根与集合语义说明后无阻塞问题；IDEA 格式与构建通过。
+
+本批仅使用常量关系，没有创建持久数据库对象；两份自有诊断日志记录后清理，标准报告保留。当前导航提交的完整 CI 将异步执行；接下来继续 A04 日历补桶/PG date_bin、全文和完整消费者/权限验收。

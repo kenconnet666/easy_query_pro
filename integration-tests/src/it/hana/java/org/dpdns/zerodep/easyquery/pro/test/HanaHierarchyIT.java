@@ -10,13 +10,20 @@ import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaHierarchySpec;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.test.entity.HanaHierarchyEdge;
 import org.dpdns.zerodep.easyquery.pro.test.entity.HanaHierarchyRow;
+import org.dpdns.zerodep.easyquery.pro.test.entity.HanaHierarchyNavigationRow;
+import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import org.dpdns.zerodep.easyquery.pro.test.entity.CodecRecord;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.CodecRecordProxy;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyEdgeProxy;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyRowProxy;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyNavigationRowProxy;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
+import com.easy.query.core.proxy.sql.GroupKeys;
+import com.easy.query.core.proxy.sql.Select;
 import org.junit.jupiter.api.Test;
 
 import java.sql.SQLException;
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -136,6 +143,84 @@ class HanaHierarchyIT {
         assertEquals(List.of(new CodecRecord.Label("root"), new CodecRecord.Label("child")), rows.stream().map(CodecRecord::getLabel).toList());
         assertNull(rows.get(0).getDocument());
         assertEquals(new CodecRecord.Label("root"), rows.get(1).getDocument());
+        assertEquals(2L, hierarchy.descendantsOf(List.of(new CodecRecord.Label("root"))).query(CodecRecordProxy::createTable).count());
+    }
+
+    @Test
+    void navigationKeepsSelfOverlapAndNativeSignedDistances() throws SQLException {
+        var hierarchy = HanaHierarchy.from(edges(""), p -> HanaHierarchySpec.of(p.id(), p.parentId()));
+        var descendants = hierarchy.descendantsOf(List.of(1, 3)).query(HanaHierarchyNavigationRowProxy::createTable)
+                .orderBy(p -> {
+                    p.startRank().asc();
+                    p.rank().asc();
+                });
+        var down = descendants.cloneQueryable().toList();
+        assertEquals(List.of(1, 2, 3, 4, 3, 4), down.stream().map(HanaHierarchyRow::getId).toList());
+        assertEquals(List.of(0, 1, 1, 2, 0, 1), down.stream().map(HanaHierarchyNavigationRow::getDistance).toList());
+        assertEquals(List.of(1L, 1L, 1L, 1L, 3L, 3L), down.stream().map(HanaHierarchyNavigationRow::getStartRank).toList());
+        assertEquals(6L, descendants.cloneQueryable().count());
+        assertEquals(6L, descendants.cloneQueryable().toCteAs("descendant_paths").toPageResult(2, 2).getTotal());
+        var ancestors = hierarchy.ancestorsOf(List.of(2, 4)).query(HanaHierarchyNavigationRowProxy::createTable)
+                .orderBy(p -> {
+                    p.startRank().asc();
+                    p.rank().asc();
+                }).toList();
+        assertEquals(List.of(1, 2, 1, 3, 4), ancestors.stream().map(HanaHierarchyRow::getId).toList());
+        assertEquals(List.of(-1, 0, -2, -1, 0), ancestors.stream().map(HanaHierarchyNavigationRow::getDistance).toList());
+        assertEquals(List.of(1, 3), hierarchy.ancestorsOf(List.of(4)).distanceBetween(-2, -1)
+                .query(HanaHierarchyNavigationRowProxy::createTable).orderBy(p -> p.rank().asc()).toList()
+                .stream().map(HanaHierarchyRow::getId).toList());
+        assertEquals(3L, hierarchy.descendantsOf(List.of(1)).distanceBetween(1, 2).query(HanaHierarchyNavigationRowProxy::createTable).count());
+        assertEquals(3, hierarchy.descendantsOf(List.of(3)).distanceBetween(0, 0).query(HanaHierarchyNavigationRowProxy::createTable).singleNotNull().getId());
+        assertEquals(0L, hierarchy.descendantsOf(List.of(1)).distanceBetween(2, 1).query(HanaHierarchyNavigationRowProxy::createTable).count());
+        assertEquals(0L, hierarchy.ancestorsOf(List.of(4)).distanceBetween(1, 1).query(HanaHierarchyNavigationRowProxy::createTable).count());
+        assertEquals(0L, hierarchy.descendantsOf(List.of(999)).query(HanaHierarchyNavigationRowProxy::createTable).count());
+        var empty = HanaHierarchy.from(edges("").where(p -> p.id().lt(0)), p -> HanaHierarchySpec.of(p.id(), p.parentId()));
+        assertEquals(0L, empty.descendantsOf(List.of(1)).query(HanaHierarchyNavigationRowProxy::createTable).count());
+        // 同一业务键多次出现在 IN 集合中不会创造多个 START 行，重叠的不同起点则各自保留路径。
+        assertEquals(2L, hierarchy.descendantsOf(List.of(3, 3)).query(HanaHierarchyNavigationRowProxy::createTable).count());
+        assertEquals(6L, hierarchy.query(HanaHierarchyRowProxy::createTable).count());
+    }
+
+    @Test
+    void factPreaggregationPreservesNodeMeasuresAndEmptyBranches() throws SQLException {
+        var edges = edges(" UNION ALL SELECT 7,NULL,3,'no facts',70 FROM DUMMY");
+        var runtime = edges.getClientQueryable().getSQLEntityExpressionBuilder().getRuntimeContext();
+        String factSql = """
+                SELECT 1 AS "id",'fact' AS "name",CAST(10 AS DECIMAL(19,4)) AS "amount" FROM DUMMY
+                UNION ALL SELECT 2,'fact',20 FROM DUMMY UNION ALL SELECT 2,'fact',5 FROM DUMMY
+                UNION ALL SELECT 4,'fact',40 FROM DUMMY UNION ALL SELECT 6,'fact',NULL FROM DUMMY
+                UNION ALL SELECT 99,'outside the hierarchy',7 FROM DUMMY
+                """;
+        var factSource = runtime.getSQLClientApiFactory().createQueryable(factSql, List.of(), TestProduct.class, runtime);
+        var facts = new EasyEntityQueryable<>(TestProductProxy.createTable(), factSource);
+        // 先按节点折叠一对多事实，再 JOIN 导航结果；不能用 SUM(DISTINCT amount) 隐藏重复行。
+        var perNode = facts.groupBy(p -> GroupKeys.of(p.id()))
+                .select(g -> Select.DRAFT.of(g.key1(), g.groupTable().amount().sumBigDecimal(), g.count()));
+        var hierarchy = HanaHierarchy.from(edges, p -> HanaHierarchySpec.of(p.id(), p.parentId()));
+        var report = hierarchy.descendantsOf(List.of(1, 3, 5, 7)).query(HanaHierarchyNavigationRowProxy::createTable)
+                .leftJoin(perNode, (node, fact) -> node.id().eq(fact.value1()))
+                .groupBy((node, fact) -> GroupKeys.of(node.startRank()))
+                .select(g -> Select.DRAFT.of(g.key1(), g.groupTable().t2.value2().asBigDecimal().sumBigDecimal(),
+                        g.groupTable().t1.amount().sumBigDecimal(), g.count(),
+                        g.groupTable().t2.value3().asLong().sumLong().nullOrDefault(0L)));
+        var rows = report.cloneQueryable().orderBy(p -> p.value1().asc()).toList();
+        assertEquals(4, rows.size());
+        assertEquals(List.of(1L, 3L, 5L, 7L), rows.stream().map(r -> r.getValue1()).toList());
+        assertEquals(0, new BigDecimal("75").compareTo(rows.get(0).getValue2()));
+        assertEquals(0, new BigDecimal("40").compareTo(rows.get(1).getValue2()));
+        assertNull(rows.get(2).getValue2());
+        assertNull(rows.get(3).getValue2());
+        assertEquals(List.of(4L, 2L, 2L, 1L), rows.stream().map(r -> r.getValue4()).toList());
+        assertEquals(List.of(4L, 1L, 1L, 0L), rows.stream().map(r -> r.getValue5()).toList());
+        assertEquals(0, new BigDecimal("100").compareTo(rows.get(0).getValue3()));
+        assertEquals(0, new BigDecimal("70").compareTo(rows.get(1).getValue3()));
+        assertEquals(0, new BigDecimal("110").compareTo(rows.get(2).getValue3()));
+        assertEquals(0, new BigDecimal("70").compareTo(rows.get(3).getValue3()));
+        var display = report.cloneQueryable().where(p -> p.value1().eq(3L));
+        display.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().getBehavior().addBehavior(EasyBehaviorEnum.SMART_PREDICATE);
+        assertEquals(0, new BigDecimal("40").compareTo(display.singleNotNull().getValue2()));
+        assertEquals(4L, report.cloneQueryable().toCteAs("organization_totals").toPageResult(1, 2).getTotal());
     }
 
     private static void assertHierarchyError(org.junit.jupiter.api.function.Executable action) {

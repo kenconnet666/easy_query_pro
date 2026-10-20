@@ -7,6 +7,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaHierarchy;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaHierarchySpec;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyEdgeProxy;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyRowProxy;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyNavigationRowProxy;
 import org.dpdns.zerodep.easyquery.pro.test.entity.ShardedProduct;
 import org.dpdns.zerodep.easyquery.pro.test.entity.CodecRecord;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -101,5 +102,24 @@ class HanaHierarchyDslTest {
                 p -> HanaHierarchySpec.of((SQLColumn) p.id(), (SQLColumn) p.label())));
         assertThrows(IllegalArgumentException.class, () -> HanaHierarchy.from(source,
                 p -> ((HanaHierarchySpec) HanaHierarchySpec.of(p.label(), p.document())).roots(List.of("wrong Java type"))));
+    }
+
+    @ParameterizedTest
+    @MethodSource("hana")
+    void navigationComposesTheGeneratorAndBindsSignedDistances(DecimalDslTest.Backend backend) {
+        var source = backend.client().queryable(HanaHierarchyEdgeProxy.createTable()).where(p -> p.id().le(10));
+        var hierarchy = HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()).roots(List.of(1)));
+        var navigation = hierarchy.ancestorsOf(List.of(4)).distanceBetween(-2, -1);
+        var query = navigation.query(HanaHierarchyNavigationRowProxy::createTable).where(p -> p.id().gt(0));
+        var result = query.cloneQueryable().toSQLResult();
+        assertTrue(result.getSQL().contains("HIERARCHY_ANCESTORS(SOURCE HIERARCHY("), result.getSQL());
+        assertTrue(result.getSQL().contains("DISTANCE FROM ? TO ?"), result.getSQL());
+        assertEquals(List.of(10, 1, 4, -2, -1, 0), result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(result.getSQL(), query.cloneQueryable().toSQL());
+        assertThrows(IllegalStateException.class, () -> hierarchy.distanceBetween(0, 1));
+        assertThrows(IllegalArgumentException.class, () -> hierarchy.descendantsOf(List.of()));
+        assertThrows(IllegalArgumentException.class, () -> hierarchy.ancestorsOf(java.util.Arrays.asList((Integer) null)));
+        assertThrows(IllegalStateException.class, () -> navigation.descendantsOf(List.of(1)));
+        assertFalse(hierarchy.query(HanaHierarchyRowProxy::createTable).toSQL().contains("HIERARCHY_ANCESTORS("));
     }
 }

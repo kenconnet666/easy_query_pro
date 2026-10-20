@@ -73,4 +73,47 @@ var page = hierarchy.query(DepartmentNodeProxy::createTable)
 
 层级依赖完整的数据库关系，不支持跨分片生成后由 Java 合并。来源已经分片时提前拒绝；查询 clone、CTE 后再组合分片 JOIN 也必须拒绝。HANA 渲染上下文透传本次外层分片标记，避免内外 ExpressionContext 分别复制后丢失该约束。
 
-当前实现覆盖生成器。祖先/后代导航、距离与组织事实汇总仍按 H12/G5.3/G5.8 继续实施，当前生成器验收不替代这些交付项。测试采用常量关系，没有新增持久表或容器；完整证据见 [执行记录](execution.md)。
+生成器、下面的祖先/后代导航与组织事实汇总已经过本地实库验证，完整版本、权限和业务组合仍按 H12/G6 继续验收。测试采用常量关系，没有新增持久表或容器；完整证据见 [执行记录](execution.md)。
+
+## 祖先、后代与距离
+
+```java
+var descendants = hierarchy.descendantsOf(List.of(rootDepartmentId, otherDepartmentId))
+        .distanceBetween(0, 2)
+        .query(DepartmentNavigationProxy::createTable)
+        .orderBy(row -> {
+            row.startRank().asc();
+            row.rank().asc();
+        });
+
+var ancestors = hierarchy.ancestorsOf(List.of(leafDepartmentId))
+        .distanceBetween(-2, -1)
+        .query(DepartmentNavigationProxy::createTable);
+```
+
+导航 DTO 除基础属性外，可映射 `@Column("START_RANK") Long startRank` 和 `@Column("HIERARCHY_DISTANCE") Integer distance`。这两列只在导航结果存在，应使用独立 DTO 或继承基础 DTO 后扩展字段。
+
+两种导航默认包含自身，距离 0 为起点；后代距离非负，祖先距离非正。`distanceBetween(min,max)` 是原生有符号闭区间，`(-2,-1)` 表示父级与祖父级，`(0,0)` 仅保留自身。反向区间保持空结果，祖先使用正区间也为空；接口不会擅自取绝对值或调换边界。距离使用 JDBC 参数，并在导航物化之前筛选，原始 `TREE_SIZE` 保持不变。
+
+起点要求非空且不含 NULL，Java 类型与节点键一致。它使用 IN 集合语义：同一个输入键重复两次不会额外增加 START 行；多父节点中的不同 rank 则分别参与。不同起点的子树重叠时，同一业务节点会按起点重复出现在结果中，必须用 `(START_RANK, HIERARCHY_RANK)` 识别一条导航关系。不要按 NODE_ID 自动去重，也不要把重叠子树金额再次相加冒充全树总额。
+
+不存在的起点或空来源得到空结果。接口不提供“省略起点则从所有节点导航”的隐式重载，避免把一次子树查询无意扩大为完整关系闭包。每次导航返回新定义，原 hierarchy 仍可查询全部生成结果；如果需要另一种导航，应从原定义重新调用，不将已经导航过的结果误当作完整树。
+
+实现直接把受控 `HIERARCHY(...)` 函数节点放进导航的 SOURCE。HANA 2.0 的导航 SOURCE 不接收任意普通子查询，因此没有先生成 SELECT 再剥离 SQL 文本。依据为 [HANA 2.0 导航章节](https://help.sap.com/doc/e4fc5d26a38c4dc28802a3b87cd5eb10/2.0.08/en-US/SAP_HANA_Hierarchy_Developer_Guide_en.pdf#page=45)，实际 JDBC 检查包含两种方向、距离绑定、重叠、空集、业务键、CTE/count/page 和克隆。
+
+## 组织事实汇总
+
+事实汇总继续复用原有 GROUP BY、SUM/COUNT、LEFT JOIN 和 DTO/Draft。先按节点键将一对多事实折叠为一行，再与后代导航结果关联，最后按 START_RANK 汇总。这样保留空叶和无事实起点，同时节点自身的预算、面积等度量不会因为多条事实而重复累计。
+
+`HanaHierarchyIT.factPreaggregationPreservesNodeMeasuresAndEmptyBranches` 的实库结果明确区分：
+
+| 起点 | 事实金额 SUM | 节点自身金额 SUM | 节点数 | 事实记录数 |
+| --- | --- | --- | --- | --- |
+| 1 | 75 | 100 | 4 | 4 |
+| 3（与起点 1 重叠） | 40 | 70 | 2 | 1 |
+| 5（有一条 NULL 金额事实） | NULL | 110 | 2 | 1 |
+| 7（完全没有事实） | NULL | 70 | 1 | 0 |
+
+事实记录数按原始行 COUNT 后求和，对全无事实的分支使用既有 `nullOrDefault(0L)`。金额 SUM 保持 SQL NULL，不把“无金额”自动解释成零；需要不同业务规则时由调用方明确处理。不能用 `COUNT(amount)` 代替事实记录数，也不能用 `SUM(DISTINCT amount)` 掩盖连接导致的重复。未匹配任何节点的事实不会混入汇总。
+
+结果展示筛选在汇总之后执行；实库通过 SMART 下只展示起点 3、CTE 与分页仍保留正确总额。该方案用已有查询能力组成单条数据库报表，不新增报表执行引擎或重复的聚合 API。

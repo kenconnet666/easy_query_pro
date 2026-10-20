@@ -14,6 +14,8 @@ import com.easy.query.core.util.EasySQLExpressionUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 
 import java.util.Objects;
+import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -35,10 +37,12 @@ public final class HanaHierarchy<K> {
             "HIERARCHY_PARENT_RANK", "HIERARCHY_ROOT_RANK", "HIERARCHY_LEVEL", "HIERARCHY_IS_CYCLE", "HIERARCHY_IS_ORPHAN");
     private final ClientQueryable<?> source;
     private final HanaHierarchySpec<K> spec;
+    private final Navigation<K> navigation;
 
-    private HanaHierarchy(ClientQueryable<?> source, HanaHierarchySpec<K> spec) {
+    private HanaHierarchy(ClientQueryable<?> source, HanaHierarchySpec<K> spec, Navigation<K> navigation) {
         this.source = source;
         this.spec = spec;
+        this.navigation = navigation;
     }
 
     public static <P extends ProxyEntity<P, T>, T, K> HanaHierarchy<K> from(
@@ -77,7 +81,48 @@ public final class HanaHierarchy<K> {
         }
         // 只复制 ClientQueryable，避免 EntityQueryable.clone 重绑定调用方的可变 Proxy。
         var snapshot = EasySQLExpressionUtil.cloneAndSelectAllQueryable(source.getClientQueryable());
-        return new HanaHierarchy<>(snapshot, spec);
+        return new HanaHierarchy<>(snapshot, spec, null);
+    }
+
+    /**
+     * 按业务节点键选择后代导航起点，默认包含起点自身。重叠子树按 START_RANK 分别保留结果，
+     * 不能把它们按业务键去重，也不能再次相加当作全树总额。
+     * 起点采用 IN 集合语义：重复输入键不增加 START 行，多父节点产生的不同 rank 仍分别保留。
+     */
+    public HanaHierarchy<K> descendantsOf(Collection<? extends K> starts) {
+        return navigate(Direction.DESCENDANTS, starts);
+    }
+
+    /**
+     * 默认包含自身；HIERARCHY_DISTANCE 为祖先层数减起点层数，因此始终小于等于 0。
+     * 起点仍使用 IN 集合语义，不因输入键重复而重复创建 START 行。
+     */
+    public HanaHierarchy<K> ancestorsOf(Collection<? extends K> starts) {
+        return navigate(Direction.ANCESTORS, starts);
+    }
+
+    /**
+     * 限定原生有符号距离的闭区间。0 表示自身，祖先使用负数；反向区间保持数据库的空结果语义。
+     * 此处只是导航结果预筛选，不会重新构树或改变 TREE_SIZE；与 spec.depth 的构树剪枝不同。
+     */
+    public HanaHierarchy<K> distanceBetween(int minimum, int maximum) {
+        if (navigation == null)
+            throw new IllegalStateException("Select descendants or ancestors before setting a distance range");
+        return new HanaHierarchy<>(source, spec, new Navigation<>(navigation.direction(), navigation.starts(), minimum, maximum));
+    }
+
+    private HanaHierarchy<K> navigate(Direction direction, Collection<? extends K> starts) {
+        if (navigation != null)
+            throw new IllegalStateException("Start another navigation from the original hierarchy definition");
+        Objects.requireNonNull(starts, "starts");
+        var type = keyType(spec.node());
+        if (starts.isEmpty() || starts.stream().anyMatch(value -> !type.isInstance(value)))
+            throw new IllegalArgumentException("Hierarchy navigation requires nonempty, non-null " + type.getName() + " start keys");
+        for (var column : spec.node().getTable().getEntityMetadata().getProperty2ColumnMap().values()) {
+            if (column.getName().equals("START_RANK") || column.getName().equals("HIERARCHY_DISTANCE"))
+                throw new IllegalArgumentException("Hierarchy source column conflicts with navigation output: " + column.getName());
+        }
+        return new HanaHierarchy<>(source, spec, new Navigation<>(direction, List.copyOf(starts), null, null));
     }
 
     /**
@@ -91,7 +136,7 @@ public final class HanaHierarchy<K> {
         var runtime = source.getSQLEntityExpressionBuilder().getRuntimeContext();
         // source 的 resultPropTypes/reader map 不能污染新的 DTO 形状；extract 仅提升来源/CTE 等查询依赖。
         var context = runtime.getExpressionBuilderFactory().createExpressionContext(runtime, ContextTypeEnum.QUERY);
-        var builder = new HanaHierarchyQueryBuilder(source.cloneQueryable(), spec, context, proxy.getEntityClass());
+        var builder = new HanaHierarchyQueryBuilder(source.cloneQueryable(), spec, navigation, context, proxy.getEntityClass());
         return new EasyEntityQueryable<>(proxy, runtime.getSQLClientApiFactory().createQueryable(proxy.getEntityClass(), builder));
     }
 
@@ -108,5 +153,10 @@ public final class HanaHierarchy<K> {
         if (column instanceof DSLSQLFunctionAvailable || column.getTable() != source || column.getValue() == null)
             throw new IllegalArgumentException("Hierarchy keys and sibling order must reference mapped columns of the current source");
         source.getEntityMetadata().getColumnNotNull(column.getValue());
+    }
+
+    enum Direction {DESCENDANTS, ANCESTORS}
+
+    record Navigation<K>(Direction direction, List<K> starts, Integer minimumDistance, Integer maximumDistance) {
     }
 }

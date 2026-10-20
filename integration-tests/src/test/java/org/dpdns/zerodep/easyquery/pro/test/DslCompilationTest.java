@@ -273,5 +273,7 @@ class DslCompilationTest {
         compile(true, "HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id()).roots(java.util.List.of(1))); Long rank = hierarchy.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyRowProxy::createTable).singleNotNull().getRank();");
         compile(false, "HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.name()));");
         compile(false, "HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id()).roots(java.util.List.of(\"bad\")));");
+        compile(true, "HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id())); Integer distance = hierarchy.ancestorsOf(java.util.List.of(1)).distanceBetween(-2, 0).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyNavigationRowProxy::createTable).singleNotNull().getDistance();");
+        compile(false, "HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id())).descendantsOf(java.util.List.of(\"bad\"));");
     }
 }

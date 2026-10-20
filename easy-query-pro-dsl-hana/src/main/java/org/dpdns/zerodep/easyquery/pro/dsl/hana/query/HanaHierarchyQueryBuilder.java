@@ -18,6 +18,7 @@ import org.dpdns.zerodep.easyquery.pro.hana.config.HanaSQLKeyword;
 import org.dpdns.zerodep.easyquery.pro.hana.expression.HanaQuerySQLContext;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -27,29 +28,49 @@ import java.util.List;
 final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements SQLAnonymousEntityQueryExpressionBuilder {
     private final ClientQueryable<?> source;
     private final HanaHierarchySpec<?> spec;
+    private final HanaHierarchy.Navigation<?> navigation;
     private final SQLNativeSegment sourceSegment;
     private final List<SQLNativeSegment> roots;
+    private final List<SQLNativeSegment> starts;
+    private final SQLNativeSegment minimumDistance;
+    private final SQLNativeSegment maximumDistance;
 
-    HanaHierarchyQueryBuilder(ClientQueryable<?> source, HanaHierarchySpec<?> spec, ExpressionContext context, Class<?> resultClass) {
+    HanaHierarchyQueryBuilder(ClientQueryable<?> source, HanaHierarchySpec<?> spec, HanaHierarchy.Navigation<?> navigation,
+                              ExpressionContext context, Class<?> resultClass) {
         super(context, resultClass);
         this.source = source;
         this.spec = spec;
+        this.navigation = navigation;
         var nativeContext = new SQLNativeExpressionContextImpl(context, runtimeContext);
         // 在最外层 ToSQLContext 创建前提取 CTE/tableContext，不能等到 toSQL 时才追加依赖。
         nativeContext.expression(source);
         sourceSegment = runtimeContext.getSQLSegmentFactory().createSQLNativeSegment(context, "{0}", nativeContext);
-        roots = new ArrayList<>();
-        if (spec.roots() != null) {
-            for (var root : spec.roots()) {
-                var valueContext = new SQLNativeExpressionContextImpl(context, runtimeContext);
-                // 比较值沿原列的 SQL converter、JDBC handler 与业务 converter 路径绑定。
-                valueContext.sql(EasyColumnSegmentUtil.createColumnCompareValue2Segment(spec.node().getTable(),
-                        spec.node().getTable().getEntityMetadata().getColumnNotNull(spec.node().getValue()), context, root));
-                roots.add(runtimeContext.getSQLSegmentFactory().createSQLNativeSegment(context, "{0}", valueContext));
-            }
-        }
+        roots = bindKeys(spec.roots());
+        starts = bindKeys(navigation == null ? null : navigation.starts());
+        minimumDistance = bindDistance(navigation == null ? null : navigation.minimumDistance());
+        maximumDistance = bindDistance(navigation == null ? null : navigation.maximumDistance());
         if (context.isSharding())
             throw new UnsupportedOperationException("HANA hierarchies require one database source without shard merging");
+    }
+
+    private List<SQLNativeSegment> bindKeys(Collection<?> keys) {
+        if (keys == null) return List.of();
+        var segments = new ArrayList<SQLNativeSegment>();
+        for (var key : keys) {
+            var valueContext = new SQLNativeExpressionContextImpl(expressionContext, runtimeContext);
+            // 比较值沿原列的 SQL converter、JDBC handler 与业务 converter 路径绑定。
+            valueContext.sql(EasyColumnSegmentUtil.createColumnCompareValue2Segment(spec.node().getTable(),
+                    spec.node().getTable().getEntityMetadata().getColumnNotNull(spec.node().getValue()), expressionContext, key));
+            segments.add(runtimeContext.getSQLSegmentFactory().createSQLNativeSegment(expressionContext, "{0}", valueContext));
+        }
+        return List.copyOf(segments);
+    }
+
+    private SQLNativeSegment bindDistance(Integer value) {
+        if (value == null) return null;
+        var valueContext = new SQLNativeExpressionContextImpl(expressionContext, runtimeContext);
+        valueContext.value(value);
+        return runtimeContext.getSQLSegmentFactory().createSQLNativeSegment(expressionContext, "{0}", valueContext);
     }
 
     @Override
@@ -59,12 +80,13 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
 
     @Override
     public EntityQuerySQLExpression toExpression() {
-        return new HierarchyExpression(new EntitySQLExpressionMetadata(expressionContext, runtimeContext), sourceSegment, roots, spec);
+        return new HierarchyExpression(new EntitySQLExpressionMetadata(expressionContext, runtimeContext), sourceSegment,
+                roots, starts, minimumDistance, maximumDistance, spec, navigation);
     }
 
     @Override
     public EntityQueryExpressionBuilder cloneEntityExpressionBuilder() {
-        return new HanaHierarchyQueryBuilder(source.cloneQueryable(), spec, expressionContext.cloneExpressionContext(), queryClass);
+        return new HanaHierarchyQueryBuilder(source.cloneQueryable(), spec, navigation, expressionContext.cloneExpressionContext(), queryClass);
     }
 
     @Override
@@ -77,15 +99,25 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
         private final EntitySQLExpressionMetadata metadata;
         private final SQLNativeSegment source;
         private final List<SQLNativeSegment> roots;
+        private final List<SQLNativeSegment> starts;
+        private final SQLNativeSegment minimumDistance;
+        private final SQLNativeSegment maximumDistance;
         private final HanaHierarchySpec<?> spec;
+        private final HanaHierarchy.Navigation<?> navigation;
 
         private HierarchyExpression(EntitySQLExpressionMetadata metadata, SQLNativeSegment source,
-                                    List<SQLNativeSegment> roots, HanaHierarchySpec<?> spec) {
+                                    List<SQLNativeSegment> roots, List<SQLNativeSegment> starts,
+                                    SQLNativeSegment minimumDistance, SQLNativeSegment maximumDistance,
+                                    HanaHierarchySpec<?> spec, HanaHierarchy.Navigation<?> navigation) {
             super(metadata, "", List.of());
             this.metadata = metadata;
             this.source = source;
             this.roots = List.copyOf(roots);
+            this.starts = List.copyOf(starts);
+            this.minimumDistance = minimumDistance;
+            this.maximumDistance = maximumDistance;
             this.spec = spec;
+            this.navigation = navigation;
         }
 
         @Override
@@ -93,9 +125,24 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
             EasySQLExpressionUtil.expressionInvokeRoot(context);
             if (metadata.getExpressionContext().isSharding() || HanaQuerySQLContext.isSharding(context))
                 throw new UnsupportedOperationException("HANA hierarchies cannot be combined with shard merging");
+            String generator = generator(context);
+            if (navigation == null) return "SELECT * FROM " + generator;
+            // 导航 SOURCE 接受生成函数，不能把 SELECT 子查询直接放进去；这里组合受控函数节点。
+            var sql = new StringBuilder("SELECT * FROM HIERARCHY_").append(navigation.direction().name())
+                    .append("(SOURCE ").append(generator).append(" START WHERE \"NODE_ID\" IN (");
+            appendKeys(sql, starts, context);
+            sql.append(')');
+            if (minimumDistance != null) {
+                sql.append(" DISTANCE FROM ").append(minimumDistance.toSQL(context))
+                        .append(" TO ").append(maximumDistance.toSQL(context));
+            }
+            return sql.append(')').toString();
+        }
+
+        private String generator(ToSQLContext context) {
             String node = HanaHierarchy.columnName(spec.node());
             String parent = HanaHierarchy.columnName(spec.parent());
-            var sql = new StringBuilder("SELECT * FROM HIERARCHY(SOURCE (SELECT * FROM (SELECT \"_EQH_DATA\".*");
+            var sql = new StringBuilder("HIERARCHY(SOURCE (SELECT * FROM (SELECT \"_EQH_DATA\".*");
             if (!node.equals("NODE_ID"))
                 sql.append(",\"_EQH_DATA\".").append(quote(node)).append(" AS \"NODE_ID\"");
             if (!parent.equals("PARENT_ID"))
@@ -104,10 +151,7 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
             // 额外一层 SELECT * 让 START 与兄弟排序都面对规范输出列名，避免原始别名规则差异。
             if (!roots.isEmpty()) {
                 sql.append(" START WHERE \"NODE_ID\" IN (");
-                for (int i = 0; i < roots.size(); i++) {
-                    if (i > 0) sql.append(',');
-                    sql.append(roots.get(i).toSQL(context));
-                }
+                appendKeys(sql, roots, context);
                 sql.append(')');
             }
             sql.append(" SIBLING ORDER BY ");
@@ -124,6 +168,13 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
             return sql.toString();
         }
 
+        private static void appendKeys(StringBuilder sql, List<SQLNativeSegment> keys, ToSQLContext context) {
+            for (int i = 0; i < keys.size(); i++) {
+                if (i > 0) sql.append(',');
+                sql.append(keys.get(i).toSQL(context));
+            }
+        }
+
         private static String quote(String name) {
             return KEYWORDS.quoteUnquotedName(name);
         }
@@ -131,7 +182,10 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
         @Override
         public EntityQuerySQLExpression cloneSQLExpression() {
             return new HierarchyExpression(metadata, source.cloneSQLColumnSegment(),
-                    roots.stream().map(SQLNativeSegment::cloneSQLColumnSegment).toList(), spec);
+                    roots.stream().map(SQLNativeSegment::cloneSQLColumnSegment).toList(),
+                    starts.stream().map(SQLNativeSegment::cloneSQLColumnSegment).toList(),
+                    minimumDistance == null ? null : minimumDistance.cloneSQLColumnSegment(),
+                    maximumDistance == null ? null : maximumDistance.cloneSQLColumnSegment(), spec, navigation);
         }
     }
 }
