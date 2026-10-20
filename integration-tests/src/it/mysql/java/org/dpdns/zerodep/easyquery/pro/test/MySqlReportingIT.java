@@ -15,6 +15,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class MySqlReportingIT {
     @Test
+    void conditionalOrderMetricsAndTopRanks() throws SQLException {
+        OrderReportContract.verify(TestClients.configured(MySqlTestDatabase.dataSource(), new MySQLDatabaseConfiguration(), MySqlExtensions::configure));
+    }
+
+    @Test
+    void yearAndMonthComparisonsUseCalendarOffsets() throws SQLException {
+        CalendarReportContract.verifyYearOverYear(TestClients.configured(MySqlTestDatabase.dataSource(), new MySQLDatabaseConfiguration(), MySqlExtensions::configure));
+    }
+
+    @Test
     void calendarMonthsKeepEmptyBucketsBeforeLagAndPaging() throws SQLException {
         CalendarReportContract.verify(TestClients.configured(MySqlTestDatabase.dataSource(), new MySQLDatabaseConfiguration(), MySqlExtensions::configure));
     }

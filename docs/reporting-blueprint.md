@@ -99,6 +99,8 @@ PG date_bin 已使用 LocalDateTime、正且精确到微秒的 Duration、显式
 
 三库日历补月直接复用日期截断、LEFT JOIN、SUM/COUNT 与上游 LAG。共同验收区分无记录月份、NULL 金额记录、空事实集与展示零值；补齐后 CTE 固定窗口边界，SMART 筛选与分页不跳过空月。具体 API、结果表和源代码入口见 [时间分桶与缺月报表](reporting-time-series.md)，不新建日历/报表执行引擎。
 
+A01 的三库订单契约已补付款/退款 COUNT 与 SUM.filter、付款客户去重、金额非 NULL 计数、DECIMAL 输入提升后的加权均价、零/NULL 分母与分组后全局份额。保留上游 SUM.filter 的 ELSE 0 语义，不能把非空组无匹配和空输入都写成 NULL。部门 Top N 对照 RANK/DENSE_RANK 与带 id 次排序的 ROW_NUMBER；13 月稠密日历继续复用 LAG(1)/LAG(12) 验证环比/同比和真实零基数。固定结果和调用方式见 [订单报表](reporting-orders.md)；此进展不替代尚未实现的无 partition 排名桥，也不改变直接 distinct 字符串聚合的开放边界。
+
 ### 官方规则链接
 
 ROWS 用物理行位置定义 frame，排名与偏移函数并非都受 frame 影响，见 [MySQL 8.4 frame 规则](https://dev.mysql.com/doc/refman/8.4/en/window-functions-frames.html) 和 [PostgreSQL 17 窗口调用](https://www.postgresql.org/docs/17/sql-expressions.html#SYNTAX-WINDOW-FUNCTIONS)。HANA 当前范围按 [2.0 SPS 08 SQL Reference 的窗口规范](https://help.sap.com/doc/9b40bf74f8644b898fb07dabdd2a36ad/2.0.08/en-US/SAP_HANA_SQL_Reference_Guide_en.pdf#page=433) 核实，不把 Cloud 或其他 revision 自动视为已测试。

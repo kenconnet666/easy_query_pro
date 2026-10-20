@@ -735,3 +735,15 @@ IDEA 格式与现有工程构建通过；独立示例以 Invoker 的实际编译
 字符串去重使用已有投影→DISTINCT→CTE→普通 joining，实际验证结果、聚合内排序、含引号/中文/模板花括号的分隔符绑定和空输入 NULL。直接 joining(distinct=true) 的拒绝负例继续保留；该 API 自动改写尚未完成，没有把显式组合记成同一入口的支持，也没有解析 SQL 或新建查询引擎。
 
 指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana -Dtest=HanaConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=HanaScalarFunctionsIT#legacyRoundFactoryKeepsTableOwnersNullsAndNegativeScale,HanaQueryCompositionIT#scalarFactoryOverloadsKeepCorrelationBoundValuesAndNullResults+existsFactoryOverloadsComposeWithNotCountAndPaging,HanaAggregateFunctionsIT#distinctStringAggregationUsesAnExplicitProjectedRelation`，2 个基础离线检查及 4 个新实库用例通过。IDEA 格式与构建通过；全部使用小型常量关系，没有创建数据库对象，三份本轮诊断日志记录后清理。前一 Spring 提交 `03d2df909c003bcb56e0bee3505fa8403823f08e` 的 [CI 39499541147](https://github.com/kenconnet666/easy_query_pro/actions/runs/39499541147) 检查时 cancelled，仍按原状态记录；当前批次交后续完整 CI。
+
+## 订单指标、部门 Top N 与十三月同比
+
+本批只复用已有 API，新增 ReportOrder fixture / OrderReportContract，并扩展既有 CalendarReportContract，不修改生产函数或再造报表入口。只读研究先核对 SUM.filter 使用 ELSE 0 且 filter 原地修改聚合对象，因此每个指标重新创建聚合，结果保留无匹配、匹配金额全 NULL、混合未匹配行与空输入之间的差异。
+
+13 行订单覆盖付款/退款计数与金额、付款客户去重、非 NULL 金额计数、零/NULL 数量、真实 NULL 部门。输入先 CAST 为 DECIMAL 再 SUM/除法；另两行各 1,500,000,000 数量的用例精确得到总数 3,000,000,000 和单价 1。付款总额 130 在分组之后使用全局 SUM 窗口，A 的展示筛选不改变份额分母。部门 Top N 沿上游 rank/dense-rank/row-number，仅 row-number 加 id 次序；第一名分别保留 5 个并列结果或 4 个唯一结果，count/page 与显式 SMART 均验证。
+
+日历部分重用原有绑定事实生成器，覆盖 13 个连续月后 LAG(1)/LAG(12)、正基数与真实零基数。2025 年一月金额 60、上月 20、去年同月 40 时，环比为 2、同比为 0.5；去年金额为 0 时同比为 NULL。缺月金额/count、原始稀疏 LAG(12) 反例、直接日期 EQ、同比 NULL 筛选、clone 与第三页结果均有固定断言，四月旧契约随 helper 整理一起回归。
+
+指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana,mysql,postgres -Dtest=HanaConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false`，failsafe 定向选择三库 ReportingIT 的 conditionalOrderMetricsAndTopRanks、yearAndMonthComparisonsUseCalendarOffsets 与 calendarMonthsKeepEmptyBucketsBeforeLagAndPaging，2 个基础离线检查与 9 个实库用例全部通过。只读复审后将 D 组的两笔数量改为 1/3，金额仍为 30/10，确保简单平均单笔价格与加权均价不同；再次定向通过三库订单用例，其余六个日历用例未改动。IDEA 格式与构建通过，全部为少量常量关系，没有创建数据库对象。两份本轮根日志记录后清理，标准报告保留。
+
+前一 H08 提交 `1d9356972a5039f4915f29c5bbfb90746a8cd116` 的 [CI 39503146808](https://github.com/kenconnet666/easy_query_pro/actions/runs/39503146808) 已成功，当前候选仍需自己的 CI。业务说明见 [订单报表](reporting-orders.md) 与 [时间序列](reporting-time-series.md)。全局排名构造器拒绝空 partition 的真实缺口将沿既有 WindowSpec/WindowFunctions 单独补齐，不假称本批已提供该入口。

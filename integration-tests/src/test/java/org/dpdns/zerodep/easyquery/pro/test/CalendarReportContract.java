@@ -8,6 +8,7 @@ import com.easy.query.core.proxy.sql.Select;
 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.TruncationUnit;
+import org.dpdns.zerodep.easyquery.pro.dsl.type.CommonTypes;
 import org.dpdns.zerodep.easyquery.pro.test.entity.ReportSale;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.ReportSaleProxy;
 
@@ -31,6 +32,58 @@ final class CalendarReportContract {
     static void verify(DefaultEasyEntityQuery query) {
         verify(query, false);
         verify(query, true);
+    }
+
+    static void verifyYearOverYear(DefaultEasyEntityQuery query) {
+        for (boolean zeroBase : List.of(false, true)) {
+            var months = IntStream.rangeClosed(0, 12).mapToObj(offset -> LocalDate.of(2024, 1, 1).plusMonths(offset)).toList();
+            var values = List.of(new ReportSale(1, null, LocalDate.of(2024, 1, 15), zeroBase ? "0" : "20"),
+                    new ReportSale(2, null, LocalDate.of(2024, 1, 31), zeroBase ? "0" : "20"),
+                    new ReportSale(3, null, LocalDate.of(2024, 12, 10), "20"),
+                    new ReportSale(4, null, LocalDate.of(2025, 1, 5), "30"),
+                    new ReportSale(5, null, LocalDate.of(2025, 1, 25), "30"));
+            var calendar = calendar(query, months).select(p -> Select.DRAFT.of(p.day()));
+            var monthly = facts(query, values).groupBy(p -> GroupKeys.of(ProDsl.of(p).truncateDate(p.day(), TruncationUnit.MONTH)))
+                    .select(g -> Select.DRAFT.of(g.key1(), g.groupTable().amount().sumBigDecimal(), g.count()));
+            var filled = calendar.leftJoin(monthly, (month, total) -> month.value1().eq(total.value1()))
+                    .select((month, total) -> Select.DRAFT.of(month.value1(), total.value2(), total.value3().asLong().nullOrDefault(0L)));
+            var shifted = filled.select(p -> Select.DRAFT.of(p.value1(), p.value2(), p.value3(),
+                            p.value2().asBigDecimal().offset(over -> over.orderBy(p.value1())).prev(1),
+                            p.value2().asBigDecimal().offset(over -> over.orderBy(p.value1())).prev(12)))
+                    .toCteAs("comparable_months");
+            var report = shifted.select(p -> {
+                var pro = ProDsl.of(p);
+                var decimal = CommonTypes.decimal(19, 6);
+                var current = pro.nativeCast(p.value2(), decimal);
+                var previousMonth = pro.nullIfValue(pro.nativeCast(p.value4(), decimal), BigDecimal.ZERO);
+                var previousYear = pro.nullIfValue(pro.nativeCast(p.value5(), decimal), BigDecimal.ZERO);
+                return Select.DRAFT.of(p.value1(), p.value2(), p.value3(), p.value4(), p.value5(),
+                        pro.nativeCast(current.divide(previousMonth).subtract(BigDecimal.ONE), decimal),
+                        pro.nativeCast(current.divide(previousYear).subtract(BigDecimal.ONE), decimal));
+            }).toCteAs("calendar_comparisons");
+            report.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().getBehavior().addBehavior(EasyBehaviorEnum.SMART_PREDICATE);
+            var all = report.cloneQueryable().orderBy(p -> p.value1().asc()).toList();
+            assertEquals(months, all.stream().map(row -> row.getValue1()).toList());
+            assertEquals(2L, all.get(0).getValue3());
+            assertEquals(0L, all.get(1).getValue3());
+            assertNull(all.get(1).getValue2(), "Missing February must remain a raw NULL amount");
+            assertNull(all.get(1).getValue6());
+            assertNull(all.get(11).getValue6(), "December has no previous-month amount");
+            var january = report.cloneQueryable().where(p -> p.value1().eq(LocalDate.of(2025, 1, 1))).singleNotNull();
+            assertDecimals(Arrays.asList("60", "20", zeroBase ? "0" : "40", "2", zeroBase ? null : "0.5"),
+                    Arrays.asList(january.getValue2(), january.getValue4(), january.getValue5(), january.getValue6(), january.getValue7()));
+            assertEquals(2L, january.getValue3());
+            assertEquals(13L, report.cloneQueryable().count());
+            assertEquals(zeroBase ? 13L : 12L, report.cloneQueryable().where(p -> p.value7().isNull()).count());
+            var page = report.cloneQueryable().orderBy(p -> p.value1().asc()).toPageResult(3, 6);
+            assertEquals(13L, page.getTotal());
+            assertEquals(List.of(LocalDate.of(2025, 1, 1)), page.getData().stream().map(row -> row.getValue1()).toList());
+            assertEquals(report.toSQL(), report.cloneQueryable().toSQL());
+            // 稀疏事实只有五行；直接 LAG(12) 不会得到上一年同月，作为报表反例保留。
+            var sparse = facts(query, values).orderBy(p -> p.day().asc())
+                    .selectColumn(p -> p.amount().offset(over -> over.orderBy(p.day())).prev(12)).toList();
+            assertNull(sparse.get(sparse.size() - 1));
+        }
     }
 
     private static void verify(DefaultEasyEntityQuery query, boolean emptyFacts) {
@@ -76,15 +129,24 @@ final class CalendarReportContract {
     }
 
     private static EntityQueryable<ReportSaleProxy, ReportSale> facts(DefaultEasyEntityQuery query) {
+        return facts(query, List.of(
+                new ReportSale(1, null, LocalDate.of(2024, 1, 15), "10"),
+                new ReportSale(2, null, LocalDate.of(2024, 1, 31), "20"),
+                new ReportSale(3, null, LocalDate.of(2024, 3, 10), "5"),
+                new ReportSale(4, null, LocalDate.of(2024, 4, 10), null)));
+    }
+
+    private static EntityQueryable<ReportSaleProxy, ReportSale> facts(DefaultEasyEntityQuery query, List<ReportSale> values) {
         var dialect = query.getEasyQueryClient().getRuntimeContext().getQueryConfiguration().getDialect();
-        String sql = IntStream.rangeClosed(1, 4).mapToObj(id -> "SELECT " + id + " AS " + dialect.getQuoteName("id")
+        String sql = values.stream().map(row -> "SELECT " + row.getId() + " AS " + dialect.getQuoteName("id")
                 + ",CAST(? AS DATE) AS " + dialect.getQuoteName("report_day")
                 + ",CAST(? AS DECIMAL(19,4)) AS " + dialect.getQuoteName("amount") + from(query)).collect(Collectors.joining(" UNION ALL "));
-        return query.queryable(sql, ReportSale.class, Arrays.asList(
-                LocalDate.of(2024, 1, 15), BigDecimal.TEN,
-                LocalDate.of(2024, 1, 31), new BigDecimal("20"),
-                LocalDate.of(2024, 3, 10), new BigDecimal("5"),
-                LocalDate.of(2024, 4, 10), null));
+        var parameters = new ArrayList<Object>();
+        for (var value : values) {
+            parameters.add(value.getDay());
+            parameters.add(value.getAmount());
+        }
+        return query.queryable(sql, ReportSale.class, parameters);
     }
 
     private static String from(DefaultEasyEntityQuery query) {

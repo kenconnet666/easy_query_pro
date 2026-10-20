@@ -15,6 +15,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PostgresReportingIT {
     @Test
+    void conditionalOrderMetricsAndTopRanks() throws SQLException {
+        OrderReportContract.verify(TestClients.configured(PostgresTestDatabase.dataSource(), new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure));
+    }
+
+    @Test
+    void yearAndMonthComparisonsUseCalendarOffsets() throws SQLException {
+        CalendarReportContract.verifyYearOverYear(TestClients.configured(PostgresTestDatabase.dataSource(), new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure));
+    }
+
+    @Test
     void calendarMonthsKeepEmptyBucketsBeforeLagAndPaging() throws SQLException {
         CalendarReportContract.verify(TestClients.configured(PostgresTestDatabase.dataSource(), new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure));
     }

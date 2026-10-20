@@ -15,6 +15,16 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class HanaReportingIT {
     @Test
+    void conditionalOrderMetricsAndTopRanks() throws SQLException {
+        OrderReportContract.verify(TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure));
+    }
+
+    @Test
+    void yearAndMonthComparisonsUseCalendarOffsets() throws SQLException {
+        CalendarReportContract.verifyYearOverYear(TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure));
+    }
+
+    @Test
     void calendarMonthsKeepEmptyBucketsBeforeLagAndPaging() throws SQLException {
         CalendarReportContract.verify(TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure));
     }
