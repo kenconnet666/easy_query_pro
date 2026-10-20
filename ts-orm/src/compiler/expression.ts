@@ -10,6 +10,10 @@ export interface State {
 
 export function requireRowExpression(node: Node, clause: string): void {
   visitNode(node, (current) => {
+    if (current.kind === "aggregate")
+      throw new TypeError(
+        `${clause} cannot contain a same-level aggregate; project it into a derived query first`,
+      );
     if (current.kind === "call" && current.definition.phase !== "row")
       throw new TypeError(
         `${clause} cannot contain a same-level ${current.definition.phase}; project it into a derived query first`,
@@ -53,6 +57,24 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
     case "parameter":
       state.parameters.push(node.value);
       return dialect.parameter(state.parameters.length, node.type.storage);
+    case "cast":
+      return dialect.cast(renderNode(node.operand, scope, state), node.type.storage);
+    case "case":
+      return `(CASE WHEN ${renderNode(node.condition, scope, state, "predicate")} THEN ${renderNode(node.whenTrue, scope, state)} ELSE ${renderNode(node.whenFalse, scope, state)} END)`;
+    case "coalesce":
+    case "nullif":
+      return `${node.kind.toUpperCase()}(${renderNode(node.left, scope, state)}, ${renderNode(node.right, scope, state)})`;
+    case "aggregate": {
+      if (node.operand) requireRowExpression(node.operand, "Aggregate operand");
+      if (node.filter) requireRowExpression(node.filter, "Aggregate filter");
+      if (node.distinct && dialect.name === "hana" && node.operandType?.storage.kind === "json")
+        throw new TypeError("HANA cannot apply DISTINCT to NCLOB JSON operands");
+      let operand: string;
+      if (node.filter)
+        operand = `CASE WHEN ${renderNode(node.filter, scope, state, "predicate")} THEN ${node.operand ? renderNode(node.operand, scope, state) : "1"} ELSE NULL END`;
+      else operand = node.operand ? renderNode(node.operand, scope, state) : "*";
+      return `${node.operator}(${node.distinct ? "DISTINCT " : ""}${operand})`;
+    }
     case "constant":
       return node.value ? "(1 = 1)" : "(1 = 0)";
     case "identifier":
@@ -72,6 +94,9 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
     case "in":
       return `(${renderNode(node.operand, scope, state)} ${node.negated ? "NOT IN" : "IN"} (${node.values.map((value) => renderNode(value, scope, state)).join(", ")}))`;
     case "call": {
+      if (node.definition.phase !== "row")
+        for (const argument of node.arguments)
+          requireRowExpression(argument, `${node.definition.phase} function operand`);
       const renderer = node.definition.render[dialect.name];
       if (!renderer)
         throw new TypeError(`Function ${node.definition.name} does not support ${dialect.name}`);

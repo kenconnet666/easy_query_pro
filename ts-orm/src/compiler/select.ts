@@ -4,6 +4,7 @@ import { renderNode, requireRowExpression, type State } from "./expression.js";
 import { type QueryNode, type SelectNode } from "../query/model.js";
 import { projectionDecoder } from "./projection.js";
 import { collectCtes } from "./cte.js";
+import { validateGrouping } from "./grouping.js";
 import { Table } from "../schema/table.js";
 import { types } from "../schema/data-type.js";
 
@@ -70,6 +71,7 @@ function renderQuery(query: QueryNode, state: State): string {
   );
 }
 function renderSelect(query: SelectNode, state: State): string {
+  validateGrouping(query);
   if (query.owner !== state.owner) throw new TypeError("A source cannot cross database clients");
   if (query.projection.length === 0)
     throw new TypeError("Select explicit output columns before compiling or executing");
@@ -102,6 +104,9 @@ function renderSelect(query: SelectNode, state: State): string {
     requireRowExpression(query.where, "WHERE");
     sql += ` WHERE ${renderNode(query.where, scope, state, "predicate")}`;
   }
+  if (query.grouping.length)
+    sql += " GROUP BY " + query.grouping.map((key) => renderNode(key, scope, state)).join(", ");
+  if (query.having) sql += " HAVING " + renderNode(query.having, scope, state, "predicate");
   if (query.ordering.length)
     sql +=
       " ORDER BY " +

@@ -7,6 +7,7 @@ export interface Dialect {
   readonly name: DialectName;
   quote(identifier: string): string;
   parameter(index: number, type: StorageType): string;
+  cast(expression: string, type: StorageType): string;
   pagination(limit: number | undefined, offset: number): string;
 }
 function castType(name: DialectName, type: StorageType): string {
@@ -43,6 +44,9 @@ export function dialect(name: DialectName): Dialect {
       if (name === "mysql" && type.kind === "text") return "?";
       // 独立参数也有明确类型，避免 PG 的两个 unknown 参数无法选择算术重载。
       return `CAST(${name === "postgres" ? "$" + index : "?"} AS ${castType(name, type)})`;
+    },
+    cast(expression: string, type: StorageType) {
+      return `CAST(${expression} AS ${castType(name, type)})`;
     },
     pagination(limit: number | undefined, offset: number) {
       if (limit === undefined) {

@@ -1,5 +1,5 @@
 import type { AnyExpression, Expression } from "../expression/expression.js";
-import type { Node, RelationIdentity } from "../expression/node.js";
+import type { Node, RelationIdentity, NumericOrigin } from "../expression/node.js";
 import type { AnyDataType, SqlKind } from "../schema/data-type.js";
 import type { Columns, Table } from "../schema/table.js";
 import { validateName } from "../schema/table.js";
@@ -11,6 +11,7 @@ export interface ProjectionSlot {
   readonly sqlAlias: string;
   readonly node: Node;
   readonly type: AnyDataType;
+  readonly numericOrigin: NumericOrigin;
 }
 export interface Order {
   readonly expression: Node;
@@ -18,7 +19,14 @@ export interface Order {
 }
 export interface SourceDefinition {
   readonly fields: Readonly<
-    Record<string, { readonly columnName: string; readonly type: AnyDataType }>
+    Record<
+      string,
+      {
+        readonly columnName: string;
+        readonly type: AnyDataType;
+        readonly numericOrigin: NumericOrigin;
+      }
+    >
   >;
 }
 export interface Relation extends RelationIdentity {
@@ -32,6 +40,8 @@ export interface SelectNode {
   readonly relations: readonly Relation[];
   readonly projection: readonly ProjectionSlot[];
   readonly where?: Node;
+  readonly grouping: readonly Node[];
+  readonly having?: Node;
   readonly ordering: readonly Order[];
   readonly limit?: number;
   readonly offset: number;
@@ -57,11 +67,19 @@ export class DerivedSource<S extends Selection> {
     readonly cteName?: string,
   ) {
     if (cteName !== undefined) validateName(cteName);
-    const fields: Record<string, { columnName: string; type: AnyDataType }> = Object.create(
-      null,
-    ) as Record<string, { columnName: string; type: AnyDataType }>;
+    const fields: Record<
+      string,
+      { columnName: string; type: AnyDataType; numericOrigin: NumericOrigin }
+    > = Object.create(null) as Record<
+      string,
+      { columnName: string; type: AnyDataType; numericOrigin: NumericOrigin }
+    >;
     for (const slot of query.projection)
-      fields[slot.key] = Object.freeze({ columnName: slot.sqlAlias, type: slot.type });
+      fields[slot.key] = Object.freeze({
+        columnName: slot.sqlAlias,
+        type: slot.type,
+        numericOrigin: slot.numericOrigin,
+      });
     this.fields = Object.freeze(fields);
     Object.freeze(this);
   }

@@ -116,10 +116,11 @@ function validateStorage(type: StorageType): void {
         type.precision! > 38 ||
         !Number.isInteger(type.scale) ||
         type.scale! < 0 ||
+        type.scale! > 30 ||
         type.scale! > type.precision!
       )
         throw new RangeError(
-          "Common DECIMAL requires 1 <= precision <= 38 and 0 <= scale <= precision",
+          "Common DECIMAL requires 1 <= precision <= 38 and 0 <= scale <= min(precision, 30)",
         );
       return;
     case "integer":
@@ -212,25 +213,23 @@ export const types = {
     );
   },
   decimal(precision = 19, scale = 4): DataType<string, "decimal"> {
-    return new DataType(
+    const validate = (value: unknown): string => {
+      if (typeof value !== "string")
+        throw new TypeError("DECIMAL must be returned losslessly as a string");
+      const match = /^[-+]?(\d+)(?:\.(\d+))?$/.exec(value);
+      if (!match) throw new TypeError("DECIMAL uses plain decimal strings");
+      const integral = match[1]!.replace(/^0+/, "");
+      const fractional = (match[2] ?? "").replace(/0+$/, "");
+      if (integral.length > precision - scale || fractional.length > scale)
+        throw new RangeError("DECIMAL value exceeds its precision or scale");
+      return value;
+    };
+    return new DataType<string, "decimal">(
       { kind: "decimal", precision, scale },
       {
         identity: "decimal-string",
-        encode(value) {
-          const result = text(value);
-          const match = /^[-+]?(\d+)(?:\.(\d+))?$/.exec(result);
-          if (!match) throw new TypeError("DECIMAL uses plain decimal strings");
-          const integral = match[1]!.replace(/^0+/, "");
-          const fractional = match[2] ?? "";
-          if (integral.length > precision - scale || fractional.length > scale)
-            throw new RangeError("DECIMAL value exceeds its precision or scale");
-          return result;
-        },
-        decode(value) {
-          if (typeof value !== "string")
-            throw new TypeError("DECIMAL must be returned losslessly as a string");
-          return value;
-        },
+        encode: validate,
+        decode: validate,
       },
     );
   },

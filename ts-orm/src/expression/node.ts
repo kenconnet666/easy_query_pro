@@ -3,6 +3,16 @@ import { validateName } from "../schema/table.js";
 
 export type DialectName = "postgres" | "mysql" | "hana";
 export type Phase = "row" | "aggregate" | "window";
+/** declared 可提升累加输入；accumulator 保留数据库宽中间值；computed 需要显式选择原生转换。 */
+export type NumericOrigin = "declared" | "accumulator" | "computed";
+export interface AggregateNode {
+  readonly kind: "aggregate";
+  readonly operator: "COUNT" | "SUM" | "MIN" | "MAX";
+  readonly operand?: Node;
+  readonly operandType?: AnyDataType;
+  readonly distinct: boolean;
+  readonly filter?: Node;
+}
 export interface RelationIdentity {
   readonly id: symbol;
   readonly owner: symbol;
@@ -19,13 +29,22 @@ export interface FunctionDefinition {
 export type BinaryOperator =
   "=" | "<>" | ">" | ">=" | "<" | "<=" | "+" | "-" | "*" | "/" | "AND" | "OR" | "LIKE";
 export type Node =
-  | Readonly<{ kind: "column"; relation: RelationIdentity; name: string }>
+  | Readonly<{
+      kind: "column";
+      relation: RelationIdentity;
+      name: string;
+      numericOrigin?: NumericOrigin;
+    }>
   | Readonly<{ kind: "parameter"; type: AnyDataType; value: unknown }>
   | Readonly<{ kind: "binary"; operator: BinaryOperator; left: Node; right: Node }>
   | Readonly<{ kind: "unary"; operator: "NOT" | "IS NULL" | "IS NOT NULL"; operand: Node }>
   | Readonly<{ kind: "call"; definition: FunctionDefinition; arguments: readonly Node[] }>
   | Readonly<{ kind: "in"; operand: Node; values: readonly Node[]; negated: boolean }>
   | Readonly<{ kind: "constant"; value: boolean }>
+  | Readonly<{ kind: "cast"; operand: Node; type: AnyDataType }>
+  | Readonly<{ kind: "case"; condition: Node; whenTrue: Node; whenFalse: Node }>
+  | Readonly<{ kind: "coalesce" | "nullif"; left: Node; right: Node }>
+  | AggregateNode
   | Readonly<{ kind: "fragment"; parts: readonly (string | Node)[] }>
   | Readonly<{ kind: "identifier"; names: readonly string[] }>;
 
@@ -51,18 +70,30 @@ export function freezeNode<T extends Node>(node: T): T {
 }
 
 /** 遍历保留所有内层语义，CAST/算术等包装不能掩盖聚合或窗口。子查询会有独立编译边界。 */
-export function visitNode(node: Node, visit: (node: Node) => void): void {
-  visit(node);
+export function visitNode(node: Node, visit: (node: Node) => void | boolean): void {
+  if (visit(node) === false) return;
   switch (node.kind) {
     case "binary":
+    case "coalesce":
+    case "nullif":
       visitNode(node.left, visit);
       visitNode(node.right, visit);
       break;
     case "unary":
+    case "cast":
       visitNode(node.operand, visit);
       break;
     case "call":
       for (const argument of node.arguments) visitNode(argument, visit);
+      break;
+    case "case":
+      visitNode(node.condition, visit);
+      visitNode(node.whenTrue, visit);
+      visitNode(node.whenFalse, visit);
+      break;
+    case "aggregate":
+      if (node.operand) visitNode(node.operand, visit);
+      if (node.filter) visitNode(node.filter, visit);
       break;
     case "in":
       visitNode(node.operand, visit);
@@ -71,5 +102,36 @@ export function visitNode(node: Node, visit: (node: Node) => void): void {
     case "fragment":
       for (const part of node.parts) if (typeof part !== "string") visitNode(part, visit);
       break;
+  }
+}
+
+export function combineNumericOrigin(...origins: readonly NumericOrigin[]): NumericOrigin {
+  return origins.includes("computed")
+    ? "computed"
+    : origins.includes("accumulator")
+      ? "accumulator"
+      : "declared";
+}
+export function numericOrigin(node: Node): NumericOrigin {
+  switch (node.kind) {
+    case "column":
+      return node.numericOrigin ?? "computed";
+    case "parameter":
+    case "cast":
+      return "declared";
+    case "case":
+      return combineNumericOrigin(numericOrigin(node.whenTrue), numericOrigin(node.whenFalse));
+    case "coalesce":
+      return combineNumericOrigin(numericOrigin(node.left), numericOrigin(node.right));
+    case "nullif":
+      return numericOrigin(node.left);
+    case "aggregate":
+      return node.operator === "SUM"
+        ? "accumulator"
+        : node.operator === "COUNT"
+          ? "declared"
+          : numericOrigin(node.operand!);
+    default:
+      return "computed";
   }
 }

@@ -55,3 +55,5 @@ export {
   type UpdateValues,
 } from "./query/write.js";
 export type { CompiledWrite } from "./compiler/write.js";
+export { aggregate, AggregateExpression } from "./expression/aggregate.js";
+export { caseWhen, coalesce, nullIf, nativeCast } from "./expression/control.js";

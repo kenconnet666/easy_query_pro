@@ -2,6 +2,7 @@ import { Expression } from "../expression/expression.js";
 import { recordEntries } from "../internal/record.js";
 import type { ProjectionSlot, Selection } from "../query/model.js";
 import { validateName } from "../schema/table.js";
+import { numericOrigin } from "../expression/node.js";
 
 /** SELECT 与 RETURNING 共享列顺序及 decoder，不为写入结果维护另一套名字映射。 */
 export function createProjection(values: Selection): readonly ProjectionSlot[] {
@@ -14,6 +15,7 @@ export function createProjection(values: Selection): readonly ProjectionSlot[] {
       sqlAlias: "_eq_" + index,
       node: expression.node,
       type: expression.type,
+      numericOrigin: numericOrigin(expression.node),
     });
   });
   if (!projection.length) throw new TypeError("A selection cannot be empty");

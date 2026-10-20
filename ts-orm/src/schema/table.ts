@@ -1,5 +1,6 @@
 import type { AnyDataType, DataType, SqlKind } from "./data-type.js";
 import { recordEntries, type NoSymbolKeys } from "../internal/record.js";
+import type { NumericOrigin } from "../expression/node.js";
 
 export interface ColumnOptions {
   readonly name?: string | undefined;
@@ -78,6 +79,7 @@ export type UpdateOf<C extends Columns> = {
 export interface Field {
   readonly columnName: string;
   readonly type: AnyDataType;
+  readonly numericOrigin: NumericOrigin;
 }
 export class Table<C extends Columns = Columns> {
   readonly fields: Readonly<Record<string, Field>>;
@@ -93,7 +95,11 @@ export class Table<C extends Columns = Columns> {
     const entries = recordEntries(columns, "Table columns");
     for (const [key, value] of entries) {
       validateName(key);
-      fields[key] = Object.freeze({ columnName: value.options.name ?? key, type: value.type });
+      fields[key] = Object.freeze({
+        columnName: value.options.name ?? key,
+        type: value.type,
+        numericOrigin: "declared",
+      });
     }
     if (!Object.keys(fields).length) throw new TypeError("A table requires columns");
     this.fields = Object.freeze(fields);

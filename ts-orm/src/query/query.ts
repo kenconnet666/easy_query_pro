@@ -62,7 +62,12 @@ export function bindSources<R extends Sources>(
     >;
     for (const [key, field] of Object.entries(source.fields)) {
       columns[key] = new Expression({
-        node: freezeNode({ kind: "column", relation: identity, name: field.columnName }),
+        node: freezeNode({
+          kind: "column",
+          relation: identity,
+          name: field.columnName,
+          numericOrigin: field.numericOrigin,
+        }),
         type: field.type,
       });
     }
@@ -80,12 +85,18 @@ export function bindSources<R extends Sources>(
   return { scope: Object.freeze(scope) as BoundSources<R>, relations };
 }
 
-export class Query<S extends Scope, P extends Selection | never, E> {
+export class Query<
+  S extends Scope,
+  P extends Selection | never,
+  E,
+  G extends Selection = Record<never, never>,
+> {
   constructor(
     readonly scope: S,
     readonly extensions: E,
     private readonly session: Session,
     private readonly state: SelectNode,
+    readonly groupKeys: G,
   ) {}
 
   static from<R extends Sources, E>(
@@ -105,17 +116,25 @@ export class Query<S extends Scope, P extends Selection | never, E> {
         relations: Object.freeze(bound.relations),
         projection: Object.freeze([]),
         ordering: Object.freeze([]),
+        grouping: Object.freeze([]),
         offset: 0,
         distinct: false,
       }),
+      Object.freeze({}),
     );
   }
 
-  private change(state: SelectNode): Query<S, P, E> {
-    return new Query(this.scope, this.extensions, this.session, Object.freeze(state));
+  private change(state: SelectNode): Query<S, P, E, G> {
+    return new Query(
+      this.scope,
+      this.extensions,
+      this.session,
+      Object.freeze(state),
+      this.groupKeys,
+    );
   }
 
-  where(predicate: (scope: S, extensions: E) => Predicate): Query<S, P, E> {
+  where(predicate: (scope: S, extensions: E) => Predicate): Query<S, P, E, G> {
     const next = predicate(this.scope, this.extensions);
     const combined = this.state.where
       ? and(new Expression({ node: this.state.where, type: next.type }), next).node
@@ -123,30 +142,56 @@ export class Query<S extends Scope, P extends Selection | never, E> {
     return this.change({ ...this.state, where: combined });
   }
 
+  /** 命名键保留表达式身份，SELECT/HAVING/ORDER 可直接复用计算键，不按 SQL 文本猜相等。 */
+  groupBy<const K extends Selection>(
+    keys: (scope: S, extensions: E) => K & NoSymbolKeys<K>,
+  ): Query<S, P, E, K> {
+    const selected = Object.freeze(
+      Object.fromEntries(recordEntries(keys(this.scope, this.extensions), "Group keys")),
+    ) as K;
+    const slots = createProjection(selected);
+    return new Query(
+      this.scope,
+      this.extensions,
+      this.session,
+      Object.freeze({ ...this.state, grouping: Object.freeze(slots.map((slot) => slot.node)) }),
+      selected,
+    );
+  }
+
+  having(predicate: (scope: S, extensions: E, groups: G) => Predicate): Query<S, P, E, G> {
+    const next = predicate(this.scope, this.extensions, this.groupKeys);
+    const condition = this.state.having
+      ? and(new Expression({ node: this.state.having, type: next.type }), next).node
+      : next.node;
+    return this.change({ ...this.state, having: condition });
+  }
+
   select<const R extends Selection>(
-    selection: (scope: S, extensions: E) => R & NoSymbolKeys<R>,
-  ): Query<S, R, E> {
-    const values = selection(this.scope, this.extensions);
+    selection: (scope: S, extensions: E, groups: G) => R & NoSymbolKeys<R>,
+  ): Query<S, R, E, G> {
+    const values = selection(this.scope, this.extensions, this.groupKeys);
     const projection = createProjection(values);
     return new Query(
       this.scope,
       this.extensions,
       this.session,
       Object.freeze({ ...this.state, projection: Object.freeze(projection) }),
+      this.groupKeys,
     );
   }
 
   innerJoin<const R extends Sources>(
     sources: R & NoSymbolKeys<R> & (Extract<keyof R, keyof S> extends never ? unknown : never),
     on: (scope: Merge<S, BoundSources<R>>, extensions: E) => Predicate,
-  ): Query<Merge<S, BoundSources<R>>, P, E> {
+  ): Query<Merge<S, BoundSources<R>>, P, E, G> {
     return this.join<R, false>(sources, on, false);
   }
 
   leftJoin<const R extends Sources>(
     sources: R & NoSymbolKeys<R> & (Extract<keyof R, keyof S> extends never ? unknown : never),
     on: (scope: Merge<S, BoundSources<R>>, extensions: E) => Predicate,
-  ): Query<Merge<S, BoundSources<R, true>>, P, E> {
+  ): Query<Merge<S, BoundSources<R, true>>, P, E, G> {
     return this.join<R, true>(sources, on, true);
   }
 
@@ -154,7 +199,7 @@ export class Query<S extends Scope, P extends Selection | never, E> {
     sources: R,
     on: (scope: Merge<S, BoundSources<R>>, extensions: E) => Predicate,
     left: N,
-  ): Query<Merge<S, BoundSources<R, N>>, P, E> {
+  ): Query<Merge<S, BoundSources<R, N>>, P, E, G> {
     if (Object.keys(sources).length !== 1)
       throw new TypeError("Join one explicitly named source at a time");
     for (const alias of Object.keys(sources))
@@ -185,11 +230,14 @@ export class Query<S extends Scope, P extends Selection | never, E> {
         ...this.state,
         relations: Object.freeze([...this.state.relations, relation]),
       }),
+      this.groupKeys,
     );
   }
 
-  orderBy(order: (scope: S, extensions: E) => Order | readonly Order[]): Query<S, P, E> {
-    const selected = order(this.scope, this.extensions);
+  orderBy(
+    order: (scope: S, extensions: E, groups: G) => Order | readonly Order[],
+  ): Query<S, P, E, G> {
+    const selected = order(this.scope, this.extensions, this.groupKeys);
     const ordering = Array.isArray(selected) ? selected : [selected as Order];
     return this.change({
       ...this.state,
@@ -204,48 +252,48 @@ export class Query<S extends Scope, P extends Selection | never, E> {
     });
   }
 
-  limit(limit: number, offset = 0): Query<S, P, E> {
+  limit(limit: number, offset = 0): Query<S, P, E, G> {
     if (!Number.isSafeInteger(limit) || limit < 0 || !Number.isSafeInteger(offset) || offset < 0)
       throw new RangeError("Limit and offset must be nonnegative safe integers");
     return this.change({ ...this.state, limit, offset });
   }
 
-  distinct(): Query<S, P, E> {
+  distinct(): Query<S, P, E, G> {
     return this.change({ ...this.state, distinct: true });
   }
 
-  as(this: [P] extends [never] ? never : Query<S, P, E>): DerivedSource<P> {
+  as(this: [P] extends [never] ? never : Query<S, P, E, G>): DerivedSource<P> {
     if (!this.state.projection.length)
       throw new TypeError("Select before creating a derived source");
     return new DerivedSource(this.state);
   }
 
-  asCte(this: [P] extends [never] ? never : Query<S, P, E>, name: string): DerivedSource<P> {
+  asCte(this: [P] extends [never] ? never : Query<S, P, E, G>, name: string): DerivedSource<P> {
     return this.as().asCte(name);
   }
 
   /** 集合运算产生新关系，后续过滤/排序显式从结果列开始，不泄漏左分支的表作用域。 */
-  union<OS extends Scope, Q extends Selection, OE>(
-    this: [P] extends [never] ? never : Query<S, P, E>,
-    other: Query<OS, Q, OE> & CompatibleSelection<P, Q>,
+  union<OS extends Scope, Q extends Selection, OE, OG extends Selection>(
+    this: [P] extends [never] ? never : Query<S, P, E, G>,
+    other: Query<OS, Q, OE, OG> & CompatibleSelection<P, Q>,
   ): DerivedSource<SetSelection<P, Q>> {
     return setSource<P, Q>(this.state, other.state, false);
   }
 
-  unionAll<OS extends Scope, Q extends Selection, OE>(
-    this: [P] extends [never] ? never : Query<S, P, E>,
-    other: Query<OS, Q, OE> & CompatibleSelection<P, Q>,
+  unionAll<OS extends Scope, Q extends Selection, OE, OG extends Selection>(
+    this: [P] extends [never] ? never : Query<S, P, E, G>,
+    other: Query<OS, Q, OE, OG> & CompatibleSelection<P, Q>,
   ): DerivedSource<SetSelection<P, Q>> {
     return setSource<P, Q>(this.state, other.state, true);
   }
-  compile(this: [P] extends [never] ? never : Query<S, P, E>): CompiledQuery<ResultOf<P>> {
+  compile(this: [P] extends [never] ? never : Query<S, P, E, G>): CompiledQuery<ResultOf<P>> {
     return compileSelect(this.state, this.session.dialect);
   }
-  async execute(this: [P] extends [never] ? never : Query<S, P, E>): Promise<ResultOf<P>[]> {
+  async execute(this: [P] extends [never] ? never : Query<S, P, E, G>): Promise<ResultOf<P>[]> {
     return this.session.execute(compileSelect<ResultOf<P>>(this.state, this.session.dialect));
   }
   async first(
-    this: [P] extends [never] ? never : Query<S, P, E>,
+    this: [P] extends [never] ? never : Query<S, P, E, G>,
   ): Promise<ResultOf<P> | undefined> {
     const result = await this.session.execute(
       compileSelect<ResultOf<P>>(
@@ -255,7 +303,7 @@ export class Query<S extends Scope, P extends Selection | never, E> {
     );
     return result[0];
   }
-  async count(this: [P] extends [never] ? never : Query<S, P, E>): Promise<bigint> {
+  async count(this: [P] extends [never] ? never : Query<S, P, E, G>): Promise<bigint> {
     const rows = await this.session.execute(
       compileSelect<bigint>(this.state, this.session.dialect, true),
     );

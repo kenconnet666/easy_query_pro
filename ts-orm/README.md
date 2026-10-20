@@ -4,7 +4,7 @@
 
 当前处于实现阶段，完成标准和状态见 [执行计划](docs/plan.md)。Java 增强包由独立子代理继续推进；此目录使用自己的 Node/TypeScript 工程，避免影响 Maven 模块。
 
-当前基础已通过类型正负例、48 个行为用例以及 PostgreSQL/MySQL/HANA 的真实查询和事务验证；证据与尚未完成的能力见 [验证记录](docs/evidence.md)。仍在持续完善组合查询、关系加载与报表能力，当前包未发布。
+当前基础已通过类型正负例、57 个行为用例以及 PostgreSQL/MySQL/HANA 的真实查询和事务验证；证据与尚未完成的能力见 [验证记录](docs/evidence.md)。仍在持续完善窗口查询、关系加载与报表能力，当前包未发布。
 
 设计边界：
 
@@ -117,7 +117,9 @@ PostgreSQL 支持 `.returning(entry => ({ id: entry.id, name: entry.name }))`，
 
 ## 类型与扩展边界
 
-INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字符串。NULL 在业务 codec 之前处理；nullable().map() 的静态结果仍包含 null。undefined 不等于 SQL NULL。
+分组、HAVING、条件聚合、CASE/COALESCE/NULLIF 和两层汇总的用法见 [报表查询](docs/reporting.md)。COUNT 返回 bigint，MIN/MAX 保留来源 codec 并允许 NULL，SUM 返回精确 decimal 字符串并检查共同值域。命名分组键在 select/having/orderBy 的第三个回调参数中保留具体类型。
+
+INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字符串，precision 为 1–38，scale 为 0–min(precision,30)。参数和结果都校验该范围；有效数字之外的尾随零不改变值域。NULL 在业务 codec 之前处理；nullable().map() 的静态结果仍包含 null。undefined 不等于 SQL NULL。
 
 扩展通过 createDatabase 的 extensions 或 withExtensions 安装，namespace 具体类型在查询和事务中保留。mount(factory) 返回工厂的具体表达式类型。函数 renderer 返回 sqlFragment 结构节点，编译器按最终顺序绑定值；普通值先通过 valueOf(value, type)，标识符使用 identifier，不能把用户值放进静态 SQL 文本。
 

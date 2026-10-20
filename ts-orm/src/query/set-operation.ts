@@ -1,4 +1,5 @@
 import type { Expression } from "../expression/expression.js";
+import { combineNumericOrigin } from "../expression/node.js";
 import { DerivedSource, type QueryNode, type Selection } from "./model.js";
 
 type Value<E> = E extends Expression<infer T, infer _K> ? T : never;
@@ -46,6 +47,7 @@ export function setSource<L extends Selection, R extends Selection>(
     return Object.freeze({
       ...slot,
       type: other.type.acceptsNull ? slot.type.nullable() : slot.type,
+      numericOrigin: combineNumericOrigin(slot.numericOrigin, other.numericOrigin),
     });
   });
   return new DerivedSource(

@@ -65,3 +65,13 @@ afd877800d82f2cf424bce4e3289b18dcb0c4622 的 [TS CI 39473357057](https://github.
 三库真实验证默认值与 SQL NULL、生成身份列、业务 codec、精确 DECIMAL/BIGINT、UPDATE 本列自增、DELETE、正常批次、第二行唯一约束失败后的事务回滚与连接重用。PG 额外验证三个写操作的 RETURNING 投影重排，并让 decoder 在写入成功后主动失败，确认事务回滚。PG/MySQL 默认值空插入也有实测，HANA 同一入口仅验证提前拒绝。
 
 审查补齐链式 SET 的重复物理列检查、构造选项的类型约束和 200,000 行 RETURNING 的非展开累积。48 个单元用例及类型正负例通过，包含编码一次且保持输入快照、全计划先拒绝、批次只借一次连接、失败停止以及逃逸事务拒绝。IDEA MCP 额外检查三库 eqts_ 临时表数量均为 0；共享容器、卷与持久数据库保持不变。T09 的关系加载、参数/SQL 大小限制及 T07 报表继续推进，本批不宣称完成整个 ORM。
+
+## 2026-10-21：分组、条件聚合与数值范围
+
+b39ffbb8a0c4fed9073432ad933a21c7b4f9290d 的 [TS CI 39476884005](https://github.com/kenconnet666/easy_query_pro/actions/runs/39476884005) 与 [Java/三库 CI 39476883972](https://github.com/kenconnet666/easy_query_pro/actions/runs/39476883972) 全部成功；随后 HANA 全文提交 086aadd8ecaf2c70fc3ac76faae3fa20c0e8deb4 的 [CI 39479458044](https://github.com/kenconnet666/easy_query_pro/actions/runs/39479458044) 也成功。
+
+本批加入结构化 aggregate/CASE/COALESCE/NULLIF/CAST，命名 GROUP BY、HAVING，以及 SELECT/HAVING/ORDER 的分组范围校验。既有 call 扩展的聚合/窗口参数也必须通过逐行语义检查；不会通过外层 CAST 或 CASE 隐藏嵌套聚合。键对象 getter 重复求值会生成不同身份的计算表达式，该问题已先复现失败，再以一次快照修正。
+
+SUM 在累加前提升普通输入，累计来源在下一层直接保持宽中间值；computed 来源要求显式 nativeCast，信息穿过 CTE/UNION 后仍有效。DECIMAL 共同 scale 上限修正为 30，参数及读取都核对有效数值范围，未转为 JS number。类型推导为 COUNT bigint 非空、SUM decimal 字符串可空、MIN/MAX 原 codec 可空。
+
+三库真实表验证 6 条事实的全局/分组/条件聚合、LEFT JOIN 的 COUNT(*) 与 COUNT(right.id)、空输入报告行数、HAVING 后 count、两层 SUM、CTE/UNION 组合、CASE 的 UNKNOWN 分支以及 NULLIF。INTEGER 求和 4294967295、BIGINT 求和 18014398509481987、源 DECIMAL(19,4) 扩大到 1999999999999999.9998 都保持精确。合法 38 位值可读；39 位累计在 HANA 报明确 overflow，在 PG/MySQL 由 RangeError 导致 projection decode 失败，均未返回夹值。57 个单元用例与类型正负例通过，完整矩阵交对应提交的 CI。
