@@ -71,6 +71,17 @@ export class DataType<T, K extends SqlKind = SqlKind> {
     return left.length === right.length && left.every((part, index) => part === right[index]);
   }
 
+  hasSameStorage(other: AnyDataType): boolean {
+    const a = this.storage;
+    const b = other.storage;
+    return (
+      a.kind === b.kind &&
+      a.length === b.length &&
+      a.precision === b.precision &&
+      a.scale === b.scale
+    );
+  }
+
   /** 映射复用底层 codec；数据库值先正规化，再进入业务对象转换。identity 用于 UNION 契约核查。 */
   map<V>(
     mapping: ValueMapping<V, Exclude<T, null>>,

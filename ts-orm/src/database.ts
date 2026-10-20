@@ -8,6 +8,8 @@ import type { Driver } from "./execution/driver.js";
 import { Session } from "./execution/session.js";
 import { Query, type Sources, type BoundSources } from "./query/query.js";
 import { recordEntries, type NoSymbolKeys } from "./internal/record.js";
+import { WriteQuery } from "./query/write.js";
+import type { Columns, Table } from "./schema/table.js";
 
 export interface ExtensionContext {
   readonly dialect: Dialect["name"];
@@ -63,6 +65,16 @@ export class Database<R extends ExtensionFactories = Record<never, never>> {
     return Query.from(sources, this.session, this.extensions);
   }
 
+  insert<C extends Columns>(target: Table<C>): WriteQuery<C, ExtensionApis<R>, "insert"> {
+    return WriteQuery.create("insert", target, this.session, this.extensions);
+  }
+  update<C extends Columns>(target: Table<C>): WriteQuery<C, ExtensionApis<R>, "update"> {
+    return WriteQuery.create("update", target, this.session, this.extensions);
+  }
+  deleteFrom<C extends Columns>(target: Table<C>): WriteQuery<C, ExtensionApis<R>, "delete"> {
+    return WriteQuery.create("delete", target, this.session, this.extensions);
+  }
+
   /** 执行显式结构化 SQL，不声明其原始结果已经通过业务 decoder。事务内仍使用同一连接。 */
   async command(node: Node): Promise<DriverResult> {
     const compiled = compileCommand(node, this.session.dialect, this.session.owner);
@@ -86,47 +98,11 @@ export class Database<R extends ExtensionFactories = Record<never, never>> {
     );
   }
 
-  /** 显式借出一条连接；提交、回滚和释放各自的失败不能掩盖回调原始错误。 */
+  /** 业务 client 的扩展命名空间保持不变，连接和失败清理统一交给执行层。 */
   async transaction<T>(callback: (transaction: Database<R>) => Promise<T>): Promise<T> {
-    this.session.assertActive();
-    if (this.session.connection)
-      throw new Error("Nested transactions require savepoints and are not enabled");
-    if (!this.session.driver) throw new Error("A transaction requires a driver");
-    const connection = await this.session.driver.acquire();
-    const transactionSession = new Session(
-      this.session.dialect,
-      this.session.owner,
-      this.session.driver,
-      connection,
+    return this.session.transaction((session) =>
+      callback(new Database(session, this.factories, this.extensions)),
     );
-    const failures: unknown[] = [];
-    let result: T | undefined;
-    try {
-      await connection.begin();
-      result = await callback(new Database(transactionSession, this.factories, this.extensions));
-      // 回调结束即关闭业务入口，不能等 COMMIT 完成才阻止逃逸的 tx 再提交 SQL。
-      transactionSession.active = false;
-      await connection.commit();
-    } catch (error) {
-      transactionSession.active = false;
-      failures.push(error);
-      try {
-        await connection.rollback();
-      } catch (rollbackError) {
-        failures.push(rollbackError);
-      }
-    } finally {
-      transactionSession.active = false;
-      try {
-        await connection.release();
-      } catch (releaseError) {
-        failures.push(releaseError);
-      }
-    }
-    if (failures.length === 1) throw failures[0];
-    if (failures.length)
-      throw new AggregateError(failures, "Transaction failed during execution or cleanup");
-    return result as T;
   }
 }
 

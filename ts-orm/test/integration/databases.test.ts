@@ -25,6 +25,7 @@ import {
 import { postgresDriver } from "../../src/drivers/postgres.js";
 import { mysqlDriver } from "../../src/drivers/mysql.js";
 import { hanaDriver } from "../../src/drivers/hana.js";
+import { verifyWrites } from "./write-contract.js";
 
 interface Harness {
   driver: Driver;
@@ -334,6 +335,7 @@ async function verify(harness: Harness): Promise<void> {
         .count(),
       1n,
     );
+    await verifyWrites(db, dialect);
   } finally {
     try {
       if (created) await db.command(sql`DROP TABLE ${identifier(name)}`);

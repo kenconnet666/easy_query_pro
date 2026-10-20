@@ -21,6 +21,7 @@ export {
   type RowOf,
   type InsertOf,
   type UpdateOf,
+  type ColumnOptions,
 } from "./schema/table.js";
 export {
   Expression,
@@ -46,3 +47,11 @@ export type { Driver, DriverConnection, DriverResult } from "./execution/driver.
 export type { CompiledQuery } from "./compiler/select.js";
 export type { Query } from "./query/query.js";
 export type { ResultOf, DerivedSource } from "./query/model.js";
+export {
+  WriteExecutionError,
+  type WriteQuery,
+  type WriteResult,
+  type InsertValues,
+  type UpdateValues,
+} from "./query/write.js";
+export type { CompiledWrite } from "./compiler/write.js";

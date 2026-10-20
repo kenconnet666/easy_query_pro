@@ -1,10 +1,11 @@
+import { createProjection } from "../compiler/projection.js";
 import { compileSelect, type CompiledQuery } from "../compiler/select.js";
 import { Expression, and, type Predicate } from "../expression/expression.js";
 import { freezeNode } from "../expression/node.js";
 import { recordEntries, type NoSymbolKeys } from "../internal/record.js";
 import { setSource, type CompatibleSelection, type SetSelection } from "./set-operation.js";
 import type { Session } from "../execution/session.js";
-import type { Columns, Column, Table } from "../schema/table.js";
+import type { Columns, Column, ColumnOptions, Table } from "../schema/table.js";
 import { validateName } from "../schema/table.js";
 import type { SqlKind } from "../schema/data-type.js";
 import {
@@ -20,7 +21,11 @@ import {
 export type Sources = Readonly<Record<string, Source>>;
 type SourceExpressions<S> =
   S extends Table<infer C>
-    ? { [P in keyof C]: C[P] extends Column<infer T, infer K, boolean> ? Expression<T, K> : never }
+    ? {
+        [P in keyof C]: C[P] extends Column<infer T, infer K, ColumnOptions>
+          ? Expression<T, K>
+          : never;
+      }
     : S extends DerivedSource<infer P>
       ? { [Key in keyof P]: P[Key] extends Expression<infer T, infer K> ? Expression<T, K> : never }
       : never;
@@ -37,7 +42,7 @@ export type Scope = Readonly<
 >;
 type Merge<A, B> = A & B;
 
-function bindSources<R extends Sources>(
+export function bindSources<R extends Sources>(
   sources: R,
   owner: symbol,
   join: Relation["join"],
@@ -122,18 +127,7 @@ export class Query<S extends Scope, P extends Selection | never, E> {
     selection: (scope: S, extensions: E) => R & NoSymbolKeys<R>,
   ): Query<S, R, E> {
     const values = selection(this.scope, this.extensions);
-    const projection = recordEntries(values, "Query projection").map(([key, expression], index) => {
-      validateName(key);
-      if (!(expression instanceof Expression))
-        throw new TypeError("Selections require typed expressions");
-      return Object.freeze({
-        key,
-        sqlAlias: "_eq_" + index,
-        node: expression.node,
-        type: expression.type,
-      });
-    });
-    if (!projection.length) throw new TypeError("A selection cannot be empty");
+    const projection = createProjection(values);
     return new Query(
       this.scope,
       this.extensions,

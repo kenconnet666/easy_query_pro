@@ -4,7 +4,7 @@
 
 当前处于实现阶段，完成标准和状态见 [执行计划](docs/plan.md)。Java 增强包由独立子代理继续推进；此目录使用自己的 Node/TypeScript 工程，避免影响 Maven 模块。
 
-当前基础已通过类型正负例、37 个行为用例以及 PostgreSQL/MySQL/HANA 的真实查询和事务验证；证据与尚未完成的能力见 [验证记录](docs/evidence.md)。仍在持续完善组合查询、写入与报表能力，当前包未发布。
+当前基础已通过类型正负例、48 个行为用例以及 PostgreSQL/MySQL/HANA 的真实查询和事务验证；证据与尚未完成的能力见 [验证记录](docs/evidence.md)。仍在持续完善组合查询、关系加载与报表能力，当前包未发布。
 
 设计边界：
 
@@ -80,6 +80,40 @@ const combined = db
 CTE 定义按依赖顺序在一个顶层 WITH 中生成；同一定义反复引用只声明一次，每次引用仍有独立别名。当前共同能力为非递归 CTE，同名不同定义、循环和遮蔽实体表会明确拒绝。
 
 union/unionAll 产出一个新来源，后续查询通过 from 绑定结果列。两侧投影必须有相同字段和顺序、SQL 存储描述及完整 codec 映射链；可空性自动合并。分支的排序/分页与结果的排序/分页分别保留。HANA 的 JSON 当前按 NCLOB 存储，不能用于 UNION 去重。
+
+## 类型化写入
+
+```ts
+const entries = table("entry", {
+  id: column(types.integer()).generated(),
+  name: column(types.text(100)),
+  note: column(types.text(100)).nullable(),
+  attempts: column(types.integer()).defaulted(),
+});
+await db.transaction(async (tx) => {
+  await tx
+    .insert(entries)
+    .values([{ name: "first" }, { name: "second", note: null }])
+    .execute();
+  await tx
+    .update(entries)
+    .set((entry) => ({ attempts: entry.attempts.add(1) }))
+    .where((entry) => entry.name.eq("first"))
+    .execute();
+  await tx
+    .deleteFrom(entries)
+    .where((entry) => entry.name.eq("second"))
+    .execute();
+});
+```
+
+`generated()` 表示数据库生成的只读列，INSERT/UPDATE 都禁止赋值；允许显式覆写的 identity 或默认值使用 `defaulted()`。`nullable()` 与 `defaulted()` 允许 INSERT 省略，显式 undefined 也表示省略，null 只允许写入可空列。声明只描述已经存在的数据库表。
+
+UPDATE/DELETE 需要 where，整表操作使用显式 allRows。SET 可以引用本列做运算；同时修改两列时，一个赋值不能读取另一个也被修改的列，以避免 MySQL 与 PostgreSQL 的求值顺序差异。
+
+所有批次在获取连接之前完成计划校验。PG/MySQL 把连续相同列形状合为多行 VALUES，HANA 按单行语句顺序执行，每批借用同一连接。整批原子性由上例的 transaction 提供；自动提交模式可能保留失败前已完成的语句。WriteExecutionError 包含失败语句下标、已完成语句数及已经确认的影响行数，保留原始 cause。空输入数组返回 0 且不借连接。HANA 零显式列的 INSERT 在编译时拒绝。
+
+PostgreSQL 支持 `.returning(entry => ({ id: entry.id, name: entry.name }))`，结果为 `{ affectedRows, rows }`，沿用 SELECT 的精确 codec；MySQL/HANA 编译时拒绝此原生能力。返回行顺序没有与输入逐行配对的承诺。自动提交下，结果解码可能在写入完成后失败；需要一起成功时在事务回调内执行。
 
 ## 类型与扩展边界
 

@@ -38,15 +38,7 @@ export function setSource<L extends Selection, R extends Selection>(
       throw new TypeError(
         `UNION projection order differs at slot ${index}: ${slot.key} / ${other.key}`,
       );
-    const a = slot.type.storage;
-    const b = other.type.storage;
-    if (
-      a.kind !== b.kind ||
-      a.length !== b.length ||
-      a.precision !== b.precision ||
-      a.scale !== b.scale ||
-      !slot.type.hasSameCodec(other.type)
-    )
+    if (!slot.type.hasSameStorage(other.type) || !slot.type.hasSameCodec(other.type))
       throw new TypeError(
         `UNION projection "${slot.key}" requires matching SQL storage and codec identity`,
       );
