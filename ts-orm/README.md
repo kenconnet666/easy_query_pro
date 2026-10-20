@@ -4,7 +4,7 @@
 
 当前处于实现阶段，完成标准和状态见 [执行计划](docs/plan.md)。Java 增强包由独立子代理继续推进；此目录使用自己的 Node/TypeScript 工程，避免影响 Maven 模块。
 
-当前基础已通过类型正负例、65 个行为用例以及 PostgreSQL/MySQL/HANA 的真实查询和事务验证；证据与尚未完成的能力见 [验证记录](docs/evidence.md)。仍在持续完善分页、原生类型、关系加载与报表能力，当前包未发布。
+当前基础已通过类型正负例、行为用例以及 PostgreSQL/MySQL/HANA 的真实查询和事务验证；各批次数量、证据与尚未完成的能力见 [验证记录](docs/evidence.md)。仍在持续完善原生类型、关系加载与报表能力，当前包未发布。
 
 设计边界：
 
@@ -130,6 +130,8 @@ INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字�
 扩展通过 createDatabase 的 extensions 或 withExtensions 安装，namespace 具体类型在查询和事务中保留。mount(factory) 返回工厂的具体表达式类型。函数 renderer 返回 sqlFragment 结构节点，编译器按最终顺序绑定值；普通值先通过 valueOf(value, type)，标识符使用 identifier，不能把用户值放进静态 SQL 文本。
 
 `postgresTypes.uuid()` 与应用的 namespaced SQL kind 共用 DataType/codec，不要求生成器或全局注册。原生字段经过外连接、CTE、UNION 和窗口后保留类型；方言和比较能力在编译时检查。定义方式和 CAST 的可空边界见 [原生类型](docs/native-types.md)。
+
+`postgresTypes.array(element)` 支持一维 PG 数组与元素业务映射。显式 `.mount(pgArray)` 获得 contains/overlaps/anyEquals/cardinality；空数组、SQL NULL 和 NULL 元素分开处理，精确数值及时间不损失。维度和连接状态约束见 [PostgreSQL 数组](docs/postgres-arrays.md)。
 
 原生函数返回 SQL 条件时声明 `syntax: "predicate"`，默认是标量值。HANA 的条件在 SELECT/ORDER BY 值位置会转换成保留 NULL 的 CASE；WHERE/JOIN 中的 BOOLEAN 标量则显式比较 TRUE。renderer 不需要自己拼接这类共同转换。
 

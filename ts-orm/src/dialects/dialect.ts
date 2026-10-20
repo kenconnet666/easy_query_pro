@@ -19,7 +19,7 @@ export function parameterBudget(value: number | undefined): number {
     throw new RangeError("maxParameters must be an integer between 1 and 65535");
   return maximum;
 }
-function castType(name: DialectName, type: StorageType): string {
+export function commonCastType(name: DialectName, type: StorageType): string {
   switch (type.kind) {
     case "integer":
       return name === "mysql" ? "SIGNED" : "INTEGER";
@@ -69,7 +69,7 @@ export function dialect(
       // 裸文本参数保留可强制转换性，由比较列决定 collation；长度已由 codec 校验。
       if (name === "mysql" && type.kind === "text") return "?";
       // 独立参数也有明确类型，避免 PG 的两个 unknown 参数无法选择算术重载。
-      return `CAST(${placeholder} AS ${castType(name, type)})`;
+      return `CAST(${placeholder} AS ${commonCastType(name, type)})`;
     },
     cast(expression: string, type: StorageType) {
       const native = requireNativeSupport(type, name);
@@ -78,7 +78,7 @@ export function dialect(
           throw new TypeError(`SQL type ${type.kind} does not support CAST on ${name}`);
         return native.cast[0] + expression + native.cast[1];
       }
-      return `CAST(${expression} AS ${castType(name, type)})`;
+      return `CAST(${expression} AS ${commonCastType(name, type)})`;
     },
     pagination(limit: number | undefined, offset: number) {
       if (limit === undefined) {

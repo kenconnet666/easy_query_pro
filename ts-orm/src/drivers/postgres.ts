@@ -6,6 +6,17 @@ import {
   type TransactionOptions,
 } from "../execution/transaction.js";
 
+const textResults = Object.freeze({
+  getTypeParser: (_oid: number, format?: string) =>
+    format === "binary"
+      ? () => {
+          throw new TypeError(
+            "The PostgreSQL adapter requires text results; configure the pool with binary: false",
+          );
+        }
+      : (value: string) => value,
+});
+
 /**
  * 适配调用方拥有的 pg Pool，ORM 不关闭整个池。
  * 每个查询局部保留驱动文本值，由投影 codec 解码；不改 pg 的全局 parser。
@@ -23,27 +34,51 @@ class PostgresConnection implements DriverConnection {
   private broken: Error | undefined;
   private inTransaction = false;
   private statementFailure: { cause: unknown } | undefined;
+  private pending: Promise<void> = Promise.resolve();
   constructor(private readonly client: PoolClient) {}
   private requireOpen(): void {
     if (this.released) throw new Error("PostgreSQL connection has been released");
   }
   async execute(sql: string, parameters: readonly unknown[]): Promise<DriverResult> {
+    const copied = [...parameters];
+    return this.serialized(() => this.executeStatement(sql, copied));
+  }
+  /** 将检查与业务 SQL 作为一个连接操作排队，其他 SET/COMMIT 不能插在两者之间。 */
+  private serialized<T>(operation: () => Promise<T>): Promise<T> {
     this.requireOpen();
+    const result = this.pending.then(operation);
+    this.pending = result.then(
+      () => {},
+      () => {},
+    );
+    return result;
+  }
+  private async executeStatement(
+    sql: string,
+    parameters: readonly unknown[],
+  ): Promise<DriverResult> {
     let result;
     try {
+      // pg 将 null/undefined（含数组空洞）写成未引用的 NULL；off 会把 text[] 的 NULL 变成字符串。
+      // ORM 数组 codec 已冻结一维标量副本；这里仍覆盖直接适配器参数的一维空洞，不缓存会话设置。
+      if (
+        parameters.some(
+          (value) => Array.isArray(value) && Array.from(value).some((item) => item == null),
+        )
+      ) {
+        const setting = await this.client.query<{ array_nulls: string }>({
+          text: "SHOW array_nulls",
+          types: textResults,
+        });
+        if (setting.rows[0]?.array_nulls !== "on")
+          throw new TypeError(
+            "PostgreSQL array parameters with NULL elements require array_nulls=on",
+          );
+      }
       result = await this.client.query<Record<string, unknown>>({
         text: sql,
         values: [...parameters],
-        types: {
-          getTypeParser: (_oid: number, format?: string) =>
-            format === "binary"
-              ? () => {
-                  throw new TypeError(
-                    "The PostgreSQL adapter requires text results; configure the pool with binary: false",
-                  );
-                }
-              : (value: string) => value,
-        },
+        types: textResults,
       });
     } catch (error) {
       if (this.inTransaction) this.statementFailure ??= { cause: error };
@@ -80,20 +115,22 @@ class PostgresConnection implements DriverConnection {
     this.inTransaction = false;
   }
   private async control(sql: string): Promise<{ command: string }> {
-    this.requireOpen();
-    try {
-      return await this.client.query(sql);
-    } catch (error) {
-      this.broken =
-        error instanceof Error
-          ? error
-          : new Error("PostgreSQL transaction control failed", { cause: error });
-      throw error;
-    }
+    return this.serialized(async () => {
+      try {
+        return await this.client.query(sql);
+      } catch (error) {
+        this.broken =
+          error instanceof Error
+            ? error
+            : new Error("PostgreSQL transaction control failed", { cause: error });
+        throw error;
+      }
+    });
   }
   async release(): Promise<void> {
     if (this.released) return;
     this.released = true;
+    await this.pending;
     // 提交/回滚失败的连接不放回可复用队列，避免将未知事务状态交给下一次查询。
     this.client.release(this.broken);
   }

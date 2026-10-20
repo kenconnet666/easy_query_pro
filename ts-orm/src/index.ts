@@ -76,3 +76,9 @@ export {
 export type { CommonSqlKind, NativeSqlKind } from "./schema/data-type.js";
 export type { NativeStorage, NativeTypeDialect, SqlTypeWrapper } from "./schema/native-type.js";
 export { postgresTypes } from "./native/postgres.js";
+export {
+  pgArray,
+  PgArrayExpression,
+  type PgArrayKind,
+  type PgArrayElementKind,
+} from "./native/postgres-array.js";

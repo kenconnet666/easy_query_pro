@@ -5,6 +5,8 @@ import type { ConnectionPool } from "@sap/hana-client";
 import { createDatabase, hanaDialect, mysqlDialect } from "../../src/index.js";
 import { mysqlDriver } from "../../src/drivers/mysql.js";
 import { hanaDriver } from "../../src/drivers/hana.js";
+import { postgresDriver } from "../../src/drivers/postgres.js";
+import type { Pool as PgPool } from "pg";
 
 test("MySQL destroys a lease when next-transaction setup succeeds but START fails", async () => {
   for (const failingStep of [
@@ -60,4 +62,60 @@ test("the HANA pooled adapter rejects persistent access-mode options before borr
       /readOnly/,
     );
   assert.equal(acquired, false);
+});
+
+test("PostgreSQL NULL-array checks and writes cannot be interleaved by a queued SET", async () => {
+  const events: string[] = [];
+  let mode = "on";
+  let entered!: () => void;
+  let finish!: () => void;
+  const checking = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let first = true;
+  const pool = {
+    async connect() {
+      return {
+        async query(config: string | { text: string }) {
+          const text = typeof config === "string" ? config : config.text;
+          events.push(text);
+          if (text === "SHOW array_nulls") {
+            if (first) {
+              first = false;
+              entered();
+              await pending;
+            }
+            return { rows: [{ array_nulls: mode }], rowCount: 1, command: "SHOW" };
+          }
+          if (text === "SET array_nulls = off") mode = "off";
+          return { rows: [], rowCount: 1, command: "INSERT" };
+        },
+        release() {
+          events.push("release");
+        },
+      };
+    },
+  } as unknown as PgPool;
+  const connection = await postgresDriver(pool).acquire();
+  try {
+    const insert = connection.execute("INSERT NULL ARRAY", [[null]]);
+    await checking;
+    const change = connection.execute("SET array_nulls = off", []);
+    await Promise.resolve();
+    assert.deepEqual(events, ["SHOW array_nulls"]);
+    finish();
+    await Promise.all([insert, change]);
+    assert.deepEqual(events, ["SHOW array_nulls", "INSERT NULL ARRAY", "SET array_nulls = off"]);
+    for (const value of [[null], [undefined], new Array(1)])
+      await assert.rejects(connection.execute("MUST NOT WRITE", [value]), /array_nulls=on/);
+    assert.ok(!events.includes("MUST NOT WRITE"));
+    await connection.execute("QUOTED NULL TEXT", [["NULL"]]);
+    assert.equal(events.at(-1), "QUOTED NULL TEXT");
+  } finally {
+    finish();
+    await connection.release();
+  }
 });

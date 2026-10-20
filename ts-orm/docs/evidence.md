@@ -141,3 +141,13 @@ ca8e50c7a1759a4e974dc93c853c8a1b4fc8c39c 的 [TS CI 39497347207](https://github.
 修正打包清单，包含 declaration map 引用的 src 源文件；仍从 dist 声明和运行时代码消费。遍历所有声明 map 验证目标存在且位于同包。首次工具运行分别遇到 TS 7 未开放 bin 子路径和 ESM-only 包不能用 require.resolve 解析，改用 package.json bin 元数据与真正 import.meta.resolve；没有通过开放内部模块或添加 CommonJS 导出规避问题。TS 7 标准库来自锁定平台包，文件边界也单独核对。
 
 本地清洁消费者成功，无数据库 peer/@types/node/@types/pg；观测 81 个编译文件、16,973 次类型实例化、约 17 MiB 编译器内存。临时安装/压缩包/输出在 finally 核对路径后清理，共享缓存保留。四个 Node/OS CI 任务追加同一流程与日志，真实数据库作业保持独立；候选不因本地单次成功就宣称新 CI 已通过。
+
+## 2026-10-21：PG 数组与连接内状态检查
+
+打包消费者提交 d8cdc3131211d30f889fb9147b28a7715cd485af 的 [TS CI 39499980312](https://github.com/kenconnet666/easy_query_pro/actions/runs/39499980312) 与 [Java/三库 CI 39499980377](https://github.com/kenconnet666/easy_query_pro/actions/runs/39499980377) 均成功。随后 HANA 兼容测试提交 1d9356972a5039f4915f29c5bbfb90746a8cd116 的 [CI 39503146808](https://github.com/kenconnet666/easy_query_pro/actions/runs/39503146808) 成功；这些均是前序证据，当前数组候选另交 CI。
+
+一维数组通过原生 DataType 与 mount 接入，复用元素完整 codec。新增 postgres-array 3.0.4 负责 wire 反转义，入口先检查结构防止畸形引号输入导致第三方解析器回退；没有再实现一套解码器。审查发现 JS Unicode 空白范围比 PG scanner_isspace 更宽，先加入 NBSP/EM SPACE/BOM 红测，再限制为六种 ASCII 空白，实际 PG round-trip 通过。
+
+94 个单元用例与类型正负例通过，覆盖 NULL、空洞、维度、业务映射、错误方言、参数顺序和整体数组 map 拒绝挂载。PG 实库覆盖 BIGINT 9007199254740993、精确金额、微秒、UUID 对象、特殊文本、SQL NULL 与元素 NULL、CTE/UNION、array_nulls off 拒绝后切回 on、65,536 元素仅一个绑定。状态检查与目标 SQL 同队列执行，定向并发单元证明 SET 不会插进检查与使用之间，release 等待已提交操作。
+
+新依赖加入后，真实 tarball 离线消费者再次通过，未自动安装任何数据库 peer；观测 82 文件、16,127 类型实例化、约 17 MiB 编译器内存。当前改动只涉及 PG，MySQL/HANA 的全面运行交并行 CI，不以无关重复本地运行占用时间。随机 PG 测试表和打包临时目录按 finally 清理，持久数据库和共享缓存保留。
