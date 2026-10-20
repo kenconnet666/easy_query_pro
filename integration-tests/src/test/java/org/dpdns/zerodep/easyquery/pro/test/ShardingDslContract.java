@@ -8,6 +8,10 @@ import com.easy.query.core.bootstrapper.DatabaseConfiguration;
 import com.easy.query.core.bootstrapper.EasyQueryBootstrapper;
 import com.easy.query.core.inject.ServiceCollection;
 import com.easy.query.core.annotation.Column;
+import com.easy.query.core.configuration.EasyQueryShardingOption;
+import com.easy.query.core.configuration.ShardingDataSource;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import com.easy.query.core.proxy.sql.Select;
 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
@@ -21,6 +25,13 @@ import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.lang.reflect.Proxy;
+import java.lang.reflect.InvocationTargetException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -32,18 +43,53 @@ final class ShardingDslContract {
 
     static void verify(DataSource source, DatabaseConfiguration database, Consumer<ServiceCollection> extensions, List<String> tables,
                        Consumer<DefaultEasyEntityQuery> nativeChecks) {
-        var client = EasyQueryBootstrapper.defaultBuilderConfiguration().setDefaultDataSource(source)
+        verify(tables.stream().map(table -> new Shard("primary", source, table)).toList(), database, extensions, nativeChecks);
+    }
+
+    record Shard(String sourceName, DataSource source, String table) {
+    }
+
+    static HikariDataSource pool(DataSource source, String schema) {
+        var config = new HikariConfig();
+        config.setDataSource(source);
+        config.setMaximumPoolSize(2);
+        config.setMinimumIdle(0);
+        config.setConnectionTimeout(10000);
+        if (schema != null) config.setSchema(schema);
+        return new HikariDataSource(config);
+    }
+
+    static void verify(List<Shard> shards, DatabaseConfiguration database, Consumer<ServiceCollection> extensions,
+                       Consumer<DefaultEasyEntityQuery> nativeChecks) {
+        var sources = new LinkedHashMap<String, CountedSource>();
+        var actualTables = new LinkedHashMap<String, Collection<String>>();
+        for (var shard : shards) {
+            sources.computeIfAbsent(shard.sourceName(), name -> CountedSource.wrap(shard.source()));
+            actualTables.computeIfAbsent(shard.sourceName(), name -> new ArrayList<>()).add(shard.table());
+        }
+        var primary = shards.get(0);
+        var secondary = new LinkedHashSet<ShardingDataSource>();
+        sources.forEach((name, source) -> {
+            if (!name.equals(primary.sourceName())) secondary.add(new ShardingDataSource(name, source.dataSource(), 2));
+        });
+        var client = EasyQueryBootstrapper.defaultBuilderConfiguration().setDefaultDataSource(sources.get(primary.sourceName()).dataSource())
                 .optionConfigure(options -> {
+                    options.setDefaultDataSourceName(primary.sourceName());
                     options.setDefaultDataSourceMergePoolSize(2);
                     options.setMaxShardingQueryLimit(2);
+                    options.setExecutorCorePoolSize(1);
+                    options.setExecutorMaximumPoolSize(2);
+                    options.setShardingOption(new EasyQueryShardingOption(secondary));
                 }).useDatabaseConfigure(database).customConfigure(extensions)
                 .replaceService(EntityExpressionExecutor.class, ShardingEntityExpressionExecutor.class).build();
-        client.getRuntimeContext().getQueryConfiguration().applyShardingInitializer(new ShardedProduct.Tables(tables));
-        client.getRuntimeContext().getTableRouteManager().addRoute(new ShardedProduct.Route(tables));
+        client.getRuntimeContext().getQueryConfiguration().applyShardingInitializer(new ShardedProduct.Tables(actualTables));
+        client.getRuntimeContext().getTableRouteManager().addRoute(new ShardedProduct.Route(shards.stream().map(Shard::table).toList()));
+        client.getRuntimeContext().getDataSourceRouteManager().addRoute(new ShardedProduct.SourceRoute(List.copyOf(sources.keySet())));
         var query = new DefaultEasyEntityQuery(client);
         try {
             query.insertable(List.of(new ShardedProduct(1, "{\"code\":\"one\"}", new BigDecimal("1.2345")),
                     new ShardedProduct(2, "{\"code\":\"two\"}", new BigDecimal("2.3456")))).executeRows();
+            verifySourceRouting(query, sources);
             assertEquals(2, query.queryable(ShardedProduct.class).count());
             assertEquals(2, query.queryable(ShardedProduct.class).selectColumn(p -> ProDsl.of(p).nativeCast(p.amount(), CommonTypes.decimal(19, 2))).toList().size());
             var selected = query.queryable(ShardedProduct.class).orderBy(p -> p.id().asc()).select(p -> {
@@ -72,8 +118,50 @@ final class ShardingDslContract {
             assertTrue(hasShardGuard(failure), failure.toString());
             var hiddenAggregate = query.queryable(ShardedProduct.class).selectColumn(p -> ProDsl.of(p).nativeCast(p.amount().sumBigDecimal().add(1), CommonTypes.decimal(19, 1)));
             assertTrue(hasShardGuard(assertThrows(RuntimeException.class, hiddenAggregate::toList)));
+            verifyRoutedRollback(query);
         } finally {
             client.getRuntimeContext().getService(ShardingExecutorService.class).getExecutorService().shutdown();
+        }
+    }
+
+    private static void verifySourceRouting(DefaultEasyEntityQuery query, LinkedHashMap<String, CountedSource> sources) {
+        var ordered = List.copyOf(sources.values());
+        for (int id : new int[]{1, 2}) {
+            sources.values().forEach(source -> source.borrows().set(0));
+            assertEquals(id, query.queryable(ShardedProduct.class).where(p -> p.id().eq(id)).singleNotNull().getId());
+            for (int i = 0; i < ordered.size(); i++)
+                assertEquals(i == id % ordered.size(), ordered.get(i).borrows().get() > 0);
+        }
+    }
+
+    private static void verifyRoutedRollback(DefaultEasyEntityQuery query) {
+        try (var transaction = query.getEasyQueryClient().beginTransaction()) {
+            assertEquals(1, query.updatable(ShardedProduct.class).setColumns(p -> p.amount().set(
+                    ProDsl.of(p).value(new BigDecimal("9.99"), CommonTypes.decimal(19, 2)))).where(p -> p.id().eq(1)).executeRows());
+            NativeDecimalContract.equalValue(new BigDecimal("9.99"), query.queryable(ShardedProduct.class).where(p -> p.id().eq(1)).singleNotNull().getAmount());
+            transaction.rollback();
+        }
+        NativeDecimalContract.equalValue(new BigDecimal("1.2345"), query.queryable(ShardedProduct.class).where(p -> p.id().eq(1)).singleNotNull().getAmount());
+        try (var transaction = query.getEasyQueryClient().beginTransaction()) {
+            assertThrows(RuntimeException.class, () -> query.insertable(new ShardedProduct(1, "duplicate", BigDecimal.ONE)).executeRows());
+            transaction.rollback();
+        }
+        assertEquals(2, query.queryable(ShardedProduct.class).count());
+        NativeDecimalContract.equalValue(new BigDecimal("2.3456"), query.queryable(ShardedProduct.class).where(p -> p.id().eq(2)).singleNotNull().getAmount());
+    }
+
+    private record CountedSource(DataSource dataSource, AtomicInteger borrows) {
+        private static CountedSource wrap(DataSource delegate) {
+            var count = new AtomicInteger();
+            var source = (DataSource) Proxy.newProxyInstance(DataSource.class.getClassLoader(), new Class<?>[]{DataSource.class}, (proxy, method, args) -> {
+                if (method.getName().equals("getConnection")) count.incrementAndGet();
+                try {
+                    return method.invoke(delegate, args);
+                } catch (InvocationTargetException failure) {
+                    throw failure.getCause();
+                }
+            });
+            return new CountedSource(source, count);
         }
     }
 

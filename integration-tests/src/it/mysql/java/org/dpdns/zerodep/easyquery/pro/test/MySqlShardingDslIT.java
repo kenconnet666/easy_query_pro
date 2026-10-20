@@ -22,13 +22,32 @@ import java.sql.SQLException;
 import java.util.List;
 
 class MySqlShardingDslIT {
+    private static final String COLUMNS = "id INTEGER PRIMARY KEY, name VARCHAR(200), amount DECIMAL(19,4), created DATETIME(6)";
+
     @Test
     void rowLocalExpressionsCanBeEvaluatedBeforeShardMerge() throws SQLException {
         var source = MySqlTestDatabase.dataSource();
-        String columns = "id INTEGER PRIMARY KEY, name VARCHAR(200), amount DECIMAL(19,4), created DATETIME(6)";
-        try (var first = MySqlTestDatabase.createTable(source, "eqp_shard_a_", columns);
-             var second = MySqlTestDatabase.createTable(source, "eqp_shard_b_", columns)) {
+        try (var first = MySqlTestDatabase.createTable(source, "eqp_shard_a_", COLUMNS);
+             var second = MySqlTestDatabase.createTable(source, "eqp_shard_b_", COLUMNS)) {
             ShardingDslContract.verify(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure, List.of(first.name(), second.name()), MySqlShardingDslIT::verifyNativeViews);
+        }
+    }
+
+    @Test
+    void independentPoolsCanUseDifferentPreparedStatementModes() throws SQLException {
+        var firstSource = MySqlTestDatabase.dataSource();
+        firstSource.setUseServerPrepStmts(false);
+        var secondSource = MySqlTestDatabase.dataSource();
+        secondSource.setUseServerPrepStmts(true);
+        try (var first = MySqlTestDatabase.createTable(firstSource, "eqp_multisource_a_", COLUMNS);
+             var second = MySqlTestDatabase.createTable(secondSource, "eqp_multisource_b_", COLUMNS);
+             var primary = ShardingDslContract.pool(firstSource, null);
+             var secondary = ShardingDslContract.pool(secondSource, null)) {
+            ShardingDslContract.verify(List.of(new ShardingDslContract.Shard("primary", primary, first.name()),
+                            new ShardingDslContract.Shard("secondary", secondary, second.name())),
+                    new MySQLDatabaseConfiguration(), MySqlExtensions::configure, MySqlShardingDslIT::verifyNativeViews);
+            assertEquals(0, primary.getHikariPoolMXBean().getActiveConnections());
+            assertEquals(0, secondary.getHikariPoolMXBean().getActiveConnections());
         }
     }
 

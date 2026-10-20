@@ -18,14 +18,36 @@ import java.sql.SQLException;
 import java.util.List;
 
 class HanaShardingDslIT {
+    private static final String COLUMNS = "\"id\" INTEGER PRIMARY KEY, \"name\" NVARCHAR(200), \"amount\" DECIMAL(19,4), \"created\" TIMESTAMP";
+
     @Test
     void rowLocalExpressionsCanBeEvaluatedBeforeShardMerge() throws SQLException {
-        String columns = "\"id\" INTEGER PRIMARY KEY, \"name\" NVARCHAR(200), \"amount\" DECIMAL(19,4), \"created\" TIMESTAMP";
-        try (var first = HanaTestDatabase.createTable("SHARD_A", columns); var second = HanaTestDatabase.createTable("SHARD_B", columns);
+        try (var first = HanaTestDatabase.createTable("SHARD_A", COLUMNS); var second = HanaTestDatabase.createTable("SHARD_B", COLUMNS);
              var schema = HanaTestDatabase.createSchema("SHARD_JSON"); var ddl = schema.connection().createStatement()) {
             ddl.execute(HanaJsonSupport.createDocumentFunctionSql(schema.name()));
             ShardingDslContract.verify(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(new HanaOptions(5000, schema.name())),
                     HanaExtensions::configure, List.of(first.name(), second.name()), HanaShardingDslIT::verifyNativeViews);
+        }
+    }
+
+    @Test
+    void independentSourcesKeepIdenticalTableNamesInSeparateSchemas() throws SQLException {
+        try (var first = HanaTestDatabase.createSchema("MULTISOURCE_A"); var second = HanaTestDatabase.createSchema("MULTISOURCE_B");
+             var primary = ShardingDslContract.pool(HanaTestDatabase.dataSource(), first.name());
+             var secondary = ShardingDslContract.pool(HanaTestDatabase.dataSource(), second.name())) {
+            for (var schema : List.of(first, second)) {
+                try (var ddl = schema.connection().createStatement()) {
+                    ddl.execute("CREATE COLUMN TABLE " + schema.qualified("product") + " (" + COLUMNS + ")");
+                }
+            }
+            try (var ddl = first.connection().createStatement()) {
+                ddl.execute(HanaJsonSupport.createDocumentFunctionSql(first.name()));
+            }
+            ShardingDslContract.verify(List.of(new ShardingDslContract.Shard("primary", primary, "product"),
+                            new ShardingDslContract.Shard("secondary", secondary, "product")),
+                    new HanaDatabaseConfiguration(new HanaOptions(5000, first.name())), HanaExtensions::configure, HanaShardingDslIT::verifyNativeViews);
+            assertEquals(0, primary.getHikariPoolMXBean().getActiveConnections());
+            assertEquals(0, secondary.getHikariPoolMXBean().getActiveConnections());
         }
     }
 

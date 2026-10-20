@@ -1,6 +1,8 @@
 # DSL 投影与分片边界
 
-当前验证的是同一 DataSource 的两张真实分表，使用 EasyQuery 3.2.17 的 `ShardingEntityExpressionExecutor`、initializer、route 和原有合并器。MySQL、PostgreSQL、HANA 都执行同一消费契约。更完整的多 DataSource、业务类型、派生关系、UNION 和分组组合仍在 G4.6 验收中。
+当前验证覆盖同一 DataSource 的两张真实分表，以及两个独立 DataSource/连接池，使用 EasyQuery 3.2.17 的 `ShardingEntityExpressionExecutor`、initializer、route 和原有合并器。MySQL、PostgreSQL、HANA 都执行同一消费契约；更完整的业务类型、派生关系、UNION 和分组组合仍在 G4.6 验收中。
+
+PostgreSQL/HANA 的双 DataSource 使用各自 schema 下的同名表；MySQL 使用同一 catalog 内的独立表，并让两个池分别采用客户端和服务端预处理。它们运行于各数据库已有的本地实例，不是多个独立服务器的故障转移测试。按分片键执行查询时，借连接计数确认只有目标 DataSource 被访问。定向到单一数据源的更新/重复键失败/回滚后数据恢复也已验证，两个池最后均无借出连接；这些结果不承诺跨数据源分布式原子事务。
 
 原生视图的追加实测包含 MySQL JSON 修改/包含判断和 Duration 完整投影/加减/微秒/日期时间组合，PostgreSQL JSON/JSONB 转换/修改、数组 ANY/包含/元素/长度以及 interval 日历组合，HANA NVARCHAR/NCLOB JSON 读取与 LOB 完整投影、标量文本/切片/二进制切片。它们传播现有逐行分类，并同时检查双输入操作的两个操作数；数组比较中的聚合元素仍会拒绝。
 
@@ -28,6 +30,6 @@ HANA 作用域包装通过公开 TableSQLSegment/visitor 保留被包装结果�
 - `ShardingDslContract`：三库双分表插入、路由、列投影、Draft、顺序、count、分页、JSON 过滤、NULLIF/NULL-safe、clone、已有 SUM 合并和不安全转换拒绝。
 - `MySqlShardingDslIT`、`PostgresShardingDslIT`、`HanaShardingDslIT`：分别创建自己的测试表/schema；HANA 另外在自己的 schema 部署 JSON 文档函数。
 
-测试结束删除自身表/schema，并关闭自己创建的分片 executor。每个 DataSource 的分片并发上限为 2，开发数据库与用户数据保持保留。更广范围的类型、连接池和跨数据源组合不能用这些测试结果替代。
+测试结束删除自身表/schema，并关闭自己创建的分片 executor 和连接池。池上限为 2，分片 executor 上限也为 2；开发数据库与用户数据保持保留。共同断言集中在 ShardingDslContract，各数据库的 JSON、LOB、数组、时长等断言保留在对应 IT 中，避免共同测试夹具依赖所有方言的分支逻辑。
 
 分片排序继续遵守上游“排序列必须在投影中”的要求；测试显式选择 id，不暗中增加或改变业务返回字段。任意未分类的上游函数、计算字段排序和跨分片聚合后转换仍不能从本次结果推断为可用。

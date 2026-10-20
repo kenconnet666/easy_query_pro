@@ -3,6 +3,7 @@ package org.dpdns.zerodep.easyquery.pro.test.entity;
 import com.easy.query.core.annotation.Column;
 import com.easy.query.core.annotation.EntityProxy;
 import com.easy.query.core.annotation.ShardingTableKey;
+import com.easy.query.core.annotation.ShardingDataSourceKey;
 import com.easy.query.core.annotation.Table;
 import com.easy.query.core.enums.sharding.ShardingOperatorEnum;
 import com.easy.query.core.expression.lambda.RouteFunction;
@@ -12,18 +13,22 @@ import com.easy.query.core.proxy.ProxyEntityAvailable;
 import com.easy.query.core.sharding.initializer.EntityShardingInitializer;
 import com.easy.query.core.sharding.initializer.ShardingEntityBuilder;
 import com.easy.query.core.sharding.route.table.abstraction.AbstractTableRoute;
+import com.easy.query.core.sharding.route.datasource.abstraction.AbstractDataSourceRoute;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.ShardedProductProxy;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 
 @Table(value = "eqp_sharded_product", shardingInitializer = ShardedProduct.Tables.class)
 @EntityProxy
 public class ShardedProduct implements ProxyEntityAvailable<ShardedProduct, ShardedProductProxy> {
     @Column(primaryKey = true)
     @ShardingTableKey
+    @ShardingDataSourceKey
     private Integer id;
     private String name;
     private BigDecimal amount;
@@ -72,15 +77,32 @@ public class ShardedProduct implements ProxyEntityAvailable<ShardedProduct, Shar
     }
 
     public static final class Tables implements EntityShardingInitializer<ShardedProduct> {
-        private final List<String> tables;
+        private final Map<String, Collection<String>> tables;
 
-        public Tables(List<String> tables) {
-            this.tables = List.copyOf(tables);
+        public Tables(Map<String, Collection<String>> tables) {
+            var snapshot = new LinkedHashMap<String, Collection<String>>();
+            tables.forEach((source, names) -> snapshot.put(source, List.copyOf(names)));
+            this.tables = Map.copyOf(snapshot);
         }
 
         @Override
         public void configure(ShardingEntityBuilder<ShardedProduct> builder) {
-            builder.actualTableNameInit(Map.of(builder.getEasyQueryOption().getDefaultDataSourceName(), tables));
+            builder.actualTableNameInit(tables);
+        }
+    }
+
+    public static final class SourceRoute extends AbstractDataSourceRoute<ShardedProduct> {
+        private final List<String> sources;
+
+        public SourceRoute(List<String> sources) {
+            this.sources = List.copyOf(sources);
+        }
+
+        @Override
+        protected RouteFunction<String> getRouteFilter(TableAvailable table, Object value, ShardingOperatorEnum operator, boolean withEntity) {
+            if (operator != ShardingOperatorEnum.EQUAL) return source -> true;
+            String target = sources.get(Math.floorMod(((Number) value).intValue(), sources.size()));
+            return source -> source.equals(target);
         }
     }
 

@@ -21,14 +21,37 @@ import java.sql.SQLException;
 import java.util.List;
 
 class PostgresShardingDslIT {
+    private static final String COLUMNS = " (id INTEGER PRIMARY KEY, name VARCHAR(200), amount DECIMAL(19,4), created TIMESTAMP(6))";
+
     @Test
     void rowLocalExpressionsCanBeEvaluatedBeforeShardMerge() throws SQLException {
         var source = PostgresTestDatabase.dataSource();
         try (var schema = PostgresTestDatabase.createSchema(source, "eqp_shard_"); var ddl = schema.connection().createStatement()) {
             var tables = List.of("first_shard", "second_shard");
             for (String table : tables)
-                ddl.execute("CREATE TABLE " + schema.qualified(table) + " (id INTEGER PRIMARY KEY, name VARCHAR(200), amount DECIMAL(19,4), created TIMESTAMP(6))");
+                ddl.execute("CREATE TABLE " + schema.qualified(table) + COLUMNS);
             ShardingDslContract.verify(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure, tables, PostgresShardingDslIT::verifyNativeViews);
+        }
+    }
+
+    @Test
+    void independentSourcesKeepIdenticalTableNamesInSeparateSchemas() throws SQLException {
+        var firstSource = PostgresTestDatabase.dataSource();
+        var secondSource = PostgresTestDatabase.dataSource();
+        try (var first = PostgresTestDatabase.createSchema(firstSource, "eqp_multisource_a_");
+             var second = PostgresTestDatabase.createSchema(secondSource, "eqp_multisource_b_");
+             var primary = ShardingDslContract.pool(firstSource, null);
+             var secondary = ShardingDslContract.pool(secondSource, null)) {
+            for (var schema : List.of(first, second)) {
+                try (var ddl = schema.connection().createStatement()) {
+                    ddl.execute("CREATE TABLE " + schema.qualified("product") + COLUMNS);
+                }
+            }
+            ShardingDslContract.verify(List.of(new ShardingDslContract.Shard("primary", primary, "product"),
+                            new ShardingDslContract.Shard("secondary", secondary, "product")),
+                    new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure, PostgresShardingDslIT::verifyNativeViews);
+            assertEquals(0, primary.getHikariPoolMXBean().getActiveConnections());
+            assertEquals(0, secondary.getHikariPoolMXBean().getActiveConnections());
         }
     }
 

@@ -40,7 +40,7 @@
 | G4.3 | NULL-safe/NULLIF/数据库日期截断，以及 JSON path/布尔结果组合桥接 | G4.2 | NULL-safe、NULLIF、常规日期截断与结构化 JSON path/布尔桥接已实现；历史历法及完整组合继续验收 |
 | G4.4 | 三库原生类型目录：unsigned、MySQL 时长、PG interval、HANA 受限文本等 | G4.2 | PG interval、MySQL unsigned/TIME、HANA LOB/JSON 文本及三库原生数值已有实库证据；字符及其余目录继续实施 |
 | G4.5 | MySQL JSON、PG JSONB 与 PG SQL 数组的完整选定操作 | G4.2、G4.4 | MySQL JSON、PG JSON/JSONB 和一维数组选定操作已有实库证据；完整类型组合、分片及性能继续验收 |
-| G4.6 | 编译负例、跨 client/错库负例、组合、类型传播与资源释放 | G4.3–G4.5 | 共同逐行表达式、三库双分表与 Draft 分类已验证；完整原生视图、多 DataSource 和派生关系继续实施 |
+| G4.6 | 编译负例、跨 client/错库负例、组合、类型传播与资源释放 | G4.3–G4.5 | 共同/原生逐行表达式、三库单/双 DataSource、Draft 分类、路由隔离和回滚已验证；派生关系及完整业务组合继续实施 |
 | G5.1 | 共同 ROWS 与 MySQL/PG RANGE，验证 HANA 拒绝行为，复用已有窗口函数 | G4.6 | 待实施 |
 | G5.2 | 三库全文检索、索引 fixture、模式与评分作用域 | G4.6 | 待实施 |
 | G5.3 | HANA 邻接树/森林、祖先/后代、深度、顺序、循环/孤儿策略 | G2.5、G4.6 | 待实施 |
