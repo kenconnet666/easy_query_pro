@@ -1,6 +1,6 @@
 # 精确类型表达式
 
-当前已落地 DECIMAL 纵向路径，使用 EasyQuery 3.2.17 与 JDK 17。完整类型目录、列视图和方言类型仍按 [DSL 设计](dsl-design.md) 继续实施；本文只描述已经有实现的接口。
+当前已落地 DECIMAL 与有界 Unicode 文本路径，使用 EasyQuery 3.2.17 与 JDK 17。完整类型目录、列视图和方言类型仍按 [DSL 设计](dsl-design.md) 继续实施；本文只描述已经有实现的接口。
 
 ## 安装与使用
 
@@ -46,6 +46,34 @@ MySQL 的写入/转换行为还受上下文和 SQL mode 影响，表中的 SELEC
 
 ## 表达式、转换器与作用域
 
+### 有界 Unicode 文本
+
+`CommonTypes.unicodeText(maxUtf16Length)` 返回 TextType，容量范围为 1–5000 个 **UTF-16 单元**，与 Java String.length() 的单位相同。它不是字节数、Unicode 码点数或用户看到的字形数；例如 `😀a` 占 3 个 UTF-16 单元。
+
+```java
+var label = CommonTypes.unicodeText(40);
+query.queryable(Product.class).selectColumn(p ->
+        ProDsl.of(p).value("O'Reilly 中😀", label).toUpper());
+query.queryable(Product.class).selectColumn(p ->
+        ProDsl.of(p).nativeCast(p.name(), label).concat("!"));
+```
+
+文本入口返回原有 StringTypeExpression<String>，继续调用字符串函数。typed value 保留空字符串与 NULL，预先拒绝超过容量、未配对代理项和 PostgreSQL 不支持的 NUL；不进行规范化、替换字符或静默截断。输入使用完整 Unicode 字符集的连接，MySQL 声明和 CAST 显式使用 utf8mb4。
+
+| 方言 | DDL 描述 | 原生 CAST 目标 |
+| --- | --- | --- |
+| MySQL | VARCHAR(n) CHARACTER SET utf8mb4 | CHAR(n) CHARACTER SET utf8mb4 |
+| PostgreSQL | VARCHAR(n) | VARCHAR(n) |
+| HANA | NVARCHAR(n) | NVARCHAR(n) |
+
+`value` 的 UTF-16 容量保证输入能完整放入上述三种类型。DDL 返回的是物理类型声明，不会给其他写入方式自动增加 Java 校验或数据库 CHECK 约束；MySQL/PG 的物理 VARCHAR(n) 按字符计数，可能接受更多 UTF-16 单元。原有实体写入仍使用既有列 handler/转换器，不能把显式 typed value 的保证误认为所有写入都已改变。
+
+`nativeCast` 继续保留原生截断差异。真实查询中将 `😀a` 转为长度 2，HANA 返回 `😀`，MySQL/PG 返回 `😀a`；它不承诺跨库相同的截断结果。若值已经在 Java 中，优先使用经过精确容量校验的 `value`。SQL 字符串比较、排序和大小写转换也继续遵循数据库排序规则。
+
+三库共享 JdbcContract 现在使用该描述创建真实文本列，TextDslContract 验证 Unicode/引号/花括号绑定、空/NULL、已有 length/indexOf、结果类型、5000 单元上界和原生 CAST 差异。JDK 编译负例拒绝把 TextType 结果赋给数字表达式，或用文本描述绑定 BigDecimal。相关原生规则见 [PostgreSQL 17 字符类型](https://www.postgresql.org/docs/17/datatype-character.html)、[MySQL CAST](https://dev.mysql.com/doc/refman/8.4/en/cast-functions.html) 与 HANA 类型契约。
+
+### 映射与作用域
+
 普通属性作为输入时使用上游 `EasyColumnSegmentUtil` 的 SQL 属性转换。例如存储为分、属性转换为元的列，先取得该属性的 SQL 值，再执行 CAST。已构造的函数表达式保留其原有 SQL 语义，不遍历并重写它的内部列。CAST 输出只按目标数字类型读取，不再把业务 RowId/整列 ValueConverter 套在结果上。
 
 返回表达式参与重复渲染、克隆、JOIN、相关子查询和写入 setter。相关子查询会先构造再挂入外层，表归属检查在最终 SQL 渲染时执行，使用上游表上下文；跨 client 使用立即拒绝。类型描述可以共享，查询表达式不能缓存为全局变量后用于无关查询。
@@ -58,5 +86,6 @@ MySQL 的写入/转换行为还受上下文和 SQL mode 影响，表中的 SELEC
 - `DslCompilationTest`：真实 JDK 17 消费者编译；错误值类型、错误结果族、错误 Java 数字类型、只有 StorageType 的输入均失败。
 - `DecimalDslContract`：通过三个真实数据库执行相同消费用例；由 `MySqlConnectionIT`、`PostgresConnectionIT`、`HanaDecimalDslIT` 调用。
 - `HanaConversionIT`：业务主键转换后投影为数字，以及 SQL 属性转换与精确 CAST 的协作。
+- `TextDslTest,TextDslContract`：UTF-16 容量与合法性、三库真实文本绑定和 CAST；JdbcContract 同时验证物理 DDL。
 
 这组证据不会替代后续字符长度单位、时间精度、原生 JSON/数组/interval、独立发布产物消费者和完整 CI 的验收。

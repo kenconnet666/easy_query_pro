@@ -65,6 +65,7 @@ HANA 底层模块保持与 Proxy DSL 解耦。专属 DSL 可以组合已有函�
 16. `HanaLobBindings` 管理每个 client、每次 JDBC 调用所打开的 LOB 输入流；允许监听器发起嵌套调用，退出时恢复前一作用域。它不拥有调用方的 Blob/Clob，不替代上游事务，也不将大对象提前读入内存。
 17. 关联 DML 复用上游结构化 SET/ON/WHERE：UPDATE 使用按根表主键匹配的 MERGE，DELETE 使用相关 EXISTS；保留上游决定的关联类型与过滤条件，避免解析 SQL 或实现并行的导航查询器。
 18. 精确类型表达式通过现有 SQLFunction/SQLSegment 接入，DDL 与 CAST 描述分开。typed value 校验无损表示，`nativeCast` 明确原生舍入/溢出；表归属在完整查询渲染时检查，兼容先构造后挂接的相关子查询。完整接口和当前边界见 [类型表达式说明](dsl-types.md)。
+19. 简单公共标量描述通过显式 SqlDialect 标识选择物理类型名称，不依赖数据库 Java 实现；有差异的函数翻译由方言模块注册。模板参数渲染复用上游 SQLFormatArgument，不维护第二套占位符展开、计数或参数重排逻辑。
 
 ## 代码审计入口
 

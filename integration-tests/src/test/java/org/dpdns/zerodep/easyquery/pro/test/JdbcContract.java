@@ -18,10 +18,6 @@ final class JdbcContract {
     private JdbcContract() {
     }
 
-    static void verify(DataSource dataSource, DatabaseConfiguration configuration) throws SQLException {
-        verify(dataSource, configuration, "VARCHAR(255)");
-    }
-
     static void verify(DataSource dataSource, DatabaseConfiguration configuration, String textType) throws SQLException {
         assertEquals(17, Runtime.version().feature(), "Tests must run on the Java 17 toolchain");
         var client = EasyQueryBootstrapper.defaultBuilderConfiguration()

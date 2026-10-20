@@ -260,9 +260,19 @@ U06 的 LocalDate/LocalDateTime 入口通过明确的日期粒度校验与静态
 
 本地先运行 4 个组合测试通过，再运行 `HanaFunctionCompositionIT,HanaTemporalTruncationDslIT` 共 5 项通过，同次 57 个离线测试通过；三库的参数数量/次序与克隆离线契约保持通过。IDEA 格式化和编译通过；数据库用例仅做 SELECT，没有新建数据库资源。两份诊断日志清理，保留标准报告。MySQL/PG 的完整真实回归由本次 CI 继续执行。
 
+## 有界 Unicode 文本类型
+
+提交 `9f19a92dc8c0fa244c2a51ec6952b6b7bde9f8c7` 的 [CI 39347285886](https://github.com/kenconnet666/easy_query_pro/actions/runs/39347285886) 已通过全部五个强制任务，包含上游模板复用及新增函数组合。
+
+新增 TextType 与 CommonTypes.unicodeText，返回既有 StringTypeExpression。容量明确为 1–5000 个 UTF-16 单元，typed value 预先拒绝超长、NUL 与未配对代理项，保留空串/NULL。DDL 与 CAST 分别渲染；尤其 MySQL 使用 VARCHAR DDL、CHAR CAST 和显式 utf8mb4。原生 CAST 不假装具有相同的截断规则：MCP 与真实契约都确认长度 2 的 `😀a` 在 HANA 输出 `😀`，在 MySQL/PG 输出原值。
+
+三个已有 JdbcContract fixture 改用该类型描述创建真实列，删除已无人调用的默认 VARCHAR 重载。DDL 声明只表示物理类型，不会自动给其他实体写入增加 UTF-16 校验或 CHECK 约束；完整边界已写入 [类型表达式说明](dsl-types.md)。没有给 String.class 安装全局 JSON/字符转换器。
+
+本地 HANA `HanaTextDslIT,HanaConnectionIT` 共 4 项通过，同次 62 个离线测试通过；MySQL/PostgreSQL 共享契约共 2 项通过，同次 9 项选定离线/编译检查通过。消费者编译现有 7 个正例、14 个负例。IDEA 格式化、编译和关键文件检查通过；MCP 确认 HANA/MySQL 本轮 fixture 表遗留为 0，两份诊断日志清理，保留标准报告与持久数据库。
+
 ## 下一步
 
-1. 检查新提交的精确类型 DSL CI，继续 HANA 未关闭的函数/写入边界与其他通用类型。
+1. 检查新提交的文本类型 CI，继续结构化 JSON path 与三库原生类型 DSL，并保持 HANA 未关闭项的跟踪。
 2. 继续收敛 G0 高风险接口：计算视图正式查询源和参数绑定 SPI、类型转换器以及编译负例。
 3. 完成函数审计、类型桥接的转换器/编译负例与 SQL 组合失败覆盖，明确不等价能力与剩余风险。
 4. 按依赖进入完整 HANA 函数/查询/类型实现，再实施通用 DSL 与三库类型增强。

@@ -51,6 +51,14 @@ class DslCompilationTest {
         compile(false, "d.truncateDateTime(e.occurred().asAnyType(java.time.Instant.class), TruncationUnit.DAY);");
     }
 
+    @Test
+    void textDescriptorsReturnStringExpressionsAndRejectNumericValues() throws IOException {
+        compile(true, "StringTypeExpression<String> text = d.value(\"hello\", CommonTypes.unicodeText(20)); text.toUpper(); d.nullValue(CommonTypes.unicodeText(20)).isNull();");
+        compile(false, "NumberTypeExpression<BigDecimal> value = d.nativeCast(p.amount(), CommonTypes.unicodeText(20));");
+        compile(false, "d.value(BigDecimal.ONE, CommonTypes.unicodeText(20));");
+        compile(false, "d.value(\"hello\", CommonTypes.decimal(19, 2));");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """

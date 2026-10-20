@@ -3,6 +3,8 @@ package org.dpdns.zerodep.easyquery.pro.test;
 import org.junit.jupiter.api.Test;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseInfo;
+import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
+import org.dpdns.zerodep.easyquery.pro.dsl.type.CommonTypes;
 
 import java.math.BigDecimal;
 import java.sql.SQLException;
@@ -69,6 +71,6 @@ class HanaConnectionIT {
 
     @Test
     void hanaAdapterExecutesTheSharedCrudAndTransactionContract() throws SQLException {
-        JdbcContract.verify(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), "NVARCHAR(255)");
+        JdbcContract.verify(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), CommonTypes.unicodeText(255).ddlType(SqlDialect.HANA));
     }
 }

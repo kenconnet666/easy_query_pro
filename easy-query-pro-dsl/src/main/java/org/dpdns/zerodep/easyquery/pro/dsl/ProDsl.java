@@ -29,6 +29,8 @@ import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import com.easy.query.core.util.EasyColumnSegmentUtil;
 import com.easy.query.core.util.EasyClassUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
+import org.dpdns.zerodep.easyquery.pro.dsl.type.TextType;
+import org.dpdns.zerodep.easyquery.pro.dsl.type.CastTarget;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
 
@@ -66,15 +68,27 @@ public final class ProDsl {
      * Emits the database's CAST, including its native rounding, overflow and invalid-input behavior.
      */
     public <N extends Number> NumberTypeExpression<N> nativeCast(PropTypeColumn<?> source, NumericType<N> target) {
+        Objects.requireNonNull(target, "target");
+        Class<N> resultType = boxedTarget(target.javaType());
+        return new NumberTypeExpressionImpl<>(context, anchor, null, conversion(source, target), resultType);
+    }
+
+    /**
+     * Preserves native truncation rules; use value for a losslessly validated text parameter.
+     */
+    public StringTypeExpression<String> nativeCast(PropTypeColumn<?> source, TextType target) {
+        return new StringTypeExpressionImpl<>(context, anchor, null, conversion(source, target), String.class);
+    }
+
+    private Function<SQLFunc, SQLFunction> conversion(PropTypeColumn<?> source, CastTarget<?> target) {
         requireSource(source);
         Objects.requireNonNull(target, "target");
         String template = target.castTemplate(dialect);
-        Class<N> resultType = boxedTarget(target.javaType());
-        return new NumberTypeExpressionImpl<>(context, anchor, null, factory -> {
+        return factory -> {
             SQLFunction operand = operand(source, factory);
             var cast = factory.anySQLFunction(template, args -> args.sqlFunc(source.getTable(), operand));
             return new ScopedFunction(cast, operand.getAggregationType(), source instanceof DSLSQLFunctionAvailable, source.getTable());
-        }, resultType);
+        };
     }
 
     /**
@@ -92,6 +106,18 @@ public final class ProDsl {
     }
 
     public <N extends Number> NumberTypeExpression<N> nullValue(NumericType<N> type) {
+        return value(null, type);
+    }
+
+    public StringTypeExpression<String> value(String value, TextType type) {
+        Objects.requireNonNull(type, "type");
+        String boundValue = type.prepareValue(value);
+        String template = type.castTemplate(dialect);
+        return new StringTypeExpressionImpl<>(context, anchor, null, factory ->
+                new ScopedFunction(factory.anySQLFunction(template, args -> args.value(boundValue)), AggregationType.UNKNOWN, false), String.class);
+    }
+
+    public StringTypeExpression<String> nullValue(TextType type) {
         return value(null, type);
     }
 
