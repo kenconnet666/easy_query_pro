@@ -1,4 +1,4 @@
-package org.dpdns.zerodep.easyquery.pro.dsl.internal;
+package org.dpdns.zerodep.easyquery.pro.dsl.spi;
 
 import com.easy.query.core.annotation.Column;
 import com.easy.query.core.expression.func.AggregationType;
@@ -12,6 +12,8 @@ import com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpress
 import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import com.easy.query.core.util.EasyClassUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.JsonPathAccess;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.NativeJsonColumnConverter;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.*;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NativeJsonType;
@@ -38,33 +40,33 @@ public abstract class AbstractJsonExpression<T> extends MappedValueExpression<T>
     }
 
     @Override
-    public final NativeJsonType sqlType() {
+    public NativeJsonType sqlType() {
         return type;
     }
 
 
     @Override
-    public final JsonFragmentExpression at(JsonPath path) {
+    public JsonFragmentExpression at(JsonPath path) {
         return portable.jsonAt(this, path);
     }
 
     @Override
-    public final StringTypeExpression<String> textAt(JsonPath path) {
+    public StringTypeExpression<String> textAt(JsonPath path) {
         return portable.jsonTextAt(this, path);
     }
 
     @Override
-    public final BooleanTypeExpression<Boolean> booleanAt(JsonPath path) {
+    public BooleanTypeExpression<Boolean> booleanAt(JsonPath path) {
         return portable.jsonBooleanAt(this, path);
     }
 
     @Override
-    public final BooleanTypeExpression<Boolean> existsAt(JsonPath path) {
+    public BooleanTypeExpression<Boolean> existsAt(JsonPath path) {
         return portable.jsonExists(this, path);
     }
 
     @Override
-    public final StringTypeExpression<String> asText() {
+    public StringTypeExpression<String> asText() {
         return new StringTypeExpressionImpl<>(scope.context(), scope.anchor(), null, factory ->
                 scope.scalar(factory, this, value -> scope.runtime().getService(JsonPathAccess.class).serializedText(factory, value)), String.class);
     }

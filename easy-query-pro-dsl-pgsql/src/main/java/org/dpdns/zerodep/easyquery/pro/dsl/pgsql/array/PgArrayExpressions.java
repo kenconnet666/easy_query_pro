@@ -11,8 +11,8 @@ import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpres
 import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
 import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import com.easy.query.core.util.EasyClassUtil;
-import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExpressionScope;
-import org.dpdns.zerodep.easyquery.pro.dsl.internal.MappedValueExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionScope;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.MappedValueExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 
 import java.util.List;

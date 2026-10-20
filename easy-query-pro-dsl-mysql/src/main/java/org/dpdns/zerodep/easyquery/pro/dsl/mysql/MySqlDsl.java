@@ -11,8 +11,8 @@ import com.easy.query.core.proxy.extension.functions.type.NumberTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
-import org.dpdns.zerodep.easyquery.pro.dsl.internal.AbstractJsonExpression;
-import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExpressionScope;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.AbstractJsonExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionScope;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonInput;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonPath;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.MySqlJsonChange;
@@ -28,14 +28,15 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.BiFunction;
 
-public final class MySqlDsl {
-    private final ExpressionScope scope;
-    private final ProDsl portable;
+public class MySqlDsl extends ProDsl {
 
-    private MySqlDsl(ProxyEntity<?, ?> entity) {
-        scope = new ExpressionScope(entity);
+    protected MySqlDsl(ProxyEntity<?, ?> entity) {
+        this(new ExpressionScope(entity));
+    }
+
+    protected MySqlDsl(ExpressionScope scope) {
+        super(scope);
         if (scope.dialect() != SqlDialect.MYSQL) throw new IllegalArgumentException("MySqlDsl requires MySQL");
-        portable = ProDsl.of(entity);
     }
 
     public static MySqlDsl of(ProxyEntity<?, ?> entity) {
@@ -64,17 +65,17 @@ public final class MySqlDsl {
 
     public <T> MySqlJsonExpression<T> view(PropTypeColumn<T> source, MySqlTypes.Json type) {
         AbstractJsonExpression.requireView(scope, source, Objects.requireNonNull(type, "type"));
-        return new Json<>(scope, portable, source, factory -> scope.operand(source, factory));
+        return new Json<>(scope, this, source, factory -> scope.operand(source, factory));
     }
 
     public MySqlJsonExpression<String> nativeCast(PropTypeColumn<?> source, MySqlTypes.Json type) {
         var converted = AbstractJsonExpression.cast(scope, Objects.requireNonNull(type, "type"), source);
-        return new Json<>(scope, portable, converted, factory -> scope.operand(converted, factory));
+        return new Json<>(scope, this, converted, factory -> scope.operand(converted, factory));
     }
 
     public MySqlJsonExpression<String> value(JsonInput input, MySqlTypes.Json type) {
         var value = AbstractJsonExpression.literal(scope, Objects.requireNonNull(type, "type"), input);
-        return new Json<>(scope, portable, value, factory -> scope.operand(value, factory));
+        return new Json<>(scope, this, value, factory -> scope.operand(value, factory));
     }
 
     private static final class Json<T> extends AbstractJsonExpression<T> implements MySqlJsonExpression<T> {

@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /** 只覆盖 HANA 与上游默认 SQL 不同的函数，参数与表达式组合继续由上游处理。 */
-public final class HanaSQLFunc extends SQLFuncImpl {
+public class HanaSQLFunc extends SQLFuncImpl {
     private final HanaOptions options;
 
     public HanaSQLFunc() {

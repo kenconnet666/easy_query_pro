@@ -11,8 +11,8 @@ import com.easy.query.core.func.def.enums.OrderByModeEnum;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.SQLFunctionExpressionUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
-import org.dpdns.zerodep.easyquery.pro.dsl.internal.AbstractJsonExpression;
-import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExpressionScope;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.AbstractJsonExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionScope;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonInput;
 import org.dpdns.zerodep.easyquery.pro.hana.expression.HanaLobSqlSupport;
 

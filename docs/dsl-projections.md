@@ -21,7 +21,7 @@ UNION 按输出位置检查读取兼容性。相同默认标量类型/handler �
 
 ## 安装与验证
 
-Pro 扩展现在注册 `ExpressionBuilderFactory` 与 `SQLExpressionInvokeFactory` 两个公开服务。应用已有自定义工厂时，需要在同一工厂中组合相关行为；服务注册顺序决定最终实现，不能用第二次替换悄悄丢掉已有能力。内部类位于 `internal` 包，不作为另一个稳定查询 API。
+Pro 扩展注册 `ExpressionBuilderFactory` 与 `SQLExpressionInvokeFactory` 两个公开服务。可继承默认实现收纳于 `dsl.spi`，通过 protected 创建钩子替换局部 selector/关系构造，CTE clone 继续经过原工厂。应用已有自定义工厂时，需要在同一工厂中组合相关行为；服务注册顺序决定最终实现，不能用第二次替换悄悄丢掉已有能力。扩展方式和本次包迁移见 [DSL 扩展说明](dsl-extensions.md)。
 
 实库回归覆盖 MySQL 两种预处理和两种 SQL mode、PG JSON/JSONB、数组/List、interval，以及 HANA NCLOB 业务值与长 JSON 文本。另有显式 valueConvert、普通 DTO 类型转换、上游 SUM、无预先 clone 的连续投影、UNION 同源/异源 reader、重排和 clone 的回归。
 

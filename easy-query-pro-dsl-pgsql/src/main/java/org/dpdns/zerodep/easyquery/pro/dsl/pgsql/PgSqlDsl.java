@@ -7,8 +7,8 @@ import com.easy.query.core.proxy.ProxyEntity;
 import com.easy.query.core.proxy.extension.functions.type.BooleanTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
-import org.dpdns.zerodep.easyquery.pro.dsl.internal.AbstractJsonExpression;
-import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExpressionScope;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.AbstractJsonExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionScope;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.UnicodeStrings;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonInput;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.*;
@@ -30,14 +30,15 @@ import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public final class PgSqlDsl {
-    private final ExpressionScope scope;
-    private final ProDsl portable;
+public class PgSqlDsl extends ProDsl {
 
-    private PgSqlDsl(ProxyEntity<?, ?> entity) {
-        scope = new ExpressionScope(entity);
+    protected PgSqlDsl(ProxyEntity<?, ?> entity) {
+        this(new ExpressionScope(entity));
+    }
+
+    protected PgSqlDsl(ExpressionScope scope) {
+        super(scope);
         PgSqlTypes.json().requireDialect(scope.dialect());
-        portable = ProDsl.of(entity);
     }
 
     public static PgSqlDsl of(ProxyEntity<?, ?> entity) {
@@ -73,32 +74,32 @@ public final class PgSqlDsl {
 
     public <T> PgJsonExpression<T> view(PropTypeColumn<T> source, PgSqlTypes.Json type) {
         AbstractJsonExpression.requireView(scope, source, Objects.requireNonNull(type, "type"));
-        return new Json<>(scope, portable, source, factory -> scope.operand(source, factory));
+        return new Json<>(scope, this, source, factory -> scope.operand(source, factory));
     }
 
     public <T> PgJsonbExpression<T> view(PropTypeColumn<T> source, PgSqlTypes.Jsonb type) {
         AbstractJsonExpression.requireView(scope, source, Objects.requireNonNull(type, "type"));
-        return new Jsonb<>(scope, portable, source, factory -> scope.operand(source, factory));
+        return new Jsonb<>(scope, this, source, factory -> scope.operand(source, factory));
     }
 
     public PgJsonExpression<String> nativeCast(PropTypeColumn<?> source, PgSqlTypes.Json type) {
         var converted = AbstractJsonExpression.cast(scope, Objects.requireNonNull(type, "type"), source);
-        return new Json<>(scope, portable, converted, factory -> scope.operand(converted, factory));
+        return new Json<>(scope, this, converted, factory -> scope.operand(converted, factory));
     }
 
     public PgJsonbExpression<String> nativeCast(PropTypeColumn<?> source, PgSqlTypes.Jsonb type) {
         var converted = AbstractJsonExpression.cast(scope, Objects.requireNonNull(type, "type"), source);
-        return new Jsonb<>(scope, portable, converted, factory -> scope.operand(converted, factory));
+        return new Jsonb<>(scope, this, converted, factory -> scope.operand(converted, factory));
     }
 
     public PgJsonExpression<String> value(JsonInput input, PgSqlTypes.Json type) {
         var value = AbstractJsonExpression.literal(scope, Objects.requireNonNull(type, "type"), input);
-        return new Json<>(scope, portable, value, factory -> scope.operand(value, factory));
+        return new Json<>(scope, this, value, factory -> scope.operand(value, factory));
     }
 
     public PgJsonbExpression<String> value(JsonInput input, PgSqlTypes.Jsonb type) {
         var value = AbstractJsonExpression.literal(scope, Objects.requireNonNull(type, "type"), input);
-        return new Jsonb<>(scope, portable, value, factory -> scope.operand(value, factory));
+        return new Jsonb<>(scope, this, value, factory -> scope.operand(value, factory));
     }
 
     private static class Json<T> extends AbstractJsonExpression<T> implements PgJsonExpression<T> {

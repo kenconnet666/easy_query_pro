@@ -317,7 +317,7 @@ var pro = ProDsl.of(order);
 var amount = pro.nativeCast(order.amount(), CommonTypes.decimal(19, 4));
 var denominator = pro.nullIfValue(order.quantity(), 0);
 var month = pro.truncateDateTime(order.createdAt(), TruncationUnit.MONTH);
-var sameOwner = pro.isNotDistinctFrom(order.ownerId(), order.reviewerId());
+var sameOwner = pro.nullSafeEquals(order.ownerId(), order.reviewerId());
 
 var pg = PgSqlDsl.of(order);
 var attributes = pg.view(order.attributes(), PgSqlTypes.jsonb());

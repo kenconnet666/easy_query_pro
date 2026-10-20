@@ -5,6 +5,8 @@ import com.easy.query.core.inject.ServiceCollection;
 import com.easy.query.core.expression.parser.factory.SQLExpressionInvokeFactory;
 import com.easy.query.core.expression.sql.builder.factory.ExpressionBuilderFactory;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ProProjectionFactory;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ProExpressionBuilderFactory;
 
 import java.util.Objects;
 

@@ -156,12 +156,21 @@ class DslCompilationTest {
         compile(false, "PgJsonbExpression<String> json = HanaDsl.of(p).value(JsonInput.jsonNull(), HanaTypes.jsonNclob());");
     }
 
+    @Test
+    void extensionFactoriesRetainTheirDeclaredValueTypes() throws IOException {
+        compile(true, "class Reports extends PgSqlDsl { Reports(ExpressionScope scope) { super(scope); } String marker() { return \"report\"; } } Reports report = ProDsl.of(p, Reports::new); report.marker(); report.nullIfValue(p.name(), \"\");");
+        compile(true, "NumberTypeExpression<BigDecimal> result = d.nativeCast(p.id(), CommonTypes.decimal(10, 2), (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl<BigDecimal>(scope.context(), source.getTable(), source.getValue(), function, BigDecimal.class));");
+        compile(false, "ExpressionFactory<String, NumberTypeExpression<BigDecimal>> mismatched = (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl<BigDecimal>(scope.context(), source.getTable(), source.getValue(), function, BigDecimal.class); d.view(p.name(), mismatched);");
+        compile(false, "StringTypeExpression<String> invalid = d.nativeCast(p.id(), CommonTypes.decimal(10, 2), (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl<String>(scope.context(), source.getTable(), source.getValue(), function, String.class));");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
                 import java.math.BigDecimal;
                 import com.easy.query.core.proxy.extension.functions.type.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
+                import org.dpdns.zerodep.easyquery.pro.dsl.spi.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.TruncationUnit;
                 import org.dpdns.zerodep.easyquery.pro.dsl.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.*;

@@ -1,4 +1,4 @@
-package org.dpdns.zerodep.easyquery.pro.dsl.internal;
+package org.dpdns.zerodep.easyquery.pro.dsl.spi;
 
 import com.easy.query.core.basic.extension.conversion.ColumnReader;
 import com.easy.query.core.enums.MultiTableTypeEnum;
@@ -21,19 +21,27 @@ import java.util.HashMap;
 public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFactory {
     @Override
     public EntityTableExpressionBuilder createAnonymousEntityTableExpressionBuilder(TableAvailable table, MultiTableTypeEnum kind, EntityQueryExpressionBuilder source) {
-        return new Relation(table, kind, source);
+        return createRelation(table, kind, source);
     }
 
     @Override
     public EntityQueryExpressionBuilder createAnonymousWithTableQueryExpressionBuilder(String name, EntityQueryExpressionBuilder source, ExpressionContext context, Class<?> resultClass) {
-        return new Cte(name, source, context, resultClass, ColumnReaders.snapshot(source, context.getRuntimeContext().getEntityMetadataManager().getEntityMetadata(resultClass)));
+        return createCte(name, source, context, resultClass, ColumnReaders.snapshot(source, context.getRuntimeContext().getEntityMetadataManager().getEntityMetadata(resultClass)));
     }
 
-    static final class Relation extends AnonymousDefaultTableExpressionBuilder {
+    protected Relation createRelation(TableAvailable table, MultiTableTypeEnum kind, EntityQueryExpressionBuilder source) {
+        return new Relation(table, kind, source);
+    }
+
+    protected Cte createCte(String name, EntityQueryExpressionBuilder source, ExpressionContext context, Class<?> resultClass, Map<String, ColumnReader> readers) {
+        return new Cte(this, name, source, context, resultClass, readers);
+    }
+
+    protected static class Relation extends AnonymousDefaultTableExpressionBuilder {
         private final Map<String, ColumnReader> registered;
         private Map<String, ColumnReader> readers;
 
-        private Relation(TableAvailable table, MultiTableTypeEnum kind, EntityQueryExpressionBuilder source) {
+        protected Relation(TableAvailable table, MultiTableTypeEnum kind, EntityQueryExpressionBuilder source) {
             super(table, kind, source);
             // Outer select callbacks share this context and register valueConvert before the selector is created.
             var current = source.getExpressionContext().getResultValueConverterMap(false);
@@ -42,7 +50,7 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
                 readers = ColumnReaders.snapshot(source, getEntityMetadata());
         }
 
-        Map<String, ColumnReader> readers() {
+        protected Map<String, ColumnReader> readers() {
             // Draft result types are assigned immediately after relation creation; reader registrations are already final.
             if (readers == null)
                 readers = ColumnReaders.snapshot(entityQueryExpressionBuilder, getEntityMetadata(), registered);
@@ -57,19 +65,21 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
         }
     }
 
-    static final class Cte extends AnonymousCteTableQueryExpressionBuilder {
+    protected static class Cte extends AnonymousCteTableQueryExpressionBuilder {
+        private final ProExpressionBuilderFactory factory;
         private final EntityQueryExpressionBuilder source;
         final Map<String, ColumnReader> readers;
 
-        private Cte(String name, EntityQueryExpressionBuilder source, ExpressionContext context, Class<?> resultClass, Map<String, ColumnReader> readers) {
+        protected Cte(ProExpressionBuilderFactory factory, String name, EntityQueryExpressionBuilder source, ExpressionContext context, Class<?> resultClass, Map<String, ColumnReader> readers) {
             super(name, source, context, resultClass);
+            this.factory = factory;
             this.source = source;
             this.readers = readers;
         }
 
         @Override
         public EntityQueryExpressionBuilder cloneEntityExpressionBuilder() {
-            return new Cte(getCteTableName(), source, getExpressionContext(), getQueryClass(), readers);
+            return factory.createCte(getCteTableName(), source, getExpressionContext(), getQueryClass(), readers);
         }
     }
 }

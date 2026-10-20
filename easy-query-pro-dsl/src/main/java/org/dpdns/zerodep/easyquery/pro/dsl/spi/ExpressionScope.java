@@ -1,4 +1,4 @@
-package org.dpdns.zerodep.easyquery.pro.dsl.internal;
+package org.dpdns.zerodep.easyquery.pro.dsl.spi;
 
 import com.easy.query.core.context.QueryRuntimeContext;
 import com.easy.query.core.basic.jdbc.parameter.ToSQLContext;
@@ -29,7 +29,7 @@ import java.util.function.BiFunction;
 /**
  * Shared client ownership, property conversion and final table-scope checks for extension facades.
  */
-public final class ExpressionScope {
+public class ExpressionScope {
     private final EntitySQLContext context;
     private final TableAvailable anchor;
     private final QueryRuntimeContext runtime;

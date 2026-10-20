@@ -16,6 +16,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlTypes;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.PgJsonPath;
 import org.dpdns.zerodep.easyquery.pro.test.entity.PgJsonRecord;
 import org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload;
+import org.dpdns.zerodep.easyquery.pro.test.entity.PrimitiveScalars;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -301,6 +302,15 @@ class PostgresJsonDslIT {
         var right = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().valueConvert(id -> "RIGHT-" + id)));
         var error = assertThrows(IllegalArgumentException.class, () -> left.unionAll(right).toCteAs("eqp_different_readers").toSQL());
         assertTrue(error.getMessage().contains("compatible"), error.getMessage());
+    }
+
+    @Test
+    void unionDoesNotTreatPrimitiveAndNullableReadersAsEquivalent() {
+        var primitive = query.queryable("SELECT 1 AS number, TRUE AS enabled", PrimitiveScalars.class).select(p -> Select.DRAFT.of(p.number()));
+        var nullable = query.queryable("SELECT CAST(NULL AS INTEGER) AS id", PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id()));
+        assertEquals(1, primitive.singleNotNull().getValue1());
+        assertNull(nullable.singleNotNull().getValue1());
+        assertThrows(IllegalArgumentException.class, () -> primitive.unionAll(nullable).toSQL());
     }
 
     public static final class LongId {

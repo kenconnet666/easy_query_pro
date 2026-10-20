@@ -1,4 +1,4 @@
-package org.dpdns.zerodep.easyquery.pro.dsl.internal;
+package org.dpdns.zerodep.easyquery.pro.dsl.spi;
 
 import com.easy.query.core.basic.api.select.provider.SQLExpressionProvider;
 import com.easy.query.core.basic.api.select.provider.SQLExpressionProviderImpl;
@@ -34,32 +34,42 @@ import com.easy.query.core.metadata.EntityMetadata;
 public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
     @Override
     public <T> SQLExpressionProvider<T> createSQLExpressionProvider(int index, EntityQueryExpressionBuilder query) {
-        return new Provider<>(index, query);
+        return new Provider<>(this, index, query);
     }
 
-    private static final class Provider<T> extends SQLExpressionProviderImpl<T> {
-        private final EntityQueryExpressionBuilder query;
-        private final TableAvailable table;
+    protected Selector createSelector(EntityQueryExpressionBuilder query, SQLBuilderSegment projects) {
+        return new ScalarSelector(query, projects);
+    }
 
-        private Provider(int index, EntityQueryExpressionBuilder query) {
+    protected AsSelector createAsSelector(EntityQueryExpressionBuilder query, SQLBuilderSegment projects, EntityMetadata result) {
+        return new ScalarAsSelector(query, projects, result);
+    }
+
+    protected static class Provider<T> extends SQLExpressionProviderImpl<T> {
+        protected final ProProjectionFactory factory;
+        protected final EntityQueryExpressionBuilder query;
+        protected final TableAvailable table;
+
+        protected Provider(ProProjectionFactory factory, int index, EntityQueryExpressionBuilder query) {
             super(index, query);
+            this.factory = factory;
             this.query = query;
             this.table = query.getTable(index).getEntityTable();
         }
 
         @Override
         public ColumnSelector<T> getColumnSelector(SQLBuilderSegment projects) {
-            return new ColumnSelectorImpl<>(table, new ScalarSelector(query, projects));
+            return new ColumnSelectorImpl<>(table, factory.createSelector(query, projects));
         }
 
         @Override
         public <R> ColumnAsSelector<T, R> getColumnAsSelector(SQLBuilderSegment projects, EntityMetadata result) {
-            return new ColumnAsSelectorImpl<>(table, new ScalarAsSelector(query, projects, result));
+            return new ColumnAsSelectorImpl<>(table, factory.createAsSelector(query, projects, result));
         }
     }
 
-    private static final class ScalarSelector extends SelectorImpl {
-        private ScalarSelector(EntityQueryExpressionBuilder query, SQLBuilderSegment projects) {
+    protected static class ScalarSelector extends SelectorImpl {
+        protected ScalarSelector(EntityQueryExpressionBuilder query, SQLBuilderSegment projects) {
             super(query, projects);
         }
 
@@ -73,8 +83,8 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
         }
     }
 
-    private static final class ScalarAsSelector extends AsSelectorImpl {
-        private ScalarAsSelector(EntityQueryExpressionBuilder query, SQLBuilderSegment projects, EntityMetadata result) {
+    protected static class ScalarAsSelector extends AsSelectorImpl {
+        protected ScalarAsSelector(EntityQueryExpressionBuilder query, SQLBuilderSegment projects, EntityMetadata result) {
             super(query, projects, result);
             ColumnReaders.freezeSources(query);
         }
@@ -119,17 +129,17 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
             return appendScalar(table, result == null ? null : result.getColumnMetadata(), function, result == null ? null : result.getColumnAsName());
         }
 
-        private AsSelector appendScalar(TableAvailable table, ColumnMetadata column, SQLFunction function, String alias) {
+        protected AsSelector appendScalar(TableAvailable table, ColumnMetadata column, SQLFunction function, String alias) {
             var segment = new SQLFunctionTranslateImpl(function).toSQLSegment(expressionContext, table, runtimeContext, alias);
             sqlBuilderSegment.append(new ScalarColumn(table, column, runtimeContext, segment, alias));
             return this;
         }
     }
 
-    private static final class ScalarColumn extends SQLFunctionColumnSegmentImpl {
+    protected static class ScalarColumn extends SQLFunctionColumnSegmentImpl {
         private final SQLSegment expression;
 
-        private ScalarColumn(TableAvailable table, ColumnMetadata column, QueryRuntimeContext runtime, SQLSegment expression, String alias) {
+        protected ScalarColumn(TableAvailable table, ColumnMetadata column, QueryRuntimeContext runtime, SQLSegment expression, String alias) {
             super(table, column, runtime, expression, AggregationType.UNKNOWN, alias);
             this.expression = expression;
         }
@@ -141,6 +151,10 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
 
         @Override
         public FuncColumnSegment cloneSQLColumnSegment() {
+            return recreate(expression);
+        }
+
+        protected ScalarColumn recreate(SQLSegment expression) {
             return new ScalarColumn(table, columnMetadata, runtimeContext, expression, alias);
         }
     }

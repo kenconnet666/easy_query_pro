@@ -462,3 +462,15 @@ ExpressionScope 新增单输入/双输入的标量组合辅助，操作数仅构
 本地 10 个离线检查与 36 个三库实库用例通过；补充 33 个离线/消费者编译检查与 9 个 HANA 转换及三库单/双 DataSource 回归也通过。消费者检查本轮耗时约 85 秒，后续完整重跑交给 CI，局部改动仅运行对应消费者用例。IDEA 构建通过。IDEA 数据库 MCP 核实本轮 JSON、数组、interval 和分片 fixture 遗留为 0；持久开发实例未改动。
 
 蓝图增补 A01–A04 与 G5.5–G5.8，明确开窗、完整报表链、多级汇总、基础统计和时间序列的归属与验收。既有条件聚合、排名、偏移和普通日期截断继续复用；CUBE、动态 PIVOT、大而全统计目录不自动扩入。另修正文档中工程仍为空包、JsonDocument/DateBucket/cast 等旧状态或示意命名。新增计划不代表已完成，当前候选提交仍需自己的完整 CI。
+
+## 泛型挂载与公开 SPI 基础
+
+提交 `92af9ff10b1a0ff0e8667b3ef4b60c1c3be3d468` 的 [CI 39412177500](https://github.com/kenconnet666/easy_query_pro/actions/runs/39412177500) 已通过五个强制任务。用户要求减少封闭继承边界后，三库 facade 改为继承 ProDsl，共用 ExpressionScope；新增具体 DSL 和表达式的泛型工厂挂载。公共基类/默认工厂迁入 spi 包，selector/关系创建和 CTE clone 经过 protected 钩子。HANA 默认 SQLFunc/ExpressionFactory/SQLSegmentFactory 可继承。
+
+干净编译后消费者暴露 Java 17 隐式 lambda 与重复依赖泛型上界的冲突。最小 javac 原型确认原因后，将 E 与 T 的严格关系放在挂载方法上，工厂只约束结果为列表达式；构造器引用、lambda、精确返回类型及错值类型负例同时通过。此次未发布快照的旧内部包不提供二进制桥接，文档要求统一升级模块和重新编译扩展。
+
+复审还发现 primitive 装箱归一化会掩盖读取器的 SQL NULL→0 差异，已恢复 primitive 与包装类型的兼容性区分，并以 PostgreSQL NULL 分支证明 UNION 在执行前拒绝错误组合。
+
+本地 17 个既有 DECIMAL 检查通过；最终聚焦验证为 6 个离线/消费者检查、27 个三库实库用例通过。完整消费者套件交 CI；本轮只重跑新增的 2 个正例和 2 个负例。统计子代理另通过少量只读 SELECT 核查三库方差/标准差精度，结果写入统计报表蓝图，未据此宣称 A03 DSL 已实现。G4.7 的 JSON/interval 等同族 SELF 重建仍继续推进。
+
+IDEA 首次构建等待超时，随后重试成功且无构建问题；新 JAR 仅包含新的 spi 路径，没有旧内部扩展类残留。三库 MCP 确认本轮 JSON fixture 遗留为 0；已删除自有泛型 javac 探测文件，未清理持久开发库。

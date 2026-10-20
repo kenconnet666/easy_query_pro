@@ -12,7 +12,7 @@ import com.easy.query.core.expression.sql.expression.factory.DefaultEasyExpressi
 import com.easy.query.core.expression.sql.expression.impl.EntitySQLExpressionMetadata;
 
 /** Retains upstream table, subquery, UNION, CTE and clone protocols. */
-public final class HanaExpressionFactory extends DefaultEasyExpressionFactory {
+public class HanaExpressionFactory extends DefaultEasyExpressionFactory {
     @Override
     public EntityTableSQLExpression createEntityTableSQLExpression(TableAvailable table, MultiTableTypeEnum type,
                                                                   QueryRuntimeContext runtime) {

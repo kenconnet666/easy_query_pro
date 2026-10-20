@@ -12,7 +12,7 @@
 | 数值/时间 RANGE | MySQL/PG 原生窗口 | HANA 当前基线明确拒绝；N 行和 N 天不是同一指标 |
 | 前缀 ROLLUP 和汇总行标识 | 通用查询增强，A02 | 地区→门店→总计，单次数据库查询；通过公开分组 SPI 保留现有 GroupingN 结果，不复制类型族 |
 | 指定 GROUPING SETS | PG/HANA 原生查询，A02 | 保留明确维度集合；MySQL 不伪造支持，不降级为多次查询后 Java 合并 |
-| 总体/样本方差与标准差 | 通用统计，A03 | 四种语义明确命名，先冻结输入/输出精度和 NULL 契约；不机械套用方言别名 |
+| 总体/样本方差与标准差 | 通用近似统计，A03 | 输入在聚合前显式转 DOUBLE，结果为可空 Double；精确原生数值语义单列，不机械套用方言别名 |
 | 15 分钟等固定间隔分桶 | PG date_bin，A04 | origin、步长与 timestamp 类型明确；已有年/月/周/日截断继续复用 |
 | 缺失日期/月份补齐 | 共同日历表 + LEFT JOIN 示例，A04 | 不新建报表引擎；PG generate_series 先通过上游参数化 queryable 来源示例接入 |
 | HANA 层级事实汇总 | 原生关系来源，H12/A01 | 先有正确树/森林，再补组织收入和科目余额；展示过滤与构造时剪枝分开 |
@@ -70,6 +70,16 @@
 HANA 多值计算视图输入按模型声明的列表协议编码为一个绑定参数，不当作 JDBC Array，也不把用户列表拼进 SQL。复用已部署真实计算视图的原型，再验证引号、逗号、中文、空列表、NULL、默认值和外层统计。
 
 ## 官方语义依据
+
+### A03 的原生精度核查
+
+2026-10-20 只读 MCP 常量查询确认：MySQL 8.4.11、PG 17.11、HANA 2.00.088.00.1760424921 的 VAR_POP/VAR_SAMP/STDDEV_POP/STDDEV_SAMP 都忽略 NULL；空集/全 NULL 返回 NULL，单样本的总体结果为 0、样本结果为 NULL。此为原生语义探测，不是增强 DSL 或 CI 验收。
+
+HANA 的 DECIMAL(19,2) 输入 1、2，STDDEV_SAMP 原生结果为 0.70；DECIMAL(19,4) 为 0.7071，DOUBLE 为约 0.7071067811865476。DECIMAL(19,4) 的 0.0001、0.0002，HANA 四个原生统计结果均为 0.0000。由此选择聚合前 DOUBLE 转换的共同近似契约；聚合后再 CAST 不能修复计算中已丢失的信息。
+
+DOUBLE 也不能表示任意精确整数差值：相邻整数 9007199254740992、9007199254740993 转为 DOUBLE 后三库统计结果均为 0。文档和测试必须说明近似精度，并用相对/绝对误差判断常规浮点结果；不将金额等精确业务默认改成浮点存储。
+
+四个入口复用上游 NumberFilterTypeExpression 的 filter/CASE 链。原生别名 STDDEV/VARIANCE 在不同数据库含义不一致，只用显式 POP/SAMP 语义。非有限值、超出 DOUBLE 范围、未证明算法的跨分片聚合不宣称跨库等价。官方返回类型依据为 [MySQL 聚合函数](https://dev.mysql.com/doc/refman/8.4/en/aggregate-functions.html)、[PG 统计聚合](https://www.postgresql.org/docs/17/functions-aggregate.html) 和下文 HANA 函数页；MCP CSV 结果不当作 JDBC ResultSetMetaData 的验证。
 
 ROWS 用物理行位置定义 frame，排名与偏移函数并非都受 frame 影响，见 [MySQL 8.4 frame 规则](https://dev.mysql.com/doc/refman/8.4/en/window-functions-frames.html) 和 [PostgreSQL 17 窗口调用](https://www.postgresql.org/docs/17/sql-expressions.html#SYNTAX-WINDOW-FUNCTIONS)。HANA 当前范围按 [2.0 SPS 08 SQL Reference 的窗口规范](https://help.sap.com/doc/9b40bf74f8644b898fb07dabdd2a36ad/2.0.08/en-US/SAP_HANA_SQL_Reference_Guide_en.pdf#page=433) 核实，不把 Cloud 或其他 revision 自动视为已测试。
 

@@ -11,18 +11,19 @@ import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.HanaJsonTextExpressions;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.lob.HanaBinaryLobExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.lob.HanaLobExpressions;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.lob.HanaTextLobExpression;
-import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExpressionScope;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionScope;
 
 import java.util.Objects;
 
-public final class HanaDsl {
-    private final ExpressionScope scope;
-    private final ProDsl portable;
+public class HanaDsl extends ProDsl {
 
-    private HanaDsl(ProxyEntity<?, ?> entity) {
-        scope = new ExpressionScope(entity);
+    protected HanaDsl(ProxyEntity<?, ?> entity) {
+        this(new ExpressionScope(entity));
+    }
+
+    protected HanaDsl(ExpressionScope scope) {
+        super(scope);
         if (scope.dialect() != SqlDialect.HANA) throw new IllegalArgumentException("HanaDsl requires HANA");
-        portable = ProDsl.of(entity);
     }
 
     public static HanaDsl of(ProxyEntity<?, ?> entity) {
@@ -30,15 +31,15 @@ public final class HanaDsl {
     }
 
     public <T> HanaJsonTextExpression<T> view(PropTypeColumn<T> source, HanaJsonTextType type) {
-        return HanaJsonTextExpressions.view(scope, portable, source, type);
+        return HanaJsonTextExpressions.view(scope, this, source, type);
     }
 
     public HanaJsonTextExpression<String> value(JsonInput value, HanaJsonTextType type) {
-        return HanaJsonTextExpressions.value(scope, portable, value, type);
+        return HanaJsonTextExpressions.value(scope, this, value, type);
     }
 
     public HanaJsonTextExpression<String> nativeCast(PropTypeColumn<?> source, HanaJsonTextType type) {
-        return HanaJsonTextExpressions.cast(scope, portable, source, type);
+        return HanaJsonTextExpressions.cast(scope, this, source, type);
     }
 
     public <T> HanaTextLobExpression<T> view(PropTypeColumn<T> source, HanaTypes.TextLob type) {

@@ -16,7 +16,7 @@ import java.util.Set;
 
 import java.util.function.Function;
 
-public final class HanaSQLSegmentFactory extends DefaultSQLSegmentFactory {
+public class HanaSQLSegmentFactory extends DefaultSQLSegmentFactory {
     @Override
     public SQLNativeSegment createSQLNativeSegment(ExpressionContext context, String template, SQLNativeExpression expression) {
         return new NativeProjection(context, template, expression, HanaLobSqlSupport.isLobReturn(template, expression));

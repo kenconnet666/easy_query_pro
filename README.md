@@ -38,6 +38,7 @@ HANA 使用独立 Docker 部署和持久卷，内存上限 12 GiB、无额外 sw
 - [三库原生数值目录、指数与精度边界](docs/native-numeric.md)
 - [DSL 投影分类、三库分片与组合边界](docs/dsl-sharding.md)
 - [派生表、CTE、UNION 与投影读取映射](docs/dsl-projections.md)
+- [DSL 泛型挂载、默认工厂和扩展契约](docs/dsl-extensions.md)
 - [NULL-safe 比较、NULLIF 与业务值绑定](docs/dsl-comparison.md)
 - [数据库端日期截断及历法边界](docs/dsl-temporal.md)
 - [结构化 JSON 路径、结果类型与 HANA 部署](docs/dsl-json.md)

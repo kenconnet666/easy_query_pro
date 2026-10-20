@@ -1,4 +1,4 @@
-package org.dpdns.zerodep.easyquery.pro.dsl.internal;
+package org.dpdns.zerodep.easyquery.pro.dsl.spi;
 
 import com.easy.query.core.basic.extension.conversion.ColumnReader;
 import com.easy.query.core.basic.extension.conversion.ColumnReaderImpl;
@@ -21,7 +21,6 @@ import com.easy.query.core.metadata.ColumnMetadata;
 import com.easy.query.core.metadata.EntityMetadata;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.extension.functions.type.IgnoreValueConverterTypeExpression;
-import com.easy.query.core.util.EasyClassUtil;
 
 import java.sql.SQLException;
 import java.util.Collections;
@@ -157,7 +156,7 @@ final class ColumnReaders {
 
     private static ColumnReader column(ColumnMetadata column) {
         Object key = !column.isEncryption() && column.getValueConverter() == DefaultValueConverter.INSTANCE
-                ? new BasicKey(EasyClassUtil.getObjectTypeWhenPrimitive(column.getPropertyType()), column.getJdbcTypeHandler()) : column;
+                ? new BasicKey(column.getPropertyType(), column.getJdbcTypeHandler()) : column;
         return new BoundReader(key, new ColumnReaderImpl(column.getEntityMetadata(), column, null));
     }
 

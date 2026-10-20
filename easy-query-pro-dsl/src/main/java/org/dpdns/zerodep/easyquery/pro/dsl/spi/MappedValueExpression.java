@@ -1,4 +1,4 @@
-package org.dpdns.zerodep.easyquery.pro.dsl.internal;
+package org.dpdns.zerodep.easyquery.pro.dsl.spi;
 
 import com.easy.query.core.basic.extension.conversion.ColumnReader;
 import com.easy.query.core.expression.func.AggregationType;

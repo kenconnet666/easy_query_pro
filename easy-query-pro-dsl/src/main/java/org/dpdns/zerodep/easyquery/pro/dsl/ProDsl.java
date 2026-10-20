@@ -25,7 +25,8 @@ import org.dpdns.zerodep.easyquery.pro.dsl.type.CastTarget;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.JsonPathAccess;
-import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExpressionScope;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionScope;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionFactory;
 import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
@@ -42,15 +43,19 @@ import java.time.LocalDateTime;
 /**
  * Portable additions that compose with EasyQuery's existing query and expression types.
  */
-public final class ProDsl {
-    private final ExpressionScope scope;
+public class ProDsl {
+    protected final ExpressionScope scope;
     private final EntitySQLContext context;
     private final TableAvailable anchor;
     private final QueryRuntimeContext runtime;
     private final SqlDialect dialect;
 
-    private ProDsl(ProxyEntity<?, ?> entity) {
-        scope = new ExpressionScope(entity);
+    protected ProDsl(ProxyEntity<?, ?> entity) {
+        this(new ExpressionScope(entity));
+    }
+
+    protected ProDsl(ExpressionScope scope) {
+        this.scope = Objects.requireNonNull(scope, "scope");
         context = scope.context();
         anchor = scope.anchor();
         runtime = scope.runtime();
@@ -59,6 +64,13 @@ public final class ProDsl {
 
     public static ProDsl of(ProxyEntity<?, ?> entity) {
         return new ProDsl(entity);
+    }
+
+    /**
+     * Mounts a concrete DSL extension in the same client and query scope.
+     */
+    public static <D extends ProDsl> D of(ProxyEntity<?, ?> entity, Function<? super ExpressionScope, ? extends D> factory) {
+        return Objects.requireNonNull(Objects.requireNonNull(factory, "factory").apply(new ExpressionScope(entity)), "factory result");
     }
 
     /**
@@ -75,6 +87,20 @@ public final class ProDsl {
      */
     public StringTypeExpression<String> nativeCast(PropTypeColumn<?> source, TextType target) {
         return new StringTypeExpressionImpl<>(context, anchor, null, conversion(source, target), String.class);
+    }
+
+    public <T, E extends PropTypeColumn<T>> E nativeCast(PropTypeColumn<?> source, CastTarget<T> target, ExpressionFactory<T, ? extends E> factory) {
+        Objects.requireNonNull(target, "target");
+        var expression = conversion(source, target);
+        return create(factory, new AnyTypeExpressionImpl<>(context, anchor, null, expression, boxedTarget(target.javaType())), expression);
+    }
+
+    /**
+     * Mounts an existing SQL value without changing its storage type or source mapping.
+     */
+    public <T, E extends PropTypeColumn<T>> E view(PropTypeColumn<T> source, ExpressionFactory<T, ? extends E> factory) {
+        scope.requireSource(source);
+        return create(factory, source, sql -> scope.operand(source, sql));
     }
 
     private Function<SQLFunc, SQLFunction> conversion(PropTypeColumn<?> source, CastTarget<?> target) {
@@ -94,12 +120,7 @@ public final class ProDsl {
     public <N extends Number> NumberTypeExpression<N> value(N value, NumericType<N> type) {
         Objects.requireNonNull(type, "type");
         Class<N> resultType = boxedTarget(type.javaType());
-        if (value != null && !resultType.isInstance(value))
-            throw new IllegalArgumentException("Expected " + resultType.getName());
-        N boundValue = type.prepareValue(value);
-        String template = type.castTemplate(dialect);
-        return new NumberTypeExpressionImpl<>(context, anchor, null, factory ->
-                scope.function(factory.anySQLFunction(template, args -> args.value(boundValue)), AggregationType.UNKNOWN, false), resultType);
+        return new NumberTypeExpressionImpl<>(context, anchor, null, parameter(value, type), resultType);
     }
 
     public <N extends Number> NumberTypeExpression<N> nullValue(NumericType<N> type) {
@@ -107,11 +128,27 @@ public final class ProDsl {
     }
 
     public StringTypeExpression<String> value(String value, TextType type) {
+        return new StringTypeExpressionImpl<>(context, anchor, null, parameter(value, type), String.class);
+    }
+
+    public <T, E extends PropTypeColumn<T>> E value(T value, CastTarget<T> type, ExpressionFactory<T, ? extends E> factory) {
+        var expression = parameter(value, type);
+        return create(factory, new AnyTypeExpressionImpl<>(context, anchor, null, expression, boxedTarget(type.javaType())), expression);
+    }
+
+    protected <T, E extends PropTypeColumn<T>> E create(ExpressionFactory<T, ? extends E> factory, PropTypeColumn<T> source,
+                                                        Function<SQLFunc, SQLFunction> expression) {
+        return Objects.requireNonNull(Objects.requireNonNull(factory, "factory").create(scope, source, expression), "factory result");
+    }
+
+    private <T> Function<SQLFunc, SQLFunction> parameter(T value, CastTarget<T> type) {
         Objects.requireNonNull(type, "type");
-        String boundValue = type.prepareValue(value);
+        Class<T> resultType = boxedTarget(type.javaType());
+        if (value != null && !resultType.isInstance(value))
+            throw new IllegalArgumentException("Expected " + resultType.getName());
+        T boundValue = type.prepareValue(value);
         String template = type.castTemplate(dialect);
-        return new StringTypeExpressionImpl<>(context, anchor, null, factory ->
-                scope.function(factory.anySQLFunction(template, args -> args.value(boundValue)), AggregationType.UNKNOWN, false), String.class);
+        return factory -> scope.function(factory.anySQLFunction(template, args -> args.value(boundValue)), AggregationType.UNKNOWN, false);
     }
 
     public StringTypeExpression<String> nullValue(TextType type) {
@@ -298,7 +335,7 @@ public final class ProDsl {
         }, Boolean.class);
     }
 
-    private static <N extends Number> Class<N> boxedTarget(Class<N> type) {
+    private static <T> Class<T> boxedTarget(Class<T> type) {
         Objects.requireNonNull(type, "target Java type");
         if (type.isPrimitive())
             throw new IllegalArgumentException("Pro expressions require boxed result types so SQL NULL is preserved");
