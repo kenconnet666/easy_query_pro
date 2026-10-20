@@ -12,18 +12,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class PostgresIntervalDslIT {
-    private Connection owner;
-    private String schema;
-    private boolean created;
+    private PostgresTestDatabase.Schema schema;
     private DefaultEasyEntityQuery query;
 
     @BeforeEach
@@ -31,14 +27,10 @@ class PostgresIntervalDslIT {
         var source = PostgresTestDatabase.dataSource();
         source.setOptions("-c intervalstyle=sql_standard");
         source.setPrepareThreshold(-1);
-        schema = "eqp_interval_" + UUID.randomUUID().toString().replace("-", "");
-        owner = source.getConnection();
-        try (var statement = owner.createStatement()) {
-            statement.execute("CREATE SCHEMA \"" + schema + "\"");
-            created = true;
-            statement.execute("CREATE TABLE \"" + schema + "\".eqp_pg_interval (id integer PRIMARY KEY, span interval, event_date date, occurred timestamp)");
+        schema = PostgresTestDatabase.createSchema(source, "eqp_interval_");
+        try (var statement = schema.connection().createStatement()) {
+            statement.execute("CREATE TABLE " + schema.qualified("eqp_pg_interval") + " (id integer PRIMARY KEY, span interval, event_date date, occurred timestamp)");
         }
-        source.setCurrentSchema(schema);
         query = TestClients.configured(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
         PgSqlExtensions.configureTypeHandlers(query.getRuntimeContext().getJdbcTypeHandlerManager());
         var row = new PgIntervalRecord();
@@ -51,12 +43,7 @@ class PostgresIntervalDslIT {
 
     @AfterEach
     void removeFixture() throws SQLException {
-        if (owner == null) return;
-        try (var connection = owner) {
-            if (created) try (var statement = connection.createStatement()) {
-                statement.execute("DROP SCHEMA \"" + schema + "\" CASCADE");
-            }
-        }
+        if (schema != null) schema.close();
     }
 
     @Test

@@ -13,33 +13,25 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class PostgresArrayDslIT {
-    private Connection owner;
-    private String schema;
-    private boolean created;
+    private PostgresTestDatabase.Schema schema;
     private DefaultEasyEntityQuery query;
 
     @BeforeEach
     void createFixture() throws SQLException {
         var source = PostgresTestDatabase.dataSource();
-        schema = "eqp_array_" + UUID.randomUUID().toString().replace("-", "");
-        owner = source.getConnection();
-        try (var statement = owner.createStatement()) {
-            statement.execute("CREATE SCHEMA \"" + schema + "\"");
-            created = true;
-            statement.execute("CREATE TABLE \"" + schema + "\".eqp_pg_array (id integer PRIMARY KEY, numbers "
+        schema = PostgresTestDatabase.createSchema(source, "eqp_array_");
+        try (var statement = schema.connection().createStatement()) {
+            statement.execute("CREATE TABLE " + schema.qualified("eqp_pg_array") + " (id integer PRIMARY KEY, numbers "
                     + PgSqlTypes.array(Integer.class).ddlType(SqlDialect.POSTGRESQL) + ", labels "
                     + PgSqlTypes.array(String.class).ddlType(SqlDialect.POSTGRESQL) + ")");
         }
-        source.setCurrentSchema(schema);
         query = TestClients.configured(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
         PgSqlExtensions.configureTypeHandlers(query.getRuntimeContext().getJdbcTypeHandlerManager());
         query.getRuntimeContext().getQueryConfiguration().applyValueConverter(new PgArrayRecord.LabelsConverter());
@@ -58,12 +50,7 @@ class PostgresArrayDslIT {
 
     @AfterEach
     void removeFixture() throws SQLException {
-        if (owner == null) return;
-        try (var connection = owner) {
-            if (created) try (var statement = connection.createStatement()) {
-                statement.execute("DROP SCHEMA \"" + schema + "\" CASCADE");
-            }
-        }
+        if (schema != null) schema.close();
     }
 
     @Test
@@ -131,13 +118,14 @@ class PostgresArrayDslIT {
 
     @Test
     void nativeArrayOperatorsRemainEligibleForGinIndexes() throws SQLException {
+        var owner = schema.connection();
         try (var statement = owner.createStatement()) {
-            statement.execute("CREATE INDEX eqp_array_gin ON \"" + schema + "\".eqp_pg_array USING GIN(numbers)");
+            statement.execute("CREATE INDEX eqp_array_gin ON " + schema.qualified("eqp_pg_array") + " USING GIN(numbers)");
         }
         var candidates = List.of(
                 query.queryable(PgArrayRecord.class).where(p -> PgSqlDsl.of(p).view(p.numbers(), PgSqlTypes.array(Integer.class)).containsAllValues(List.of(1)).eq(true)),
                 query.queryable(PgArrayRecord.class).where(p -> PgSqlDsl.of(p).view(p.numbers(), PgSqlTypes.array(Integer.class)).overlapsValues(List.of(2, 3)).eq(true)));
-        owner.setSchema(schema);
+        owner.setSchema(schema.name());
         owner.setAutoCommit(false);
         try (var settings = owner.createStatement()) {
             settings.execute("SET LOCAL enable_seqscan = off");

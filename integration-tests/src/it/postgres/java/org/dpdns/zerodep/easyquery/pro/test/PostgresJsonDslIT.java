@@ -20,34 +20,26 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class PostgresJsonDslIT {
-    private Connection owner;
-    private String schema;
-    private boolean created;
+    private PostgresTestDatabase.Schema schema;
     private DefaultEasyEntityQuery query;
     private JsonPayload.Converter converter;
 
     @BeforeEach
     void createFixture() throws SQLException {
         var source = PostgresTestDatabase.dataSource();
-        schema = "eqp_json_" + UUID.randomUUID().toString().replace("-", "");
-        owner = source.getConnection();
-        try (var statement = owner.createStatement()) {
-            statement.execute("CREATE SCHEMA \"" + schema + "\"");
-            created = true;
-            statement.execute("CREATE TABLE \"" + schema + "\".eqp_pg_json (id INTEGER PRIMARY KEY, json "
+        schema = PostgresTestDatabase.createSchema(source, "eqp_json_");
+        try (var statement = schema.connection().createStatement()) {
+            statement.execute("CREATE TABLE " + schema.qualified("eqp_pg_json") + " (id INTEGER PRIMARY KEY, json "
                     + PgSqlTypes.json().ddlType(SqlDialect.POSTGRESQL) + ", document " + PgSqlTypes.jsonb().ddlType(SqlDialect.POSTGRESQL)
                     + ", plain TEXT, payload JSONB)");
         }
-        source.setCurrentSchema(schema);
         query = TestClients.configured(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
         PgSqlExtensions.configureMappings(query.getRuntimeContext().getQueryConfiguration());
         converter = new JsonPayload.Converter();
@@ -63,12 +55,7 @@ class PostgresJsonDslIT {
 
     @AfterEach
     void removeFixture() throws SQLException {
-        if (owner == null) return;
-        try (var connection = owner) {
-            if (created) try (var statement = connection.createStatement()) {
-                statement.execute("DROP SCHEMA \"" + schema + "\" CASCADE");
-            }
-        }
+        if (schema != null) schema.close();
     }
 
     @Test
@@ -152,14 +139,15 @@ class PostgresJsonDslIT {
 
     @Test
     void nativeOperatorsRemainEligibleForGinIndexes() throws SQLException {
+        var owner = schema.connection();
         try (var statement = owner.createStatement()) {
-            statement.execute("CREATE INDEX eqp_json_gin ON \"" + schema + "\".eqp_pg_json USING GIN(document)");
+            statement.execute("CREATE INDEX eqp_json_gin ON " + schema.qualified("eqp_pg_json") + " USING GIN(document)");
         }
         var candidates = List.of(
                 query.queryable(PgJsonRecord.class).where(p -> PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb()).hasKey("nested").eq(true)),
                 query.queryable(PgJsonRecord.class).where(p -> PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb()).containsJson(JsonInput.encoded("{\"nested\":{\"v\":1}}")).eq(true)),
                 query.queryable(PgJsonRecord.class).where(p -> PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb()).pathExists(new PgJsonPath("$.nested.v ? (@ == 1)")).eq(true)));
-        owner.setSchema(schema);
+        owner.setSchema(schema.name());
         owner.setAutoCommit(false);
         try (var settings = owner.createStatement()) {
             // 这里只确认 operator 能匹配索引；一行 fixture 不作为性能或成本模型证据。
