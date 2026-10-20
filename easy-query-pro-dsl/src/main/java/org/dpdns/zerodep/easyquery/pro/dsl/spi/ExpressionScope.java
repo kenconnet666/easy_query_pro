@@ -299,6 +299,8 @@ public class ExpressionScope {
 
             @Override
             public void accept(TableVisitor visitor) {
+                if (visitor instanceof ServerEvaluationVisitor && requiresServerEvaluation)
+                    throw ServerEvaluationVisitor.unsupported();
                 if (visitor instanceof SemanticVisitor semantics && semantics.kind == kind) semantics.found = true;
                 // 透明包装必须继续传递返回类型和表访问，否则外层 LOB/窗口检查会丢失语义。
                 EasySQLSegmentUtil.sqlSegmentTableVisit(segment, visitor);
@@ -315,7 +317,7 @@ public class ExpressionScope {
                 }
                 // 分片后再次合并聚合值不能等价于数据库 CAST；不静默复用 SUM/AVG 的合并算法。
                 if (requiresServerEvaluation && expression.isSharding())
-                    throw new UnsupportedOperationException("Pro window, aggregate or unclassified operations require server-side evaluation before shard merging");
+                    throw ServerEvaluationVisitor.unsupported();
                 return segment.toSQL(sql);
             }
         }

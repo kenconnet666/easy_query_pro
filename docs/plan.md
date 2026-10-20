@@ -40,7 +40,7 @@
 | G4.3 | NULL-safe/NULLIF/数据库日期截断，以及 JSON path/布尔结果组合桥接 | G4.2 | NULL-safe、NULLIF、常规日期截断与结构化 JSON path/布尔桥接已实现；历史历法及完整组合继续验收 |
 | G4.4 | 三库原生类型目录：unsigned、MySQL 时长、PG interval、HANA 受限文本等 | G4.2 | PG interval、MySQL unsigned/TIME、HANA LOB/JSON 文本及三库原生数值已有实库证据；字符及其余目录继续实施 |
 | G4.5 | MySQL JSON、PG JSONB 与 PG SQL 数组的完整选定操作 | G4.2、G4.4 | MySQL JSON、PG JSON/JSONB 和一维数组选定操作已有实库证据；完整类型组合、分片及性能继续验收 |
-| G4.6 | 编译负例、跨 client/错库负例、组合、类型传播与资源释放 | G4.3–G4.5 | 共同/原生逐行表达式、三库单/双 DataSource、Draft 分类、路由隔离和回滚已验证；派生关系及完整业务组合继续实施 |
+| G4.6 | 编译负例、跨 client/错库负例、组合、类型传播与资源释放 | G4.3–G4.5 | 共同/原生逐行表达式、三库单/双 DataSource、Draft 分类、路由隔离和回滚已验证；clone 后外层晚加入分片的共同窗口保护已红绿验证，含 CTE/UNION/标量子查询/ON 与 count 正例；完整业务组合继续实施 |
 | G4.7 | C04 泛型挂载、开放 DSL/默认 SPI、同族表达式重建与 SELF、clone 保留定制 | G4.6 | facade/表达式泛型挂载、共同能力继承、selector/关系工厂、CTE 克隆及 MySQL JSON/PG interval SELF 已验证；其余同族和窗口规格继续实施 |
 | G5.1 | 共同 ROWS、无 partition 的全局窗口与 MySQL/PG RANGE；复用已有函数 | G4.6、G4.7 | 共同 ROWS/全局窗口已通过 CI；两库整数/精确小数及日期/微秒 RANGE 已通过实库和编译边界，待当前提交 CI 与完整报表组合 |
 | G5.2 | 三库全文检索、索引 fixture、模式与评分作用域 | G4.6 | 三库原生全文来源已本地验证；PG 补齐 plain/web/encoded、rank/cover-density、GIN、事务与查询组合，保留各库索引/语言/评分差异；当前候选完整 CI 待验收 |

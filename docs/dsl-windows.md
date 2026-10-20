@@ -41,6 +41,8 @@ var page = uniqueWindows.cloneQueryable().toPageResult(1, 20);
 
 窗口需要数据库完整分区，不能套用普通逐行或 SUM 的分片合并算法。Pro 窗口及其 CAST/NULLIF 包装在未支持的跨分片执行中明确拒绝。
 
+分片检查也读取最终查询形状：克隆后在外层加入分片，不能绕过内层窗口的保护。共同 builder 沿实际投影、子查询、CTE 和 UNION 检查 Pro 语义节点，保留实际 JOIN 的 ON；未使用的导航关系不额外纳入检查。检查不把状态永久写入 context，因此 count 已删除的展示窗口不会继续阻止普通分片计数。应用扩展查询 builder 时应继承 `ProExpressionBuilderFactory` 并保留这些创建钩子；无需为普通窗口额外替换各库的 SQL ExpressionFactory。
+
 ## 可扩展规格
 
 `WindowSpec<S>` 的 partition/order/frame 方法返回具体 S；应用实现 protected `recreate(State)`，通过 `pro.window(CustomWindow::new)` 挂载。State 会复制列表，派生规格不会修改旧规格。自定义 frame 通过 `WindowFrame` 提供受控校验及 SQLFunction，与原参数绑定机制组合，不接收任意未校验 SQL 字符串。

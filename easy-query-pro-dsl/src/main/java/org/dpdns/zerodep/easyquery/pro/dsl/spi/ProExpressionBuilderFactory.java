@@ -2,6 +2,7 @@ package org.dpdns.zerodep.easyquery.pro.dsl.spi;
 
 import com.easy.query.core.basic.extension.conversion.ColumnReader;
 import com.easy.query.core.enums.MultiTableTypeEnum;
+import com.easy.query.core.enums.SQLUnionEnum;
 import com.easy.query.core.expression.parser.core.available.TableAvailable;
 import com.easy.query.core.expression.sql.builder.EntityQueryExpressionBuilder;
 import com.easy.query.core.expression.sql.builder.EntityTableExpressionBuilder;
@@ -10,16 +11,40 @@ import com.easy.query.core.expression.sql.builder.SQLAnonymousUnionEntityQueryEx
 import com.easy.query.core.expression.sql.builder.factory.DefaultEasyExpressionBuilderFactory;
 import com.easy.query.core.expression.sql.builder.impl.AnonymousCteTableQueryExpressionBuilder;
 import com.easy.query.core.expression.sql.builder.impl.AnonymousDefaultTableExpressionBuilder;
+import com.easy.query.core.expression.sql.builder.impl.AnonymousUnionQueryExpressionBuilder;
+import com.easy.query.core.expression.sql.builder.impl.AnonymousTreeCTERECURSIVEQueryExpressionBuilder;
+import com.easy.query.core.expression.sql.builder.impl.QueryExpressionBuilder;
+import com.easy.query.core.expression.sql.expression.EntityQuerySQLExpression;
+import com.easy.query.core.expression.visitor.TableVisitor;
 
 import java.util.Map;
+import java.util.List;
 import java.util.Collections;
 import java.util.HashMap;
 
 /**
- * 在派生关系和 CTE 边界保存结果读取快照，SQL 构造继续委托上游 builder。
+ * 在派生关系和 CTE 边界保存结果读取快照，并检查最终分片查询中的服务器运算。
+ * SQL 构造继续委托上游 builder 与应用安装的原生 ExpressionFactory。
  * 应用可覆写受保护创建钩子扩展关系行为；复制时仍须保留已有 reader 快照与查询上下文。
  */
 public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFactory {
+    @Override
+    public EntityQueryExpressionBuilder createEntityQueryExpressionBuilder(ExpressionContext context, Class<?> resultClass) {
+        return createQuery(context, resultClass);
+    }
+
+    @Override
+    public EntityQueryExpressionBuilder createAnonymousUnionQueryExpressionBuilder(List<EntityQueryExpressionBuilder> branches,
+                                                                                   ExpressionContext context, Class<?> resultClass, SQLUnionEnum union) {
+        return createUnion(branches, context, resultClass, union);
+    }
+
+    @Override
+    public EntityQueryExpressionBuilder createAnonymousCTEQueryExpressionBuilder(String name, List<String> columns,
+                                                                                 EntityQueryExpressionBuilder source, ExpressionContext context, Class<?> resultClass) {
+        return createTreeCte(name, columns, source, context, resultClass);
+    }
+
     @Override
     public EntityTableExpressionBuilder createAnonymousEntityTableExpressionBuilder(TableAvailable table, MultiTableTypeEnum kind, EntityQueryExpressionBuilder source) {
         return createRelation(table, kind, source);
@@ -34,8 +59,67 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
         return new Relation(table, kind, source);
     }
 
+    protected Query createQuery(ExpressionContext context, Class<?> resultClass) {
+        return new Query(context, resultClass);
+    }
+
+    protected Union createUnion(List<EntityQueryExpressionBuilder> branches, ExpressionContext context, Class<?> resultClass, SQLUnionEnum union) {
+        return new Union(branches, context, resultClass, union);
+    }
+
+    protected TreeCte createTreeCte(String name, List<String> columns, EntityQueryExpressionBuilder source, ExpressionContext context, Class<?> resultClass) {
+        return new TreeCte(name, columns, source, context, resultClass);
+    }
+
     protected Cte createCte(String name, EntityQueryExpressionBuilder source, ExpressionContext context, Class<?> resultClass, Map<String, ColumnReader> readers) {
         return new Cte(this, name, source, context, resultClass, readers);
+    }
+
+    protected static class Query extends QueryExpressionBuilder {
+        protected Query(ExpressionContext context, Class<?> resultClass) {
+            super(context, resultClass);
+        }
+
+        @Override
+        public EntityQuerySQLExpression toExpression() {
+            var expression = super.toExpression();
+            ServerEvaluationVisitor.validate(this, expression);
+            return expression;
+        }
+
+        @Override
+        public void accept(TableVisitor visitor) {
+            if (visitor instanceof ServerEvaluationVisitor server) server.query(this, () -> super.accept(visitor));
+            else super.accept(visitor);
+        }
+    }
+
+    protected static class Union extends AnonymousUnionQueryExpressionBuilder {
+        protected Union(List<EntityQueryExpressionBuilder> branches, ExpressionContext context, Class<?> resultClass, SQLUnionEnum union) {
+            super(branches, context, resultClass, union);
+        }
+
+        @Override
+        public void accept(TableVisitor visitor) {
+            if (visitor instanceof ServerEvaluationVisitor server)
+                server.query(this, () -> getEntityQueryExpressionBuilders().forEach(branch -> branch.accept(visitor)));
+            else super.accept(visitor);
+        }
+    }
+
+    protected static class TreeCte extends AnonymousTreeCTERECURSIVEQueryExpressionBuilder {
+        private final EntityQueryExpressionBuilder source;
+
+        protected TreeCte(String name, List<String> columns, EntityQueryExpressionBuilder source, ExpressionContext context, Class<?> resultClass) {
+            super(name, columns, source, context, resultClass);
+            this.source = source;
+        }
+
+        @Override
+        public void accept(TableVisitor visitor) {
+            if (visitor instanceof ServerEvaluationVisitor server) server.query(this, () -> source.accept(visitor));
+            else super.accept(visitor);
+        }
     }
 
     /**
@@ -85,6 +169,12 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
             this.factory = factory;
             this.source = source;
             this.readers = readers;
+        }
+
+        @Override
+        public void accept(TableVisitor visitor) {
+            if (visitor instanceof ServerEvaluationVisitor server) server.query(this, () -> source.accept(visitor));
+            else super.accept(visitor);
         }
 
         @Override

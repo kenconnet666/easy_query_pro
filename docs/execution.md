@@ -747,3 +747,15 @@ IDEA 格式与现有工程构建通过；独立示例以 Invoker 的实际编译
 指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana,mysql,postgres -Dtest=HanaConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false`，failsafe 定向选择三库 ReportingIT 的 conditionalOrderMetricsAndTopRanks、yearAndMonthComparisonsUseCalendarOffsets 与 calendarMonthsKeepEmptyBucketsBeforeLagAndPaging，2 个基础离线检查与 9 个实库用例全部通过。只读复审后将 D 组的两笔数量改为 1/3，金额仍为 30/10，确保简单平均单笔价格与加权均价不同；再次定向通过三库订单用例，其余六个日历用例未改动。IDEA 格式与构建通过，全部为少量常量关系，没有创建数据库对象。两份本轮根日志记录后清理，标准报告保留。
 
 前一 H08 提交 `1d9356972a5039f4915f29c5bbfb90746a8cd116` 的 [CI 39503146808](https://github.com/kenconnet666/easy_query_pro/actions/runs/39503146808) 已成功，当前候选仍需自己的 CI。业务说明见 [订单报表](reporting-orders.md) 与 [时间序列](reporting-time-series.md)。全局排名构造器拒绝空 partition 的真实缺口将沿既有 WindowSpec/WindowFunctions 单独补齐，不假称本批已提供该入口。
+
+## 克隆后晚加入分片的共同窗口保护
+
+准备排名桥时发现既有 ScopedSegment 只检查构造时的 ExpressionContext。先用 SUM 窗口构造→clone→仅外层 useSharding 的小型离线用例，三库均复现没有拒绝；克隆产生新 context，而已捕获的内部 segment 仍保留旧 context。
+
+在已经安装的 ProExpressionBuilderFactory 增加最终查询检查，不替换用户的原生 SQL ExpressionFactory。专用 ServerEvaluationVisitor 沿 Pro 标记和公开 builder/segment 接口进入派生关系、CTE 声明、UNION、标量子查询；另检查完成上游裁剪后的实际关系和 ON，不扫描未使用的导航关系。共享或递归声明以对象身份访问集守环。普通语义 visitor、原生渲染和参数委托保持；服务器运算标记不写回 context，因此移除窗口投影后的普通 count 不受影响。
+
+修复后的用例覆盖失败 clone 不污染原查询、CTE/UNION/原生标量子查询和派生 JOIN 的 ON、普通分片 CAST、已去除窗口的 count。首次扩展 fixture 错把两次 backend.client() 当作同一 client，HANA UNION reader 身份检查正确拒绝；改为一个 client 创建独立来源，没有放宽生产映射契约。
+
+指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana,mysql,postgres -Dtest=ShardingExpressionScopeTest,WindowDslTest,MySqlQueryContextTest -Dsurefire.failIfNoSpecifiedTests=false`，并定向三库 ReportingIT 的 windowFramesAndGroupedReports，40 个离线检查及 3 个实库用例通过。只读复审无新的必修项，IDEA 格式与构建通过。MCP 确认本轮三库窗口测试 schema/表遗留为零，两份自有根日志记录后清理。
+
+前一 A01 提交 `8f7adb546f8eb86c4a15d3496d95daffdc48b93c` 的 [CI 39506558426](https://github.com/kenconnet666/easy_query_pro/actions/runs/39506558426) 检查时为 cancelled，按真实状态保留且不等待。此共同修复独立提交，随后继续全局排名入口。
