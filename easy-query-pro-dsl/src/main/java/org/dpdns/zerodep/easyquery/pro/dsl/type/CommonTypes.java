@@ -2,9 +2,9 @@ package org.dpdns.zerodep.easyquery.pro.dsl.type;
 
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.UnicodeStrings;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.DecimalValues;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.Objects;
 
 public final class CommonTypes {
@@ -80,14 +80,7 @@ public final class CommonTypes {
 
         @Override
         public BigDecimal prepareValue(BigDecimal value) {
-            if (value == null) return null;
-            if (value.signum() == 0) return BigDecimal.ZERO.setScale(scale, RoundingMode.UNNECESSARY);
-            long integerDigits = (long) value.precision() - value.scale();
-            if (integerDigits > precision - scale || value.stripTrailingZeros().scale() > scale) {
-                throw new IllegalArgumentException("Value is not exactly representable as DECIMAL(" + precision + "," + scale + ")");
-            }
-            // 先去尾零，再限定为目标 scale，避免驱动对极端输入 scale 做无界扩展。
-            return value.stripTrailingZeros().setScale(scale, RoundingMode.UNNECESSARY);
+            return DecimalValues.prepare(value, precision, scale);
         }
     }
 }
