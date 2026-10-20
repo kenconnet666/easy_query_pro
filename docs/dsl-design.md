@@ -309,6 +309,20 @@ var client = EasyQueryBootstrapper.defaultBuilderConfiguration()
 
 MySQL/PG 使用上游配置和各自增强安装入口。注册要校验方言身份、重复/冲突安装和版本，保留调用者已有选项与服务；不把插件加载到全局静态状态中。
 
+MySQL 依赖完整数据库来源的高级查询另有显式 `MySqlExtensions.configureQueryScope(services)`。普通 `configure` 不替换现有 ExpressionFactory，包括在 Pro 之前注册的应用工厂。需要查询作用域传播时按以下顺序安装：
+
+```java
+services -> {
+    MySqlExtensions.configure(services);
+    MySqlExtensions.configureQueryScope(services);
+    // Register an application factory here if needed.
+}
+```
+
+该显式方法注册 `MySqlProExpressionFactory`，只在 SELECT 渲染时把最外层查询标记放入 `ProQuerySQLContext`。参数、别名、SQLRewriteUnit 和根调用计数全部委托原 ToSQLContext；内层 CTE/子查询不能覆盖外层后来增加的分片状态。DML、表、CTE 和 UNION 的构造继续继承上游 MySQL 工厂。HANA adapter 使用自己的 sql-core 上下文，不反向依赖通用 Proxy DSL。
+
+应用若替换该工厂，应在 `configureQueryScope` 之后注册，并继承 `MySqlProExpressionFactory` 或在自定义 SELECT 表达式中保留 `ProQuerySQLContext.withQueryContext`。仅依赖普通逐行 DSL 的应用无需新增这项安装。新的数据库专属来源必须在渲染时检查标记存在，不能把缺失标记等同于非分片而绕过约束。
+
 ## 11 统一的使用方式
 
 推荐新公共标量能力通过 `ProDsl.of(entity)` 取得上下文，专属能力使用 `MySqlDsl/PgSqlDsl/HanaDsl.of(entity)`。无列常量也因此有明确上下文，不需要线程全局当前查询。

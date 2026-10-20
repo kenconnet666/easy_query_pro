@@ -637,3 +637,13 @@ HanaSearchSpec 保存不可变 EXACT/FUZZY 条件和 AND 组合，限制最多�
 最终指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana -Dtest=HanaSearchDslTest,DslCompilationTest#hanaSearchRequiresTextColumnsAndKeepsTheScoreType -Dit.test=HanaSearchIT -Dsurefire.failIfNoSpecifiedTests=false`，7 个离线/消费者检查及 4 个实库用例全部通过。覆盖错库、普通列/函数类型负例、参数顺序、阈值/Unicode 边界、快照与 fresh Proxy、晚分片拒绝，以及真实索引目录、EXACT/FUZZY 的原生分数对照、引号/中文/OR/短语、多列和 AND、SMART、普通 JOIN、UNION ALL、分页、临时 reader 隔离、同事务新增命中及回滚后消失。
 
 IDEA 格式与最终构建通过；MCP 查询确认 `EQP_FULLTEXT_%` schema 遗留为零。四份本轮自有诊断日志记录后清理，标准报告保留，持久开发库不变。使用说明与不支持边界见 [HANA 全文查询](hana-fulltext.md)。MySQL/PG 全文和完整非管理员/发行消费者仍继续实施。
+
+## MySQL 显式查询作用域基础
+
+核实 HANA 全文提交 `086aadd8ecaf2c70fc3ac76faae3fa20c0e8deb4` 的 [CI 39479458044](https://github.com/kenconnet666/easy_query_pro/actions/runs/39479458044) 已成功。为后续 MySQL/PG 查询级来源复用，通用 DSL 新增 ProQuerySQLContext，仅沿原 ToSQLContext 委托全部参数、别名、SQLRewriteUnit 与根调用状态，并保存首次最外层的分片标记。嵌套 CTE/子查询不以自己的非分片状态覆盖它；HANA adapter 的现有实现保持独立 sql-core 依赖。
+
+MySqlProExpressionFactory 继承上游 MySQLExpressionFactory，只覆写普通 SELECT 的创建，并继续继承上游 MySQLQuerySQLExpression 渲染；其他 DML、表、CTE、UNION 与 clone 路径不复制。安装方案经主线程复审调整为显式 `MySqlExtensions.configureQueryScope`，普通 configure 保留原先已注册的 ExpressionFactory。避免为了探测注册项而提前构建业务 Factory 或保存旧 ServiceProvider。应用后置自定义工厂可继承公开 MySqlProExpressionFactory。
+
+初始方案完成 5 个离线与 9 个实库回归；改为显式安装后，指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Pmysql -Dtest=MySqlQueryContextTest,DslExtensionTest -Dit.test=MySqlQueryContextIT,MySqlConnectionIT,MySqlReportingIT,MySqlShardingDslIT -Dsurefire.failIfNoSpecifiedTests=false`，6 个离线与 10 个实库检查全部通过。离线分别证明克隆后的外层分片标记进入 CTE 内部、原绑定/WITH 根状态不变、后置应用工厂贯穿 clone/UNION，以及普通 configure 不覆盖前置工厂。显式 scope 的真实用例复用 Decimal、Grouping 和 Calendar 契约，并验证绑定 UNION/CTE 的排序/count/page；普通安装继续通过原连接、报表与单/双 DataSource 分片回归。
+
+IDEA 格式与构建通过，MCP 确认本轮 MySQL search/shard/multisource/window 前缀的测试表遗留为零。两份本批自有上下文诊断日志记录后清理，标准报告保留。该基础单独提交；MySQL 全文原生 fixture 与上层入口在下一批继续，当前基础不能替代完整全文验收。
