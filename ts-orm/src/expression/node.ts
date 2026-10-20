@@ -1,6 +1,7 @@
 import type { AnyDataType } from "../schema/data-type.js";
 import { validateName } from "../schema/table.js";
 import type { WindowDefinition, WindowFunctionNode } from "./window.js";
+import type { QueryNode } from "../query/model.js";
 
 export type DialectName = "postgres" | "mysql" | "hana";
 export type Phase = "row" | "aggregate" | "window";
@@ -49,6 +50,13 @@ type NodeShape =
     }>
   | Readonly<{ kind: "in"; operand: Node; values: readonly Node[]; negated: boolean }>
   | Readonly<{ kind: "constant"; value: boolean }>
+  | Readonly<{
+      kind: "subquery";
+      mode: "exists" | "scalar";
+      query: QueryNode;
+      type: AnyDataType;
+      numericOrigin: NumericOrigin;
+    }>
   | Readonly<{ kind: "cast"; operand: Node; type: AnyDataType }>
   | Readonly<{ kind: "case"; condition: Node; whenTrue: Node; whenFalse: Node }>
   | Readonly<{ kind: "coalesce" | "nullif"; left: Node; right: Node }>
@@ -85,6 +93,7 @@ export function inferredOutputType(node: Node): AnyDataType | undefined {
     case "parameter":
     case "call":
     case "cast":
+    case "subquery":
       return node.type;
     case "case":
       return nodeOutputType(node.whenTrue);
@@ -171,6 +180,7 @@ export function numericOrigin(node: Node): NumericOrigin {
       );
     }
     case "column":
+    case "subquery":
       return node.numericOrigin ?? "computed";
     case "parameter":
     case "cast":

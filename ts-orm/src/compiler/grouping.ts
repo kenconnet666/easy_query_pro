@@ -1,6 +1,7 @@
 import { visitNode, type Node } from "../expression/node.js";
 import type { SelectNode } from "../query/model.js";
 import { requireRowExpression } from "./expression.js";
+import { freeQueryColumns } from "../query/analysis.js";
 
 function isAggregate(node: Node): boolean {
   return (
@@ -20,7 +21,7 @@ export function validateGrouping(query: SelectNode): void {
   for (const key of query.grouping) {
     requireRowExpression(key, "GROUP BY");
     visitNode(key, (node) => {
-      if (node.kind === "parameter")
+      if (node.kind === "parameter" || node.kind === "subquery")
         throw new TypeError("Parameterized GROUP BY keys require a derived source");
     });
   }
@@ -51,6 +52,16 @@ export function validateGrouping(query: SelectNode): void {
     visitNode(expression, (node) => {
       if (grouped && isWindow(node))
         throw new TypeError("Apply windows to grouped results through a derived source or CTE");
+      if (
+        grouped &&
+        node.kind === "subquery" &&
+        freeQueryColumns(node.query).some((column) =>
+          query.relations.some((relation) => relation.id === column.relation.id),
+        )
+      )
+        throw new TypeError(
+          "Apply correlated subqueries to grouped results through a derived source or CTE",
+        );
       if (matchesKey(node)) return false;
       if (isAggregate(node)) return false;
       if (grouped && node.kind === "column")

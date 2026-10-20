@@ -1,5 +1,7 @@
 import { DerivedSource, type QueryNode, type Selection } from "../query/model.js";
 import { Table } from "../schema/table.js";
+import { visitNode } from "../expression/node.js";
+import { queryExpressions } from "../query/analysis.js";
 
 /**
  * 只收集依赖，不渲染表达式或绑定参数。定义按依赖后序排在统一 WITH 中，
@@ -20,6 +22,10 @@ export function collectCtes(root: QueryNode): readonly DerivedSource<Selection>[
       walk(query.left);
       walk(query.right);
     } else {
+      for (const expression of queryExpressions(query))
+        visitNode(expression, (node) => {
+          if (node.kind === "subquery") walk(node.query);
+        });
       for (const { source } of query.relations) {
         if (source instanceof Table) {
           if (source.schema === undefined) tables.add(source.name.toLowerCase());

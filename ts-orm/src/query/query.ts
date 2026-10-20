@@ -7,7 +7,7 @@ import { setSource, type CompatibleSelection, type SetSelection } from "./set-op
 import type { Session } from "../execution/session.js";
 import type { Columns, Column, ColumnOptions, Table } from "../schema/table.js";
 import { validateName } from "../schema/table.js";
-import type { SqlKind } from "../schema/data-type.js";
+import { types, type SqlKind } from "../schema/data-type.js";
 import {
   DerivedSource,
   snapshotOrders,
@@ -50,6 +50,16 @@ export type Scope = Readonly<
   Record<string, Readonly<Record<string, Expression<unknown, SqlKind>>>>
 >;
 type Merge<A, B> = A & B;
+type IsUnion<T, Whole = T> = T extends Whole ? ([Whole] extends [T] ? false : true) : never;
+type SingleColumn<P extends Selection> = [P] extends [never]
+  ? never
+  : string extends keyof P
+    ? never
+    : IsUnion<keyof P> extends false
+      ? P
+      : never;
+type ScalarResult<P extends Selection> =
+  P[keyof P] extends Expression<infer T, infer K> ? Expression<T | null, K> : never;
 
 export function bindSources<R extends Sources>(
   sources: R,
@@ -273,6 +283,41 @@ export class Query<
 
   asCte(this: [P] extends [never] ? never : Query<S, P, E, G>, name: string): DerivedSource<P> {
     return this.as().asCte(name);
+  }
+
+  /** 捕获完整查询，不把聚合/DISTINCT/LIMIT 投影改写成 SELECT 1。 */
+  exists(this: [P] extends [never] ? never : Query<S, P, E, G>): Expression<boolean, "boolean"> {
+    if (!this.state.projection.length)
+      throw new TypeError("Select before creating an EXISTS subquery");
+    const type = types.boolean();
+    return new Expression({
+      node: freezeNode({
+        kind: "subquery",
+        mode: "exists",
+        query: this.state,
+        type,
+        numericOrigin: "computed",
+      }),
+      type,
+    });
+  }
+
+  /** 零行按 SQL 返回 NULL，多行保留数据库错误；不能用 LIMIT 1 静默挑选任意结果。 */
+  scalar(this: [SingleColumn<P>] extends [never] ? never : Query<S, P, E, G>): ScalarResult<P> {
+    if (this.state.projection.length !== 1)
+      throw new TypeError("A scalar subquery requires exactly one selected column");
+    const slot = this.state.projection[0]!;
+    const type = slot.type.nullable();
+    return new Expression({
+      node: freezeNode({
+        kind: "subquery",
+        mode: "scalar",
+        query: this.state,
+        type,
+        numericOrigin: slot.numericOrigin,
+      }),
+      type,
+    }) as ScalarResult<P>;
   }
 
   /** 集合运算产生新关系，后续过滤/排序显式从结果列开始，不泄漏左分支的表作用域。 */

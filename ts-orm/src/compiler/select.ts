@@ -1,5 +1,5 @@
 import type { Dialect } from "../dialects/dialect.js";
-import type { Node } from "../expression/node.js";
+import { visitNode, type Node } from "../expression/node.js";
 import {
   renderNode,
   createState,
@@ -7,8 +7,15 @@ import {
   requireRowExpression,
   requireNodeOperation,
   type State,
+  type Scope,
 } from "./expression.js";
-import { type QueryNode, type SelectNode } from "../query/model.js";
+import {
+  type DerivedSource,
+  type Selection,
+  type QueryNode,
+  type SelectNode,
+} from "../query/model.js";
+import { expressionColumns, freeQueryColumns, queryExpressions } from "../query/analysis.js";
 import { projectionDecoder } from "./projection.js";
 import { collectCtes } from "./cte.js";
 import { validateGrouping } from "./grouping.js";
@@ -39,16 +46,19 @@ export function compileSelect<T>(
 ): CompiledQuery<T> {
   const state = createState(dialect, query.owner);
   const definitions = collectCtes(query);
+  const declared = new Set(definitions);
+  state.renderSubquery = (child, scope) => renderQuery(child, state, declared, scope);
   const withSql = definitions.length
     ? "WITH " +
       definitions
         .map(
-          (source) => `${dialect.quote(source.cteName!)} AS (${renderQuery(source.query, state)})`,
+          (source) =>
+            `${dialect.quote(source.cteName!)} AS (${renderQuery(source.query, state, declared)})`,
         )
         .join(", ") +
       " "
     : "";
-  const inner = renderQuery(query, state);
+  const inner = renderQuery(query, state, declared);
   const body = count
     ? `SELECT COUNT(*) AS ${dialect.quote("_eq_count")} FROM (${inner}) ${dialect.quote("_eq_report")}`
     : inner;
@@ -61,8 +71,16 @@ export function compileSelect<T>(
   });
 }
 
-function renderQuery(query: QueryNode, state: State): string {
-  if (query.kind === "select") return renderSelect(query, state);
+type CteSet = ReadonlySet<DerivedSource<Selection>>;
+
+function renderQuery(
+  query: QueryNode,
+  state: State,
+  declared: CteSet,
+  ancestors: Scope = new Map(),
+): string {
+  if (query.owner !== state.owner) throw new TypeError("A source cannot cross database clients");
+  if (query.kind === "select") return renderSelect(query, state, declared, ancestors);
   if (!query.all)
     for (const slot of query.projection)
       requireNativeOperation(slot.type.storage, state.dialect.name, "equality");
@@ -77,16 +95,40 @@ function renderQuery(query: QueryNode, state: State): string {
   const columns = query.projection.map((slot) => state.dialect.quote(slot.sqlAlias)).join(", ");
   // 分支包装保留各自 ORDER/LIMIT，也使三库不依赖裸括号 SELECT 的集合运算语法差异。
   return (
-    `SELECT ${columns} FROM (${renderQuery(query.left, state)}) ${state.dialect.quote("_eq_set_left")} UNION${query.all ? " ALL" : ""} ` +
-    `SELECT ${columns} FROM (${renderQuery(query.right, state)}) ${state.dialect.quote("_eq_set_right")}`
+    `SELECT ${columns} FROM (${renderQuery(query.left, state, declared)}) ${state.dialect.quote("_eq_set_left")} UNION${query.all ? " ALL" : ""} ` +
+    `SELECT ${columns} FROM (${renderQuery(query.right, state, declared)}) ${state.dialect.quote("_eq_set_right")}`
   );
 }
-function renderSelect(query: SelectNode, state: State): string {
+function renderSelect(query: SelectNode, state: State, declared: CteSet, ancestors: Scope): string {
   validateGrouping(query);
   if (query.owner !== state.owner) throw new TypeError("A source cannot cross database clients");
   if (query.projection.length === 0)
     throw new TypeError("Select explicit output columns before compiling or executing");
-  const scope = new Map(query.relations.map((relation) => [relation.id, relation.alias]));
+  const captured = freeQueryColumns(query);
+  if (captured.some((column) => !ancestors.has(column.relation.id)))
+    throw new TypeError("Column is outside this query scope");
+  if (
+    captured.length &&
+    state.dialect.name === "hana" &&
+    (query.ordering.length || query.limit !== undefined || query.offset)
+  )
+    throw new TypeError("HANA correlated subqueries with ordering or pagination are not supported");
+  const local = new Set(query.relations.map((relation) => relation.id));
+  for (const expression of queryExpressions(query))
+    visitNode(expression, (node) => {
+      if (
+        node.kind === "aggregate" ||
+        node.kind === "window" ||
+        (node.kind === "call" && node.definition.phase !== "row")
+      ) {
+        if (expressionColumns(node).some((column) => !local.has(column.relation.id)))
+          throw new TypeError(
+            "Aggregate and window inputs cannot capture outer columns; project a relation boundary first",
+          );
+        return false;
+      }
+    });
+  const scope = relationScope(query, ancestors);
   const quote = state.dialect.quote;
   for (const slot of query.projection) {
     requireNativeSupport(slot.type.storage, state.dialect.name);
@@ -98,19 +140,24 @@ function renderSelect(query: SelectNode, state: State): string {
     .map((slot) => `${renderNode(slot.node, scope, state)} AS ${quote(slot.sqlAlias)}`)
     .join(", ");
   let sql = `SELECT ${query.distinct ? "DISTINCT " : ""}${selected} FROM `;
-  const visible = new Map<symbol, string>();
+  const visible = new Map(ancestors);
   for (let index = 0; index < query.relations.length; index++) {
     const relation = query.relations[index]!;
-    visible.set(relation.id, relation.alias);
+    const alias = scope.get(relation.id)!;
+    visible.set(relation.id, alias);
     const source = relation.source;
+    if (!(source instanceof Table) && source.cteName !== undefined && !declared.has(source))
+      throw new TypeError(
+        "A CTE must be present in the query graph, not introduced only by an extension renderer",
+      );
     const sourceSql =
       source instanceof Table
         ? (source.schema === undefined ? "" : quote(source.schema) + ".") + quote(source.name)
         : source.cteName !== undefined
           ? quote(source.cteName)
-          : `(${renderQuery(source.query, state)})`;
+          : `(${renderQuery(source.query, state, declared)})`;
     if (index > 0) sql += relation.join === "CROSS" ? " CROSS JOIN " : ` ${relation.join} JOIN `;
-    sql += `${sourceSql} ${quote(relation.alias)}`;
+    sql += `${sourceSql} ${quote(alias)}`;
     if (relation.on) {
       requireRowExpression(relation.on, "JOIN");
       sql += ` ON ${renderNode(relation.on, visible, state, "predicate")}`;
@@ -125,4 +172,26 @@ function renderSelect(query: SelectNode, state: State): string {
   if (query.having) sql += " HAVING " + renderNode(query.having, scope, state, "predicate");
   if (query.ordering.length) sql += " ORDER BY " + renderOrders(query.ordering, scope, state);
   return sql + state.dialect.pagination(query.limit, query.offset);
+}
+
+/** SQL alias 是编译细节，公共 scope 键和 relation identity 不变；避免内层同名来源遮住外层引用。 */
+function relationScope(query: SelectNode, ancestors: Scope): Scope {
+  const scope = new Map(ancestors);
+  const used = new Set([...ancestors.values()].map((alias) => alias.toLowerCase()));
+  let next = 1;
+  for (const relation of query.relations) {
+    if (ancestors.has(relation.id))
+      throw new TypeError(
+        "A subquery must bind fresh relation identities; start it with database.from()",
+      );
+    let alias = relation.alias;
+    if (used.has(alias.toLowerCase())) {
+      do {
+        alias = "_eq_subquery_" + next++;
+      } while (used.has(alias.toLowerCase()));
+    }
+    used.add(alias.toLowerCase());
+    scope.set(relation.id, alias);
+  }
+  return scope;
 }

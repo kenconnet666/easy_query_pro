@@ -165,3 +165,19 @@ ca8e50c7a1759a4e974dc93c853c8a1b4fc8c39c 的 [TS CI 39497347207](https://github.
 本批随机 JSON 表与自有池按 finally 释放，包验证临时目录核对后清理，既有持久实例保留。
 
 提交前复查，3258a31b235cfeae7738ea5e11ec59946fc2e523 的 [TS CI 39507936184](https://github.com/kenconnet666/easy_query_pro/actions/runs/39507936184) 六任务全部成功，Windows 跨盘修复获得对应 SHA 的验证。本批新增 sentinel 声明和运行时断言后，清洁消费者再次通过（83 文件、15,586 类型实例化、约 17 MiB）；JSON 候选仍需自己的完整矩阵。
+
+## 2026-10-21：EXISTS、标量与双层关联
+
+JSON 提交 1755a6d59484849285e72eae69a3552780ffd5d2 的 [TS CI 39508697990](https://github.com/kenconnet666/easy_query_pro/actions/runs/39508697990) 与 [Java/三库 CI 39508698033](https://github.com/kenconnet666/easy_query_pro/actions/runs/39508698033) 均成功；也包含已继承的 Java 全局排名和最终分片检查。
+
+新增不可变子查询节点，父编译状态统一渲染、参数预算与结果 codec；同层 visitor 停在查询边界，自由列分析单独验证捕获。SQL alias 自动避让，CTE 只在子查询出现也按依赖提升。明确拒绝重用父 relation identity、跨 client、不可见 JOIN、未声明 LATERAL/写入范围、分组后直接捕获及 aggregate/window 外层输入。
+
+三库固定七行 fixture 验证父记录 2/1/0 个子记录、关联 COUNT/SUM、非空/NULL/空输入、Money 精确 reader、两层同名 alias 关联、CTE/count/page 和分组派生后关联。多行 scalar 分别断言 PostgreSQL 21000、MySQL ER_SUBQUERY_NO_1_ROW、HANA 305，随后新查询成功；没有 LIMIT 1 吞错。JSON null 经过三库 scalar 保留 sentinel，PG 数组 scalar 仍可 mount(pgArray) 并返回正确元素数。
+
+MySQL 原生 EXISTS 的 DISTINCT＋OFFSET 实测红测：去重后已经越界仍返回 true。只在此组合增加派生边界先去重分页后判断，非关联与关联版本回归通过。其他两库保持直接结构；HANA correlated ORDER/LIMIT 在编译时拒绝，未通过删子句改变语义。
+
+只读审查发现 renderer 闭包隐藏查询依赖可使实体表被 CTE 同名遮蔽，并绕过分组捕获检查。实体表负例先确认旧候选不抛错，再约束每个 call 展开的子查询必须来自其原 arguments；两负例与正常参数包装均通过。不使用宽松全局白名单，也不执行 renderer 两次收集依赖。
+
+定向子查询单元与类型负例通过；三库完整本地契约通过，增加 PG 数组 scalar 后仅再次定向 PG。消费者从真实 tarball 读取公开 scalar 声明与业务 Money decoder。随机表/自有池和临时消费者按正常生命周期清理，完整新矩阵交候选提交异步执行。
+
+整理后 117 个单元测试、类型正负例和格式检查全部通过；最终清洁消费者为 83 文件、16,150 次类型实例化、约 17 MiB 编译器内存。没有把新候选的本地结果附会到前一提交的 CI。

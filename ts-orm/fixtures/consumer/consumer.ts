@@ -86,6 +86,11 @@ function declarationsRemainSpecific(row: Row) {
   db.extensions.missing;
   // @ts-expect-error An unknown JSON validator cannot erase the SQL NULL write boundary.
   types.json((value) => value).encode(null);
+  // @ts-expect-error Scalar subqueries remain nullable in the published declarations.
+  const requiredScalar: Expression<number, "integer"> = db
+    .from({ x: accounts })
+    .select(({ x }) => ({ id: x.id }))
+    .scalar();
   // @ts-expect-error Package export maps keep internal source paths private.
   void import("@easy-query-pro/orm/src/query/query.js");
   void [id, name, ancestor, amount, wrong, wrongId, wrongAmount];
@@ -119,3 +124,17 @@ if (
   throw new Error("The packed consumer lost the JSON null boundary");
 if (types.jsonText().decode('{"n":9007199254740993}') !== '{"n":9007199254740993}')
   throw new Error("The packed consumer changed raw JSON numeric text");
+
+const scalar = db
+  .from({ x: accounts })
+  .select(({ x }) => ({ amount: x.balance }))
+  .scalar();
+const scalarQuery = db
+  .from({ p: accounts })
+  .select(() => ({ scalar }))
+  .compile();
+if (
+  scalarQuery.decode({ _eq_0: null }).scalar !== null ||
+  scalarQuery.decode({ _eq_0: "12.3400" }).scalar?.decimal !== "12.3400"
+)
+  throw new Error("The packed consumer lost its scalar subquery decoder");

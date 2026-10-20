@@ -83,6 +83,8 @@ CTE 定义按依赖顺序在一个顶层 WITH 中生成；同一定义反复引�
 
 union/unionAll 产出一个新来源，后续查询通过 from 绑定结果列。两侧投影必须有相同字段和顺序、SQL 存储描述及完整 codec 映射链；可空性自动合并。分支的排序/分页与结果的排序/分页分别保留。HANA 的 JSON 当前按 NCLOB 存储，不能用于 UNION 去重。
 
+显式 select 后可用 `.exists()` 创建存在性谓词，单字段投影还可 `.scalar()` 作为可空标量；支持祖先关系捕获和自动 SQL 别名避让。原聚合/DISTINCT/分页保持，标量多行保留数据库错误。CTE、分组、HANA 和扩展 renderer 的边界见 [复杂子查询](docs/subqueries.md)。
+
 ## 类型化写入
 
 ```ts

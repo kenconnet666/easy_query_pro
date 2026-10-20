@@ -1,7 +1,7 @@
 import { parameterBudget, type Dialect } from "../dialects/dialect.js";
 import { visitNode, nodeOutputType, type Node } from "../expression/node.js";
 import { validateWindow, type RowBoundary } from "../expression/window.js";
-import type { Order } from "../query/model.js";
+import type { Order, QueryNode } from "../query/model.js";
 import { requireNativeOperation, requireNativeSupport } from "../schema/native-type.js";
 
 export function requireNodeOperation(
@@ -19,6 +19,8 @@ export interface State {
   owner: symbol;
   parameters: unknown[];
   parameterLimit: number;
+  /** 仅查询编译器安装；普通 command/写入尚未声明子查询与 CTE 的作用域合同。 */
+  renderSubquery?: (query: QueryNode, scope: Scope) => string;
 }
 
 /** 不附参数值，避免错误日志暴露业务数据；attempted 是触发失败的位置，不伪装完整计划总数。 */
@@ -55,6 +57,7 @@ export function requireRowExpression(node: Node, clause: string): void {
   });
 }
 function isPredicate(node: Node): boolean {
+  if (node.kind === "subquery") return node.mode === "exists";
   if (node.kind === "in" || node.kind === "unary" || node.kind === "constant") return true;
   if (node.kind === "binary") return !["+", "-", "*", "/"].includes(node.operator);
   return node.kind === "call" && node.definition.syntax === "predicate";
@@ -68,6 +71,9 @@ export function renderNode(
 ): string {
   if (state.dialect.name === "hana") {
     const predicate = isPredicate(node);
+    // EXISTS 只有真/假，不需一般谓词的三值 CASE，也不重复渲染整份子查询。
+    if (context === "value" && node.kind === "subquery" && node.mode === "exists")
+      return `(CASE WHEN ${renderRawNode(node, scope, state)} THEN TRUE ELSE FALSE END)`;
     if (context === "value" && predicate) {
       // 三值逻辑必须保留 UNKNOWN，不能把 CASE 的 ELSE 直接当作 FALSE。
       // 同一条件在最终 SQL 出现两次，两个位置分别渲染与绑定，不能复用 ? 文本。
@@ -84,6 +90,26 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
   // renderer 展开后也经过这里，不能让新产生的 typed fragment 绕过当前方言检查。
   if (node.outputType) requireNativeSupport(node.outputType.storage, dialect.name);
   switch (node.kind) {
+    case "subquery": {
+      if (!state.renderSubquery)
+        throw new TypeError("Expression subqueries currently require a SELECT query");
+      const query = state.renderSubquery(node.query, scope);
+      // MySQL 的直接 EXISTS 会忽略 DISTINCT 投影，OFFSET 因而可能按原始行数计数。
+      // 独立关系边界先完成去重/分页，再判断是否有行；保留原绑定与相关作用域。
+      if (
+        node.mode === "exists" &&
+        dialect.name === "mysql" &&
+        node.query.kind === "select" &&
+        node.query.distinct &&
+        node.query.offset > 0
+      ) {
+        const used = new Set([...scope.values()].map((alias) => alias.toLowerCase()));
+        let alias = "_eq_exists";
+        for (let index = 1; used.has(alias.toLowerCase()); index++) alias = "_eq_exists_" + index;
+        return `EXISTS (SELECT 1 FROM (${query}) ${dialect.quote(alias)})`;
+      }
+      return node.mode === "exists" ? `EXISTS (${query})` : `(${query})`;
+    }
     case "column": {
       requireNativeSupport(node.type.storage, dialect.name);
       const alias = scope.get(node.relation.id);
@@ -202,6 +228,18 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
       if (!renderer)
         throw new TypeError(`Function ${node.definition.name} does not support ${dialect.name}`);
       const rendered = renderer(node.arguments);
+      // renderer 可重排/重复已声明操作数，不能通过闭包新增查询依赖边，否则 WITH 排序和分组分析会漏读。
+      const declaredQueries = new Set<QueryNode>();
+      for (const argument of node.arguments)
+        visitNode(argument, (child) => {
+          if (child.kind === "subquery") declaredQueries.add(child.query);
+        });
+      visitNode(rendered, (child) => {
+        if (child.kind === "subquery" && !declaredQueries.has(child.query))
+          throw new TypeError(
+            "A renderer must receive subqueries through its declared expression arguments",
+          );
+      });
       const renderedType = nodeOutputType(rendered);
       if (renderedType) {
         requireNativeSupport(renderedType.storage, dialect.name);

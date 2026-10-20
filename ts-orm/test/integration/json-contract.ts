@@ -58,6 +58,20 @@ export async function verifyJson(
     assert.equal(rows[1]!.raw, null);
     assert.match(rows[2]!.raw!, /9007199254740993/);
     assert.equal(rows[3]!.raw, '"null"');
+    const scalar = db
+      .from({ source: definition })
+      .where(({ source }) => source.id.eq(1))
+      .select(({ source }) => ({ value: source.document }))
+      .scalar();
+    assert.equal(
+      (
+        await base
+          .where(({ j }) => j.id.eq(1))
+          .select(() => ({ value: scalar }))
+          .first()
+      )?.value,
+      jsonNull,
+    );
 
     const cte = base
       .select(({ j }) => ({ id: j.id, document: j.document, raw: j.raw }))

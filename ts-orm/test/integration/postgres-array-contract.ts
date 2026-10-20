@@ -194,6 +194,17 @@ export async function verifyPgArrays(db: ReturnType<typeof createDatabase>): Pro
       5n,
     );
 
+    const scalar = db
+      .from({ source: definition })
+      .where(({ source }) => source.id.eq(1))
+      .select(({ source }) => ({ numbers: source.numbers }))
+      .scalar();
+    const scalarResult = await base
+      .where(({ a }) => a.id.eq(1))
+      .select(() => ({ value: scalar, size: scalar.mount(pgArray).cardinality() }))
+      .first();
+    assert.deepEqual(scalarResult, { value: [1, null, 2], size: 3 });
+
     const huge = valueOf(
       Array.from({ length: 65_536 }, (_, i) => i),
       postgresTypes.array(types.integer()),
