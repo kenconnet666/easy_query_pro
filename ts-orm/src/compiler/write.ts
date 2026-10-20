@@ -4,6 +4,7 @@ import type { Assignment, WriteState } from "../query/write.js";
 import { projectionDecoder } from "./projection.js";
 import { renderNode, requireRowExpression, type State } from "./expression.js";
 import type { CompiledQuery } from "./select.js";
+import { requireNativeSupport } from "../schema/native-type.js";
 
 export interface CompiledWrite<T> extends CompiledQuery<T> {
   readonly returnsRows: boolean;
@@ -115,6 +116,7 @@ function compileStatement<T>(
       " RETURNING " +
       write.projection
         .map((slot) => {
+          requireNativeSupport(slot.type.storage, dialect.name);
           requireRowExpression(slot.node, "RETURNING");
           return renderNode(slot.node, scope, state) + " AS " + dialect.quote(slot.sqlAlias);
         })

@@ -125,6 +125,8 @@ INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字�
 
 扩展通过 createDatabase 的 extensions 或 withExtensions 安装，namespace 具体类型在查询和事务中保留。mount(factory) 返回工厂的具体表达式类型。函数 renderer 返回 sqlFragment 结构节点，编译器按最终顺序绑定值；普通值先通过 valueOf(value, type)，标识符使用 identifier，不能把用户值放进静态 SQL 文本。
 
+`postgresTypes.uuid()` 与应用的 namespaced SQL kind 共用 DataType/codec，不要求生成器或全局注册。原生字段经过外连接、CTE、UNION 和窗口后保留类型；方言和比较能力在编译时检查。定义方式和 CAST 的可空边界见 [原生类型](docs/native-types.md)。
+
 原生函数返回 SQL 条件时声明 `syntax: "predicate"`，默认是标量值。HANA 的条件在 SELECT/ORDER BY 值位置会转换成保留 NULL 的 CASE；WHERE/JOIN 中的 BOOLEAN 标量则显式比较 TRUE。renderer 不需要自己拼接这类共同转换。
 
 PostgreSQL 适配使用查询局部文本 parser，不改全局配置；binary 模式不在当前适配范围。MySQL 使用服务端预处理，并局部保留精确数值/JSON文本。HANA 使用 SAP 官方客户端的显式连接池，完整获取结果后归还连接；池重置隔离级别，但 READ ONLY 访问模式不会自动复原，当前适配器提前拒绝该选项。应用负责最终关闭池。驱动包为可选 peer，使用相应子路径时安装 pg（TS 工程还需 @types/pg）、mysql2 或 @sap/hana-client。

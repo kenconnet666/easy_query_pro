@@ -1,12 +1,19 @@
 import type { Dialect } from "../dialects/dialect.js";
 import type { Node } from "../expression/node.js";
-import { renderNode, renderOrders, requireRowExpression, type State } from "./expression.js";
+import {
+  renderNode,
+  renderOrders,
+  requireRowExpression,
+  requireNodeOperation,
+  type State,
+} from "./expression.js";
 import { type QueryNode, type SelectNode } from "../query/model.js";
 import { projectionDecoder } from "./projection.js";
 import { collectCtes } from "./cte.js";
 import { validateGrouping } from "./grouping.js";
 import { Table } from "../schema/table.js";
 import { types } from "../schema/data-type.js";
+import { requireNativeOperation, requireNativeSupport } from "../schema/native-type.js";
 
 export interface CompiledQuery<T> {
   readonly sql: string;
@@ -55,6 +62,9 @@ export function compileSelect<T>(
 
 function renderQuery(query: QueryNode, state: State): string {
   if (query.kind === "select") return renderSelect(query, state);
+  if (!query.all)
+    for (const slot of query.projection)
+      requireNativeOperation(slot.type.storage, state.dialect.name, "equality");
   if (
     !query.all &&
     state.dialect.name === "hana" &&
@@ -77,6 +87,11 @@ function renderSelect(query: SelectNode, state: State): string {
     throw new TypeError("Select explicit output columns before compiling or executing");
   const scope = new Map(query.relations.map((relation) => [relation.id, relation.alias]));
   const quote = state.dialect.quote;
+  for (const slot of query.projection) {
+    requireNativeSupport(slot.type.storage, state.dialect.name);
+    if (query.distinct) requireNativeOperation(slot.type.storage, state.dialect.name, "equality");
+  }
+  for (const key of query.grouping) requireNodeOperation(key, state.dialect, "equality");
   // SQL 文本出现的顺序就是参数绑定顺序：SELECT、FROM/子查询、JOIN、WHERE、ORDER。
   const selected = query.projection
     .map((slot) => `${renderNode(slot.node, scope, state)} AS ${quote(slot.sqlAlias)}`)

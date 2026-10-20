@@ -29,17 +29,24 @@ export interface FunctionDefinition {
 }
 export type BinaryOperator =
   "=" | "<>" | ">" | ">=" | "<" | "<=" | "+" | "-" | "*" | "/" | "AND" | "OR" | "LIKE";
-export type Node =
+export type Node = NodeShape & Readonly<{ outputType?: AnyDataType }>;
+type NodeShape =
   | Readonly<{
       kind: "column";
       relation: RelationIdentity;
       name: string;
+      type: AnyDataType;
       numericOrigin?: NumericOrigin;
     }>
   | Readonly<{ kind: "parameter"; type: AnyDataType; value: unknown }>
   | Readonly<{ kind: "binary"; operator: BinaryOperator; left: Node; right: Node }>
   | Readonly<{ kind: "unary"; operator: "NOT" | "IS NULL" | "IS NOT NULL"; operand: Node }>
-  | Readonly<{ kind: "call"; definition: FunctionDefinition; arguments: readonly Node[] }>
+  | Readonly<{
+      kind: "call";
+      definition: FunctionDefinition;
+      arguments: readonly Node[];
+      type: AnyDataType;
+    }>
   | Readonly<{ kind: "in"; operand: Node; values: readonly Node[]; negated: boolean }>
   | Readonly<{ kind: "constant"; value: boolean }>
   | Readonly<{ kind: "cast"; operand: Node; type: AnyDataType }>
@@ -69,6 +76,35 @@ export function sqlFragment(text: TemplateStringsArray, ...nodes: readonly Node[
 
 export function freezeNode<T extends Node>(node: T): T {
   return Object.freeze(node);
+}
+
+/** 固有结果类型与附加 reader 分开：类型断言不能洗掉已有 SQL 操作数的物理存储。 */
+export function inferredOutputType(node: Node): AnyDataType | undefined {
+  switch (node.kind) {
+    case "column":
+    case "parameter":
+    case "call":
+    case "cast":
+      return node.type;
+    case "case":
+      return nodeOutputType(node.whenTrue);
+    case "coalesce":
+    case "nullif":
+      return nodeOutputType(node.left);
+    case "aggregate":
+      return node.operator === "MIN" || node.operator === "MAX" ? node.operandType : undefined;
+    case "window":
+      return node.input.kind === "aggregate"
+        ? nodeOutputType(node.input)
+        : node.input.operand
+          ? nodeOutputType(node.input.operand)
+          : undefined;
+    default:
+      return undefined;
+  }
+}
+export function nodeOutputType(node: Node): AnyDataType | undefined {
+  return node.outputType ?? inferredOutputType(node);
 }
 
 /** 遍历保留所有内层语义，CAST/算术等包装不能掩盖聚合或窗口。子查询会有独立编译边界。 */

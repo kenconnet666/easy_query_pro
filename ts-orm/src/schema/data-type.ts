@@ -1,5 +1,9 @@
-/** SQL 类型族与 JavaScript 值类型分别保存，decimal 的 string 载体不会获得文本列的 API。 */
-export type SqlKind = "integer" | "bigint" | "decimal" | "text" | "boolean" | "json";
+import { sameNativeStorage, snapshotNativeStorage, type NativeStorage } from "./native-type.js";
+
+/** SQL 类型族与 JavaScript 值类型分别保存，decimal/UUID 的 string 载体不会获得文本列 API。 */
+export type CommonSqlKind = "integer" | "bigint" | "decimal" | "text" | "boolean" | "json";
+export type NativeSqlKind = `${string}:${string}`;
+export type SqlKind = CommonSqlKind | NativeSqlKind;
 export type CodecIdentity = string | symbol | readonly (string | symbol)[];
 export interface Codec<T> {
   readonly identity: CodecIdentity;
@@ -11,6 +15,7 @@ export interface StorageType<K extends SqlKind = SqlKind> {
   readonly length?: number;
   readonly precision?: number;
   readonly scale?: number;
+  readonly native?: NativeStorage;
 }
 export interface ValueMapping<T, U> {
   readonly identity: symbol;
@@ -31,12 +36,17 @@ export class DataType<T, K extends SqlKind = SqlKind> {
     codec: Codec<T>,
     acceptsNull: null extends T ? boolean : false = false,
   ) {
-    validateStorage(storage);
-    this.storage = Object.freeze({ ...storage });
+    const declared = { ...storage };
+    validateStorage(declared);
+    this.storage = Object.freeze({
+      ...declared,
+      ...(declared.native ? { native: snapshotNativeStorage(declared.native) } : {}),
+    });
+    const { identity, encode, decode } = codec;
     this.codec = Object.freeze({
-      identity: Array.isArray(codec.identity) ? Object.freeze([...codec.identity]) : codec.identity,
-      encode: codec.encode.bind(codec),
-      decode: codec.decode.bind(codec),
+      identity: Array.isArray(identity) ? Object.freeze([...identity]) : identity,
+      encode: encode.bind(codec),
+      decode: decode.bind(codec),
     });
     this.acceptsNull = acceptsNull;
     // 基类不能抢先冻结子类实例，否则扩展类的字段初始化会在 super() 之后失败。
@@ -78,7 +88,8 @@ export class DataType<T, K extends SqlKind = SqlKind> {
       a.kind === b.kind &&
       a.length === b.length &&
       a.precision === b.precision &&
-      a.scale === b.scale
+      a.scale === b.scale &&
+      sameNativeStorage(a.native, b.native)
     );
   }
 
@@ -104,6 +115,11 @@ function codecPath(identity: CodecIdentity): readonly (string | symbol)[] {
 }
 
 function validateStorage(type: StorageType): void {
+  if (typeof type.kind === "string" && /^[A-Za-z][\w-]*:[A-Za-z][\w.-]*$/.test(type.kind)) {
+    if (!type.native) throw new TypeError("A native SQL kind requires its storage definition");
+    return;
+  }
+  if (type.native) throw new TypeError("Native storage requires a namespaced SQL kind");
   switch (type.kind) {
     case "text":
       if (!Number.isInteger(type.length) || type.length! < 1 || type.length! > 5000)

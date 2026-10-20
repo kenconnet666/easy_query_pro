@@ -75,6 +75,7 @@ export function bindSources<R extends Sources>(
           kind: "column",
           relation: identity,
           name: field.columnName,
+          type: field.type,
           numericOrigin: field.numericOrigin,
         }),
         type: field.type,

@@ -1,6 +1,7 @@
 import { DataType, types, type SqlKind } from "../schema/data-type.js";
 import {
   freezeNode,
+  inferredOutputType,
   sqlFragment,
   type BinaryOperator,
   type FunctionDefinition,
@@ -26,7 +27,18 @@ export class Expression<T, K extends SqlKind = SqlKind> {
   readonly type: DataType<T, K>;
 
   constructor(binding: ExpressionBinding<T, K>) {
-    this.node = binding.node;
+    const inferred = inferredOutputType(binding.node);
+    if (
+      (binding.node.outputType && !binding.type.hasSameStorage(binding.node.outputType)) ||
+      (inferred && !binding.type.hasSameStorage(inferred))
+    )
+      throw new TypeError(
+        "An expression reader cannot change SQL storage; use nativeCast for a physical conversion",
+      );
+    // 低层 fragment 构造也必须携带输出存储；已有节点的物理 SQL 类型不因换 reader 或 nullable 而改变。
+    this.node = binding.node.outputType
+      ? binding.node
+      : freezeNode({ ...binding.node, outputType: binding.type });
     this.type = binding.type;
   }
 
@@ -173,7 +185,15 @@ export function sql(
   );
 }
 function operand<T, K extends SqlKind>(value: Input<T, K>, type: DataType<T, K>): Node {
-  return value instanceof Expression ? value.node : valueOf(value, type).node;
+  if (!(value instanceof Expression)) return valueOf(value, type).node;
+  // 比较不选择结果 reader，因此共同文本长度/decimal 精度可以不同；业务单位及原生物理表示仍须相同。
+  if (
+    type.storage.kind !== value.type.storage.kind ||
+    !type.hasSameCodec(value.type) ||
+    (type.storage.native && !type.hasSameStorage(value.type))
+  )
+    throw new TypeError("Operands require compatible SQL kinds and codec identities");
+  return value.node;
 }
 function all(render: (arguments_: readonly Node[]) => Node): FunctionDefinition["render"] {
   return Object.freeze({ postgres: render, mysql: render, hana: render });
@@ -188,6 +208,7 @@ export function call<T, K extends SqlKind>(
       kind: "call",
       definition: Object.freeze({ ...definition, render: Object.freeze({ ...definition.render }) }),
       arguments: Object.freeze(arguments_.map((argument) => argument.node)),
+      type,
     }),
     type,
   });

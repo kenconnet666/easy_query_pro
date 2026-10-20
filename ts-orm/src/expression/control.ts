@@ -57,13 +57,13 @@ export function nullIf<T, K extends SqlKind>(
   });
 }
 
-/** 显式采用数据库 CAST 的舍入/溢出规则；它声明转换边界，不承诺原数学表达式无损。 */
+/** 原生 CAST 可按数据库规则舍入、报错或产生 NULL；非 NULL 输入不能据此承诺非空结果。 */
 export function nativeCast<V, T, K extends SqlKind>(
   value: Expression<V, SqlKind>,
   type: DataType<T, K>,
-): Expression<T | (null extends V ? null : never), K> {
+): Expression<T | null, K> {
   return new Expression({
     node: freezeNode({ kind: "cast", operand: value.node, type }),
-    type: resultType(type, type.acceptsNull || value.type.acceptsNull),
+    type: type.nullable(),
   });
 }

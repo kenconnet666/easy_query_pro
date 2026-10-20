@@ -72,3 +72,6 @@ export {
   type FrameEnd,
   type RowBoundary,
 } from "./expression/window.js";
+export type { CommonSqlKind, NativeSqlKind } from "./schema/data-type.js";
+export type { NativeStorage, NativeTypeDialect, SqlTypeWrapper } from "./schema/native-type.js";
+export { postgresTypes } from "./native/postgres.js";

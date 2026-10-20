@@ -1,6 +1,7 @@
 import type { StorageType } from "../schema/data-type.js";
 import { validateName } from "../schema/table.js";
 import type { DialectName } from "../expression/node.js";
+import { requireNativeSupport } from "../schema/native-type.js";
 
 /** 方言仅负责 SQL 能力和语法，连接与结果读取属于 driver/codec。 */
 export interface Dialect {
@@ -28,6 +29,8 @@ function castType(name: DialectName, type: StorageType): string {
       return name === "mysql" ? "SIGNED" : "BOOLEAN";
     case "json":
       return name === "postgres" ? "JSONB" : name === "mysql" ? "JSON" : "NCLOB";
+    default:
+      throw new TypeError("A native type must use its declared SQL rendering");
   }
 }
 export function dialect(name: DialectName): Dialect {
@@ -39,13 +42,22 @@ export function dialect(name: DialectName): Dialect {
       return mark + identifier.replaceAll(mark, mark + mark) + mark;
     },
     parameter(index: number, type: StorageType) {
+      const native = requireNativeSupport(type, name);
+      const placeholder = name === "postgres" ? "$" + index : "?";
+      if (native) return native.parameter[0] + placeholder + native.parameter[1];
       // MySQL 的 CHAR CAST 会提升参数的 collation 强度，与列的非同名 collation 冲突。
       // 裸文本参数保留可强制转换性，由比较列决定 collation；长度已由 codec 校验。
       if (name === "mysql" && type.kind === "text") return "?";
       // 独立参数也有明确类型，避免 PG 的两个 unknown 参数无法选择算术重载。
-      return `CAST(${name === "postgres" ? "$" + index : "?"} AS ${castType(name, type)})`;
+      return `CAST(${placeholder} AS ${castType(name, type)})`;
     },
     cast(expression: string, type: StorageType) {
+      const native = requireNativeSupport(type, name);
+      if (native) {
+        if (!native.cast)
+          throw new TypeError(`SQL type ${type.kind} does not support CAST on ${name}`);
+        return native.cast[0] + expression + native.cast[1];
+      }
       return `CAST(${expression} AS ${castType(name, type)})`;
     },
     pagination(limit: number | undefined, offset: number) {

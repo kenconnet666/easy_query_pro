@@ -103,3 +103,13 @@ page 先编译两个完整计划，再同租约顺序执行 COUNT 与当前页�
 PG 事务先插入、捕获除零错误再正常返回的用例，旧实现红测为 Missing expected rejection；COMMIT command tag 检查后正确抛出回滚失败，并确认插入不存在。MySQL completion_type=CHAIN 和 RELEASE 两种会话设置都验证 COMMIT/ROLLBACK 后的普通写立即对另一租约可见，原会话设置在 finally 恢复；不依赖其他数据库才有的事务状态变量。
 
 本地 74 个单元用例、类型正负例、构建及格式检查通过，三库契约按改动运行，包含分组 CTE → 窗口 CTE → 外层过滤的真实分页。测试随机表与两个自有 HANA 池在 finally 清理，持久实例保持运行。自定义驱动未声明 capability 时显式选项提前拒绝，设置失败不会调用业务回调，MySQL 下一事务设置后 START 失败会销毁连接。
+
+## 2026-10-21：原生存储协议与 PG UUID
+
+9abb12d08a70885fe879866cccb7bdedce7ff93a 的 [TS CI 39491494614](https://github.com/kenconnet666/easy_query_pro/actions/runs/39491494614) 六任务成功，同 SHA 的 Java CI 后被新提交取消。随后 PG 全文查询提交 394dd21ad84a69e3fd91bd9837ccd890304e698e 的 [CI 39492769759](https://github.com/kenconnet666/easy_query_pro/actions/runs/39492769759) 成功，包含此前分页与事务的 HANA Node 验证。Java PG 类型提交 addec1de8cb6e8c319346512cd1ee5981611b3aa 的 [CI 39490002201](https://github.com/kenconnet666/easy_query_pro/actions/runs/39490002201) 也成功。
+
+native descriptor 保存在 DataType.storage，快照 identity、各方言两个语法片段与比较能力。Expr 的输出存储也标记到 Node，低层 fragment 构造不丢掉方言/能力检查；nullable 不改变原 SQL 节点身份。比较检查同 kind 和完整 codec，原生另核对 descriptor；共同 text 长度、DECIMAL 精度不同仍可比较。审查补齐 NULLIF 内部等号，且不会把转换后 BOOLEAN/text 的能力错误继承成原生值能力。已有节点的固有存储不能通过换 reader 或泛型声明变成另一个物理类型。
+
+PostgreSQL 真实 UUID 验证业务 ID 映射、大小写规范化、INSERT RETURNING、带参数筛选、LEFT JOIN、CTE/page、UNION 去重、LAG 经 CTE 的 NULL、COALESCE、文本 CAST 及更新。MySQL 真实证明非 NULL 非法日期 CAST 可变 NULL；另外保留了零日期参数与字面量在 NO_ZERO_DATE 下不同的结果。共同 nativeCast 因此统一推导 T|null，参数绑定仍先经过目标 codec 校验。
+
+79 个单元用例与类型负例通过，包含缺失descriptor、外部配置变化、不同identity/codec、错误方言、相等/排序/分组/窗口分区能力，以及文本操作不可用于UUID。三库已有报表、写入、窗口和事务契约也复核通过；新的完整矩阵交本候选自己的 CI。测试创建的随机表和自有连接池按 finally 清理。

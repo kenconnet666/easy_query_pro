@@ -1,7 +1,17 @@
 import type { Dialect } from "../dialects/dialect.js";
-import { visitNode, type Node } from "../expression/node.js";
+import { visitNode, nodeOutputType, type Node } from "../expression/node.js";
 import { validateWindow, type RowBoundary } from "../expression/window.js";
 import type { Order } from "../query/model.js";
+import { requireNativeOperation, requireNativeSupport } from "../schema/native-type.js";
+
+export function requireNodeOperation(
+  node: Node,
+  dialect: Dialect,
+  operation: "equality" | "ordering",
+): void {
+  const storage = nodeOutputType(node)?.storage;
+  if (storage) requireNativeOperation(storage, dialect.name, operation);
+}
 
 export type Scope = ReadonlyMap<symbol, string>;
 export interface State {
@@ -53,8 +63,11 @@ export function renderNode(
 
 function renderRawNode(node: Node, scope: Scope, state: State): string {
   const { dialect } = state;
+  // renderer 展开后也经过这里，不能让新产生的 typed fragment 绕过当前方言检查。
+  if (node.outputType) requireNativeSupport(node.outputType.storage, dialect.name);
   switch (node.kind) {
     case "column": {
+      requireNativeSupport(node.type.storage, dialect.name);
       const alias = scope.get(node.relation.id);
       if (node.relation.owner !== state.owner || alias === undefined)
         throw new TypeError("Column is outside this query scope");
@@ -91,6 +104,7 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
             node.spec.partitions
               .map((partition) => {
                 requireRowExpression(partition, "Window partition");
+                requireNodeOperation(partition, dialect, "equality");
                 return renderNode(partition, scope, state);
               })
               .join(", "),
@@ -108,12 +122,21 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
     }
     case "case":
       return `(CASE WHEN ${renderNode(node.condition, scope, state, "predicate")} THEN ${renderNode(node.whenTrue, scope, state)} ELSE ${renderNode(node.whenFalse, scope, state)} END)`;
-    case "coalesce":
     case "nullif":
+      requireNodeOperation(node.left, dialect, "equality");
+      requireNodeOperation(node.right, dialect, "equality");
+      return `NULLIF(${renderNode(node.left, scope, state)}, ${renderNode(node.right, scope, state)})`;
+    case "coalesce":
       return `${node.kind.toUpperCase()}(${renderNode(node.left, scope, state)}, ${renderNode(node.right, scope, state)})`;
     case "aggregate": {
       if (node.operand) requireRowExpression(node.operand, "Aggregate operand");
       if (node.filter) requireRowExpression(node.filter, "Aggregate filter");
+      if (node.operandType) {
+        if (node.distinct)
+          requireNativeOperation(node.operandType.storage, dialect.name, "equality");
+        if (node.operator === "MIN" || node.operator === "MAX")
+          requireNativeOperation(node.operandType.storage, dialect.name, "ordering");
+      }
       if (node.distinct && dialect.name === "hana" && node.operandType?.storage.kind === "json")
         throw new TypeError("HANA cannot apply DISTINCT to NCLOB JSON operands");
       let operand: string;
@@ -131,6 +154,11 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
         .map((part) => (typeof part === "string" ? part : renderNode(part, scope, state)))
         .join("");
     case "binary": {
+      if (["=", "<>", ">", ">=", "<", "<="].includes(node.operator)) {
+        const operation = node.operator === "=" || node.operator === "<>" ? "equality" : "ordering";
+        requireNodeOperation(node.left, dialect, operation);
+        requireNodeOperation(node.right, dialect, operation);
+      }
       const context = node.operator === "AND" || node.operator === "OR" ? "predicate" : "value";
       return `(${renderNode(node.left, scope, state, context)} ${node.operator} ${renderNode(node.right, scope, state, context)})`;
     }
@@ -139,16 +167,27 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
         ? `(NOT ${renderNode(node.operand, scope, state, "predicate")})`
         : `(${renderNode(node.operand, scope, state)} ${node.operator})`;
     case "in":
+      requireNodeOperation(node.operand, dialect, "equality");
       return `(${renderNode(node.operand, scope, state)} ${node.negated ? "NOT IN" : "IN"} (${node.values.map((value) => renderNode(value, scope, state)).join(", ")}))`;
     case "call": {
+      requireNativeSupport(node.type.storage, dialect.name);
       if (node.definition.phase !== "row")
         for (const argument of node.arguments)
           requireRowExpression(argument, `${node.definition.phase} function operand`);
       const renderer = node.definition.render[dialect.name];
       if (!renderer)
         throw new TypeError(`Function ${node.definition.name} does not support ${dialect.name}`);
+      const rendered = renderer(node.arguments);
+      const renderedType = nodeOutputType(rendered);
+      if (renderedType) {
+        requireNativeSupport(renderedType.storage, dialect.name);
+        if (!node.type.hasSameStorage(renderedType))
+          throw new TypeError(
+            `Function ${node.definition.name} renderer cannot change SQL storage without an explicit conversion`,
+          );
+      }
       // 扩展函数是一个完整操作数；复合 OR/算术 renderer 不能泄漏优先级给外层 NOT 或乘法。
-      return `(${renderRawNode(renderer(node.arguments), scope, state)})`;
+      return `(${renderRawNode(rendered, scope, state)})`;
     }
   }
 }
@@ -163,6 +202,7 @@ function renderBoundary(boundary: RowBoundary): string {
 export function renderOrders(orders: readonly Order[], scope: Scope, state: State): string {
   return orders
     .map((order) => {
+      requireNodeOperation(order.expression, state.dialect, "ordering");
       if (order.nulls && state.dialect.name === "mysql") {
         const first = order.nulls === "FIRST";
         return `CASE WHEN ${renderNode(order.expression, scope, state)} IS NULL THEN ${first ? 0 : 1} ELSE ${first ? 1 : 0} END ASC, ${renderNode(order.expression, scope, state)} ${order.direction}`;
