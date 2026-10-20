@@ -201,7 +201,8 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
       const renderer = node.definition.render[dialect.name];
       if (!renderer)
         throw new TypeError(`Function ${node.definition.name} does not support ${dialect.name}`);
-      return renderRawNode(renderer(node.arguments), scope, state);
+      // 扩展函数是一个完整操作数；复合 OR/算术 renderer 不能泄漏优先级给外层 NOT 或乘法。
+      return `(${renderRawNode(renderer(node.arguments), scope, state)})`;
     }
   }
 }

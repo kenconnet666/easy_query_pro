@@ -10,6 +10,7 @@ import {
   createDatabase,
   identifier,
   mysqlDialect,
+  not,
   postgresDialect,
   hanaDialect,
   sql,
@@ -128,6 +129,30 @@ async function verifyComposition(
     { missing: false, matches: true },
     { missing: false, matches: false },
   ]);
+  const renderPredicate = (args: readonly SqlNode[]) =>
+    sqlFragment`${args[0]!} = ${args[1]!} OR ${args[2]!} = ${args[3]!}`;
+  const composite = call(
+    {
+      name: "composite-predicate",
+      phase: "row",
+      syntax: "predicate",
+      render: { postgres: renderPredicate, mysql: renderPredicate, hana: renderPredicate },
+    },
+    types.boolean().nullable(),
+    [
+      base.scope.u.id,
+      valueOf(-1, types.integer()),
+      base.scope.u.managerId,
+      valueOf(1, types.integer()),
+    ],
+  );
+  assert.deepEqual(
+    await base
+      .orderBy(({ u }) => u.id.asc())
+      .select(() => ({ value: not(composite) }))
+      .execute(),
+    [{ value: null }, { value: false }, { value: true }],
+  );
   assert.equal(
     await base
       .where(() => valueOf(true, types.boolean()))

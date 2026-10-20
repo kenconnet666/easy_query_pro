@@ -49,3 +49,5 @@ CTE 复用冻结投影与来源身份，编译先收集依赖再按最终 SQL �
 审查复现同一个业务 mapping 叠在不同底层 codec 时，旧的最终 identity 比较会无声读错值。身份现保留完整映射链，nullable 不改链；不同链拒绝 UNION，相同链的可空性按并集处理。
 
 本地三库验证依赖 CTE、自连接、CTE 外层 count/分页、分支 limit 与外层 limit、UNION ALL 重复、UNION 去重（包括 NULL）、混合集合树、精确金额与 BIGINT。HANA 首次因 ORDER BY 中裸 IS NULL 报 SQL 语法错误；修复在编译器的条件/标量边界，值位置用三值 CASE，WHERE/JOIN 的 BOOLEAN 标量显式比较 TRUE。再次三库验证通过，比较投影分别返回 true/false/null，未把 UNKNOWN 强行归为 false。36 个单元用例与类型负例覆盖完整链兼容、字段异序、作用域捕获和最终参数顺序。测试自有表均经 finally 删除，持久实例保持运行。
+
+后续审查补上原生 renderer 的整体括号，保证复合 OR 参与 NOT、原生加法参与乘法时保持表达式树的优先级；新增三库 NULL/false/true 结果验证与单元反例，共 37 个单元用例通过。add8b8e 的 TS CI 两个数据库任务成功，四个代码任务因 composition.test.ts 一处链式格式不符合检查而失败；已规范该处并在本地重新运行 format:check，通过后继续提交，未关闭检查。

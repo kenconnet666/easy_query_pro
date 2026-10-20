@@ -7,6 +7,7 @@ import {
   DataType,
   hanaDialect,
   mysqlDialect,
+  not,
   postgresDialect,
   sqlFragment,
   table,
@@ -86,13 +87,11 @@ test("UNION rejects reordered fields, incompatible codecs and different storage 
   }));
   assert.throws(() => left.union(long), /matching SQL storage/);
   const custom = () =>
-    types
-      .text()
-      .map({
-        identity: Symbol("label"),
-        to: (v: { label: string }) => v.label,
-        from: (label) => ({ label }),
-      });
+    types.text().map({
+      identity: Symbol("label"),
+      to: (v: { label: string }) => v.label,
+      from: (label) => ({ label }),
+    });
   const customLeft = base.select(() => ({ value: valueOf({ label: "a" }, custom()) }));
   const customRight = base.select(() => ({ value: valueOf({ label: "b" }, custom()) }));
   assert.throws(() => customLeft.unionAll(customRight), /codec identity/);
@@ -239,4 +238,33 @@ test("HANA distinguishes predicate syntax from scalar BOOLEAN values and preserv
       .compile().parameters,
     [3],
   );
+});
+
+test("native composite renderers remain one operand under NOT and multiplication", () => {
+  const db = createDatabase({ dialect: postgresDialect });
+  const base = db.from({ u: users });
+  const predicate = call(
+    {
+      name: "composite",
+      phase: "row",
+      syntax: "predicate",
+      render: { postgres: (args) => sqlFragment`${args[0]!} > 0 OR ${args[0]!} IS NULL` },
+    },
+    types.boolean().nullable(),
+    [base.scope.u.id],
+  );
+  const sum = call(
+    {
+      name: "sum-pair",
+      phase: "row",
+      render: { postgres: (args) => sqlFragment`${args[0]!} + ${args[0]!}` },
+    },
+    types.integer(),
+    [base.scope.u.id],
+  );
+  const compiled = base
+    .select(() => ({ negated: not(predicate), doubled: sum.multiply(2) }))
+    .compile();
+  assert.match(compiled.sql, /NOT \("u"\."id" > 0 OR "u"\."id" IS NULL\)/);
+  assert.match(compiled.sql, /\("u"\."id" \+ "u"\."id"\) \* CAST/);
 });
