@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Calculation:scenario xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:Calculation="http://www.sap.com/ndb/BiModelCalculation.ecore"
+    id="EQP_CALC_NAMES" applyPrivilegeType="NONE" dataCategory="DIMENSION"
+    schemaVersion="3.0" defaultClient="crossClient" visibility="reportingEnabled"
+    outputViewType="Projection" calculationScenarioType="TREE_BASED" enforceSqlExecution="false">
+    <descriptions defaultDescription="Parameterized EasyQuery test view"/>
+    <localVariables>
+        <variable id="P_NAMES" parameter="true">
+            <descriptions defaultDescription="Exact name filter"/>
+            <variableProperties datatype="NVARCHAR" length="255" mandatory="true">
+                <valueDomain type="empty"/>
+                <selection multiLine="true" type="SingleValue"/>
+            </variableProperties>
+        </variable>
+    </localVariables>
+    <variableMappings/>
+    <dataSources>
+        <DataSource id="EQP_SOURCE"><resourceUri>EQP_SOURCE</resourceUri></DataSource>
+    </dataSources>
+    <calculationViews>
+        <calculationView xsi:type="Calculation:ProjectionView" id="Filtered" filterExpressionLanguage="SQL">
+            <viewAttributes>
+                <viewAttribute id="ID"/>
+                <viewAttribute id="NAME"/>
+                <viewAttribute id="AMOUNT"/>
+            </viewAttributes>
+            <calculatedViewAttributes/>
+            <input node="EQP_SOURCE">
+                <mapping xsi:type="Calculation:AttributeMapping" target="ID" source="ID"/>
+                <mapping xsi:type="Calculation:AttributeMapping" target="NAME" source="NAME"/>
+                <mapping xsi:type="Calculation:AttributeMapping" target="AMOUNT" source="AMOUNT"/>
+            </input>
+            <filter>&quot;NAME&quot; IN ($$P_NAMES$$)</filter>
+        </calculationView>
+    </calculationViews>
+    <logicalModel id="Filtered">
+        <attributes>
+            <attribute id="ID" key="true" order="1" displayAttribute="false" attributeHierarchyActive="false">
+                <descriptions defaultDescription="ID"/>
+                <keyMapping columnObjectName="Filtered" columnName="ID"/>
+            </attribute>
+            <attribute id="NAME" order="2" displayAttribute="false" attributeHierarchyActive="false">
+                <descriptions defaultDescription="NAME"/>
+                <keyMapping columnObjectName="Filtered" columnName="NAME"/>
+            </attribute>
+            <attribute id="AMOUNT" order="3" displayAttribute="false" attributeHierarchyActive="false">
+                <descriptions defaultDescription="AMOUNT"/>
+                <keyMapping columnObjectName="Filtered" columnName="AMOUNT"/>
+            </attribute>
+        </attributes>
+        <calculatedAttributes/>
+        <baseMeasures/>
+        <calculatedMeasures/>
+        <restrictedMeasures/>
+    </logicalModel>
+</Calculation:scenario>

@@ -10,8 +10,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
+import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -70,6 +73,7 @@ class HanaSourceDslTest {
 
     @Test
     void nullableDeclarationPreservesCustomNonNullValidation() {
+        var encodings = new AtomicInteger();
         class PositiveInput extends HanaInput<Integer> {
             PositiveInput() {
                 super("P_ID", Integer.class, true, false);
@@ -80,12 +84,50 @@ class HanaSourceDslTest {
                 super.validate(value);
                 if (value < 1) throw new IllegalArgumentException("P_ID must be positive");
             }
+
+            @Override
+            protected Object toJdbcValue(Integer value) {
+                encodings.incrementAndGet();
+                return value.toString();
+            }
         }
         var input = new PositiveInput().nullable();
         assertNull(input.bind(null).value());
         assertEquals(1, input.bind(1).value());
         assertThrows(IllegalArgumentException.class, () -> input.bind(0));
         assertSame(input, input.nullable());
+        var view = HanaCalculationView.of("REPORT", "VIEW", HanaViewRowProxy::createTable, input);
+        var client = hana().findFirst().orElseThrow().client().getEasyQueryClient();
+        var query = view.query(client, input.bind(1));
+        assertEquals("1", query.cloneQueryable().toSQLResult().getSqlContext().getParameters().get(0).getValue());
+        assertEquals(1, encodings.get());
+        query.cloneQueryable().toSQL();
+        assertNull(view.query(client, input.bind(null)).toSQLResult().getSqlContext().getParameters().get(0).getValue());
+        assertEquals(1, encodings.get(), "Cloning and explicit NULL must not invoke the encoder");
+    }
+
+    @ParameterizedTest
+    @MethodSource("hana")
+    void multiValueListsUseOneBindingAndRejectAmbiguousEmptyInputs(DecimalDslTest.Backend backend) {
+        var client = backend.client().getEasyQueryClient();
+        var texts = HanaInput.requiredTextList("P_NAMES");
+        assertThrows(IllegalArgumentException.class, () -> texts.bind(List.of()));
+        assertThrows(IllegalArgumentException.class, () -> texts.bind(Arrays.asList("a", null)));
+        assertThrows(IllegalArgumentException.class, () -> texts.bind(null));
+        assertThrows(UnsupportedOperationException.class, texts::nullable);
+        var view = HanaCalculationView.of("REPORT", "VIEW", HanaViewRowProxy::createTable, texts);
+        var result = view.query(client, texts.bind(List.of("O'Reilly, 中文", "A\"B", ""))).toSQLResult();
+        assertEquals(List.of("'O''Reilly, 中文','A\"B',''"), result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertFalse(result.getSQL().contains("O'Reilly"));
+        var mutableValues = new ArrayList<>(List.of("before"));
+        var snapshot = view.query(client, texts.bind(mutableValues));
+        mutableValues.set(0, "after");
+        assertEquals("'before'", snapshot.cloneQueryable().toSQLResult().getSqlContext().getParameters().get(0).getValue());
+        var numbers = HanaInput.requiredNumericList("P_VALUES", BigDecimal.class);
+        var numeric = HanaCalculationView.of("REPORT", "VIEW", HanaViewRowProxy::createTable, numbers)
+                .query(client, numbers.bind(List.of(new BigDecimal("1E+3"), new BigDecimal("-1.25")))).toSQLResult();
+        assertEquals("1000,-1.25", numeric.getSqlContext().getParameters().get(0).getValue());
+        assertThrows(IllegalArgumentException.class, () -> HanaInput.requiredNumericList("P_VALUES", Double.class));
     }
 
     @ParameterizedTest

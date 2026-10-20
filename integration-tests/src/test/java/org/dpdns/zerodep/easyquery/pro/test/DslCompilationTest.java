@@ -261,5 +261,8 @@ class DslCompilationTest {
         compile(true, "var name = HanaInput.required(\"P_NAME\", String.class); var view = HanaCalculationView.of(\"REPORT\", \"VIEW\", HanaViewRowProxy::createTable, name); BigDecimal amount = view.query(null, name.bind(\"text\")).singleNotNull().getAmount();");
         compile(false, "var name = HanaInput.required(\"P_NAME\", String.class); name.bind(7);");
         compile(false, "var view = HanaCalculationView.of(\"REPORT\", \"VIEW\", HanaViewRowProxy::createTable); String wrong = view.query(null).singleNotNull().getAmount();");
+        compile(true, "var names = HanaInput.requiredTextList(\"P_NAMES\"); names.bind(java.util.List.of(\"a\", \"b\")); var ids = HanaInput.requiredNumericList(\"P_IDS\", Integer.class); ids.bind(java.util.List.of(1, 2));");
+        compile(false, "HanaInput.requiredTextList(\"P_NAMES\").bind(java.util.List.of(1,2));");
+        compile(false, "HanaInput.requiredNumericList(\"P_IDS\", Integer.class).bind(java.util.List.of(1L));");
     }
 }

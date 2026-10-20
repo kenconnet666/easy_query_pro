@@ -91,7 +91,7 @@ public class HanaCalculationView<P extends ProxyEntity<P, T>, T> {
                 continue;
             }
             placeholders.add("PLACEHOLDER." + KEYWORDS.quoteUnquotedName("$$" + input.name() + "$$") + " => ?");
-            values.add(binding.value());
+            values.add(binding.jdbcValue());
         }
         String arguments = placeholders.isEmpty() ? "" : " (" + String.join(",", placeholders) + ")";
         String sql = "SELECT * FROM " + qualifiedName + arguments;

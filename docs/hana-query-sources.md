@@ -40,6 +40,8 @@ client 需要安装 `HanaExtensions`。schema 和视图名作为两个完整标�
 
 绑定顺序固定为声明顺序，与调用方提供 Binding 的顺序无关。自定义 Java 值需要该 client 的 JDBC handler；来源参数不自动继承某个输出实体列的 converter。值只保存引用，不深复制业务对象，构造后不要再修改可变值。
 
+子类还可通过 protected `toJdbcValue` 将非 NULL 业务值编码为一个已有 handler 支持的 JDBC 值。编码在构造来源查询时执行一次，clone 复用已编码参数；nullable 保留原编码规则，显式 NULL 不调用编码器。
+
 HANA 2.00.088 的真实 HDI fixture 已分别验证：省略 P_NAME 使用模型的 `other` 默认值，显式 JDBC NULL 返回空结果，带引号/中文的输入精确匹配。默认值使用 SAP 固定示例中的 `defaultRange lowValue`；结果是该模型的行为，不把所有模型的 NULL 过滤规则统一成客户端判断。
 
 ## 组合与生命周期
@@ -50,6 +52,25 @@ HANA 2.00.088 的真实 HDI fixture 已分别验证：省略 P_NAME 使用模型
 
 实库测试还验证了原 client 的同一事务：写入未提交行后通过计算视图读取可见，回滚后该行消失。来源类不自行提交、切换连接或创建另一个事务上下文。
 
-实际 fixture 沿用[HDI 部署测试](hana-hdi.md)，先证明对象类型是 CALC，再验证正式查询入口。不会用普通 SQL view 或表函数替代计算视图验证。当前入口覆盖标量输入；模型多值协议和选定表函数仍是 H11 后续交付项，不能将一个普通 Java List 当作已支持的多值输入。
+实际 fixture 沿用[HDI 部署测试](hana-hdi.md)，先证明对象类型是 CALC，再验证正式查询入口。不会用普通 SQL view 或表函数替代计算视图验证。当前入口覆盖标量与下述多值模型输入；选定表函数仍是 H11 后续交付项。
+
+## 模型多值输入
+
+```java
+var names = HanaInput.requiredTextList("P_NAMES");
+var ids = HanaInput.requiredNumericList("P_IDS", Integer.class);
+
+var view = HanaCalculationView.of("REPORT_SCHEMA", "SALES_BY_NAMES",
+        SaleViewProxy::createTable, names);
+var rows = view.query(client, names.bind(List.of("O'Reilly, 中文", "A\"B")));
+```
+
+模型必须声明多值输入。文本列表编码为一个 JDBC 字符串，例如 `'O''Reilly, 中文','A"B'`，元素内的逗号保留在该元素中；不能当作普通 CSV。数值列表同样是一个绑定值，如 `4,1`，不逐项加文本引号。SQL 中始终只有一个 `PLACEHOLDER => ?`。
+
+数值元素限定 Byte、Short、Integer、Long、BigInteger、BigDecimal，通过解析后输出规范十进制；不接受浮点/非有限值或任意 Number 子类。数据库模型仍决定实际精度、范围和类型转换。已有实库模型验证 INTEGER 列表，离线检查覆盖 BigDecimal 的规范编码；不同 SQL 数值模型的范围不能仅由 Java 类型推定。
+
+`optionalTextList` / `optionalNumericList` 允许省略参数，是否有默认值由模型决定。空列表、NULL 元素和整个 NULL 列表均拒绝；列表声明不开放 nullable。HANA 2.00.088 的 IN 多值模型会把 JDBC NULL 展开成无效的 `IN ()`。`List.of("")` 则明确表示一个空字符串元素，真实 fixture 已验证它只命中空字符串记录。重复元素沿用数据库 IN 的集合语义，不重复输出行。
+
+多值 XML 的 selection/SQL 过滤形态参考固定 [SAP Cloud 教学样例](https://github.com/SAP-samples/hana-cloud-learning/blob/1f536fc4c256cfefedc8acde6efd62892abf8f8b/calculationViewTraining/inputParameters/db/src/1_solution/calcviews/CV_PRODUCT_DATA_MVIP.hdbcalculationview)，已在本项目 HANA 2.0 HDI 实际部署和查询。模型使用 `multiLine="true"` 与 `IN ($$P_NAMES$$)`，占位符外不包单引号。绑定层协议参见 [SAP 多值赋值说明](https://help.sap.com/docs/SAP_HANA_PLATFORM/88fe5f56472e40cca6ef3c3dcab4855b/a3dcbde19bdc4c7380fb6aabb48c4589.html)；官方直接 SQL 示例的外层字符串引号不能再原样加给 JDBC。
 
 参数名语法与模型默认值依据 [SAP Column View Parameter Binding](https://help.sap.com/docs/SAP_HANA_PLATFORM/de2486ee947e43e684d39702027f8a94/f1c17eb3a5b04f8b82d5908218e3fa68.html) 和 [CS_VIEW_PARAMETERS](https://help.sap.com/docs/SAP_HANA_PLATFORM/4fe29514fd584807ac9f2a04f6754767/3abb2714091d495b9eb277ce6f9daa07.html)。本包不自动反查目录推断 API 类型；支持范围以版本固定的实库测试为准。

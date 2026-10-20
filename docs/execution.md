@@ -545,3 +545,13 @@ JOIN 原型还确认 EasyQuery 3.2.17 的两个同源 clone 共享 Proxy，ON �
 真实 HDI fixture 从直接 JDBC 扩展到完整查询链，显式映射 ID/NAME/AMOUNT 大写列。已验证单引号/中文、注入文本不扩大结果、BigDecimal、外层参数顺序、Draft、CTE、聚合、独立来源 JOIN 和 count/page。默认值 XML 参照固定 SAP SHINE 模型的 defaultRange，省略参数命中默认值而显式 NULL 返回空结果；缺参、重复赋值、同名异声明、错类型和重复使用已绑定 Proxy 在离线边界拒绝。
 
 复审新增的 PositiveInput 负例复现 nullable 重建丢失子类校验，现改为可空声明对非 NULL 委托原验证。补充原 client 事务内写入可读、回滚后消失的实库证据。最终 7 个离线/消费者检查与 1 个真实 HDI 生命周期用例通过；IDEA 构建通过，MCP 确认本次 EQP_HDI schema 遗留为零。完整 CI 异步提交。多值模型协议与标量输入表函数仍是 H11 的后续必需项；子代理已查得官方 XML 与单个 JDBC 字符串的列表协议，下一步实库验证，不把普通 CSV 或空字符串元素当作空列表。
+
+## HANA 多值计算视图输入
+
+标量来源提交 `3b2fb594e70d8515f7774e315207db7aec6bc5f2` 已通过 [CI 39456339767](https://github.com/kenconnet666/easy_query_pro/actions/runs/39456339767) 的五个强制任务，交接前重新读取确认 tested SHA 一致。新增文本/数值列表声明，逐元素编码后只绑定一个 JDBC 字符串；内部逗号、单引号、中文、空字符串和注入样式文本仍是模型值。HanaInput 公开受控的 toJdbcValue 扩展点，nullable 继续保留自定义验证与编码，显式 NULL 跳过编码。
+
+真实 HDI 新增 NVARCHAR/INTEGER 多值计算视图，验证精确匹配、重复元素、一个参数的列表协议、克隆、CTE 与 count/page。当前 HANA 2.00.088 对整个 JDBC NULL 列表展开为无效 IN ()，原生错误为 2048/34023，因此列表声明明确拒绝 nullable、空列表和 NULL 元素；单个空字符串元素有独立实库正例。数值模型目前只验证 INTEGER，BigDecimal 规范编码的离线结果不替代其他 SQL 数值模型的精度验收。
+
+本地正常 verify 路径通过 8 个离线/消费者检查与 1 个真实 HDI 生命周期用例。随后补 nullable 编码保留断言，7 个 HanaSourceDslTest 通过。只读复审无阻塞问题，收尾增加编码调用次数、clone 不重编码、显式 NULL 不调用编码器及列表编码快照检查；使用指定 JBR 17 执行 `mvnw.cmd --batch-mode test -Phana -Dtest=HanaSourceDslTest -Dsurefire.failIfNoSpecifiedTests=false`，7 个检查再次通过。IDEA 构建已通过，MCP 确认 EQP_HDI schema 遗留为零；本轮三份诊断日志记录后清理，标准测试报告与持久开发实例保留。
+
+2026-10-21 用户调整分工，Java 实现交由指定代理继续，主线程串行提交、推送并推进独立的 TypeScript 方向。当前多值批次的完整 CI 留给新提交执行；下一步接入标量输入表函数，共享声明校验和 fresh Proxy 生命周期，保留计算视图 API，不另建执行器。

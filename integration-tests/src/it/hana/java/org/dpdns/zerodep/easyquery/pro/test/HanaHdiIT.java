@@ -47,6 +47,7 @@ class HanaHdiIT {
                 grantSchemaAccess(connection, container);
                 verifyCalculationView(connection, container);
                 verifyQueryableSource(container);
+                verifyMultiValueSources(connection, container);
             } finally {
                 invoke(connection, "CALL _SYS_DI.DROP_CONTAINER('" + container
                         + "', #EQP_HDI_DROP_PARAMETERS, ?, ?, ?)");
@@ -61,7 +62,8 @@ class HanaHdiIT {
         }
         try (var files = connection.prepareStatement("INSERT INTO #EQP_HDI_FILES (PATH,CONTENT) VALUES (?,?)");
              var paths = connection.prepareStatement("INSERT INTO #EQP_HDI_PATHS (PATH) VALUES (?)")) {
-            for (String path : List.of(".hdiconfig", "EQP_SOURCE.hdbtable", "EQP_CALC.hdbcalculationview")) {
+            for (String path : List.of(".hdiconfig", "EQP_SOURCE.hdbtable", "EQP_CALC.hdbcalculationview",
+                    "EQP_CALC_NAMES.hdbcalculationview", "EQP_CALC_IDS.hdbcalculationview")) {
                 try (var resource = HanaHdiIT.class.getResourceAsStream("/hana/hdi/" + path)) {
                     assertNotNull(resource, path);
                     files.setString(1, path);
@@ -161,6 +163,39 @@ class HanaHdiIT {
             transaction.rollback();
         }
         assertTrue(view.query(client, name.bind("transaction value")).toList().isEmpty());
+    }
+
+    private static void verifyMultiValueSources(Connection connection, String schema) throws SQLException {
+        var names = List.of("O'Reilly, 中😀", "A\"B", "", "x') OR 1=1 --");
+        try (var insert = connection.prepareStatement("INSERT INTO \"" + schema + "\".\"EQP_SOURCE\" VALUES (?,?,?)")) {
+            for (int index = 0; index < names.size(); index++) {
+                insert.setInt(1, index + 3);
+                insert.setString(2, names.get(index));
+                insert.setBigDecimal(3, BigDecimal.valueOf(index + 3));
+                insert.executeUpdate();
+            }
+        }
+        var client = TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure).getEasyQueryClient();
+        var nameList = HanaInput.requiredTextList("P_NAMES");
+        var textView = HanaCalculationView.of(schema, "EQP_CALC_NAMES", HanaViewRowProxy::createTable, nameList);
+        var selected = textView.query(client, nameList.bind(List.of("O'Reilly 中文", names.get(0), names.get(1))));
+        assertEquals(List.of(1, 3, 4), selected.cloneQueryable().orderBy(r -> r.id().asc()).toList().stream().map(r -> r.getId()).toList());
+        var parameters = selected.cloneQueryable().toSQLResult().getSqlContext().getParameters();
+        assertEquals(1, parameters.size());
+        assertEquals("'O''Reilly 中文','O''Reilly, 中😀','A\"B'", parameters.get(0).getValue());
+        assertEquals(3L, selected.cloneQueryable().count());
+        assertEquals(3L, selected.cloneQueryable().toCteAs("multi_name_rows").toPageResult(1, 2).getTotal());
+        assertEquals(5, textView.query(client, nameList.bind(List.of(""))).singleNotNull().getId());
+        assertEquals(6, textView.query(client, nameList.bind(List.of(names.get(3)))).singleNotNull().getId());
+        assertTrue(textView.query(client, nameList.bind(List.of("not-there') OR 1=1 --"))).toList().isEmpty());
+        assertEquals(1L, textView.query(client, nameList.bind(List.of("other", "other"))).count());
+
+        var ids = HanaInput.requiredNumericList("P_IDS", Integer.class);
+        var numericView = HanaCalculationView.of(schema, "EQP_CALC_IDS", HanaViewRowProxy::createTable, ids);
+        var numeric = numericView.query(client, ids.bind(List.of(4, 1))).orderBy(r -> r.id().asc());
+        assertEquals(List.of(1, 4), numeric.cloneQueryable().toList().stream().map(r -> r.getId()).toList());
+        assertEquals("4,1", numeric.cloneQueryable().toSQLResult().getSqlContext().getParameters().get(0).getValue());
+        assertTrue(numericView.query(client, ids.bind(List.of(-1))).toList().isEmpty());
     }
 
     private static void invoke(Connection connection, String call) throws SQLException {
