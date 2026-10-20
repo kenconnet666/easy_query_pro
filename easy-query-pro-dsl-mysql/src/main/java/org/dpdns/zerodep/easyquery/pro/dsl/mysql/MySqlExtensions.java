@@ -6,6 +6,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExtensionInstaller;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.JsonPathAccess;
 
 public final class MySqlExtensions {
     private MySqlExtensions() {
@@ -15,5 +16,6 @@ public final class MySqlExtensions {
         ExtensionInstaller.install(services, SqlDialect.MYSQL, MySQLSQLKeyword.class,
                 new NullSafeComparison("({0} <=> {1})", "(NOT ({0} <=> {1}))"));
         services.addService(TemporalTruncation.class, new MySqlTemporalTruncation());
+        services.addService(JsonPathAccess.class, new MySqlJsonPathAccess());
     }
 }

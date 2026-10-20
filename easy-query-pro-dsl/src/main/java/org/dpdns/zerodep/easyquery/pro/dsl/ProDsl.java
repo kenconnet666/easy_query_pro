@@ -33,6 +33,9 @@ import org.dpdns.zerodep.easyquery.pro.dsl.type.TextType;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.CastTarget;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.JsonPathAccess;
+import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonPath;
+import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonFragmentExpression;
 
 import java.util.Objects;
 import java.util.function.Function;
@@ -119,6 +122,61 @@ public final class ProDsl {
 
     public StringTypeExpression<String> nullValue(TextType type) {
         return value(null, type);
+    }
+
+    public JsonFragmentExpression jsonAt(PropTypeColumn<?> document, JsonPath path) {
+        return new Fragment(document, path);
+    }
+
+    public StringTypeExpression<String> jsonTextAt(PropTypeColumn<?> document, JsonPath path) {
+        return new StringTypeExpressionImpl<>(context, anchor, null, jsonRead(document, path, JsonResult.TEXT), String.class);
+    }
+
+    public BooleanTypeExpression<Boolean> jsonBooleanAt(PropTypeColumn<?> document, JsonPath path) {
+        return new BooleanTypeExpressionImpl<>(context, anchor, null, jsonRead(document, path, JsonResult.BOOLEAN), Boolean.class);
+    }
+
+    public BooleanTypeExpression<Boolean> jsonExists(PropTypeColumn<?> document, JsonPath path) {
+        return new BooleanTypeExpressionImpl<>(context, anchor, null, jsonRead(document, path, JsonResult.EXISTS), Boolean.class);
+    }
+
+    private Function<SQLFunc, SQLFunction> jsonRead(PropTypeColumn<?> document, JsonPath path, JsonResult result) {
+        requireSource(document);
+        Objects.requireNonNull(path, "path");
+        var access = runtime.getService(JsonPathAccess.class);
+        return factory -> {
+            var rooted = factory.anySQLFunction("{0}", args -> args.sqlFunc(document.getTable(), operand(document, factory)));
+            var node = access.fragment(factory, rooted, path);
+            SQLFunction selected = switch (result) {
+                case FRAGMENT -> node;
+                case TEXT -> access.scalarText(factory, node);
+                case SERIALIZED -> access.serializedText(factory, node);
+                case EXISTS ->
+                        factory.anySQLFunction("(CASE WHEN {0} IS NOT NULL THEN TRUE ELSE FALSE END)", args -> args.sqlFunc(node));
+                case BOOLEAN ->
+                        factory.anySQLFunction("(CASE {0} WHEN 'true' THEN TRUE WHEN 'false' THEN FALSE ELSE NULL END)",
+                                args -> args.sqlFunc(access.serializedText(factory, node)));
+            };
+            return new ScopedFunction(selected, AggregationType.UNKNOWN, true, document.getTable());
+        };
+    }
+
+    private enum JsonResult {FRAGMENT, TEXT, SERIALIZED, EXISTS, BOOLEAN}
+
+    private final class Fragment extends AnyTypeExpressionImpl<String> implements JsonFragmentExpression {
+        private final PropTypeColumn<?> document;
+        private final JsonPath path;
+
+        private Fragment(PropTypeColumn<?> document, JsonPath path) {
+            super(context, anchor, null, jsonRead(document, path, JsonResult.FRAGMENT), String.class);
+            this.document = document;
+            this.path = path;
+        }
+
+        @Override
+        public StringTypeExpression<String> asText() {
+            return new StringTypeExpressionImpl<>(context, anchor, null, jsonRead(document, path, JsonResult.SERIALIZED), String.class);
+        }
     }
 
     public DateTimeTypeExpression<LocalDate> truncateDate(PropTypeColumn<LocalDate> source, TruncationUnit unit) {
@@ -233,6 +291,9 @@ public final class ProDsl {
     private BooleanTypeExpression<Boolean> comparison(PropTypeColumn<?> left, PropTypeColumn<?> right, boolean distinct) {
         requireSource(left);
         requireSource(right);
+        if (left instanceof JsonFragmentExpression || right instanceof JsonFragmentExpression) {
+            throw new IllegalArgumentException("JSON values require explicit text comparison or native JSON operators");
+        }
         var templates = runtime.getService(NullSafeComparison.class);
         String template = distinct ? templates.distinct() : templates.equal();
         return new BooleanTypeExpressionImpl<>(context, anchor, null, factory -> {

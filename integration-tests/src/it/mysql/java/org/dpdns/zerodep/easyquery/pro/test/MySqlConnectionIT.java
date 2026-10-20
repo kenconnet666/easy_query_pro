@@ -24,5 +24,6 @@ class MySqlConnectionIT {
         NullIfDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
         TemporalTruncationDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
         TextDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+        JsonPathDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
     }
 }

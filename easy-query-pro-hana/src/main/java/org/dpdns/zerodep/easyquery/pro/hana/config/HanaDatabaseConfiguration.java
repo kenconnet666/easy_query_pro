@@ -47,7 +47,8 @@ public final class HanaDatabaseConfiguration implements DatabaseConfiguration {
     public void configure(ServiceCollection services) {
         services.addService(SQLKeyword.class, HanaSQLKeyword.class);
         services.addService(ExpressionFactory.class, HanaExpressionFactory.class);
-        services.addServiceFactory(SQLFunc.class, provider -> new HanaSQLFunc(options));
+        services.addService(HanaOptions.class, options);
+        services.addServiceFactory(SQLFunc.class, provider -> new HanaSQLFunc(provider.getService(HanaOptions.class)));
         services.addService(JdbcSQLExecutor.class, HanaJdbcSQLExecutor.class);
         services.addService(JdbcTypeHandlerManager.class, HanaJdbcTypeHandlerManager.class);
         services.addService(EntityExpressionPrepareExecutor.class, HanaInsertExecution.class);

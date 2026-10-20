@@ -270,6 +270,20 @@ U06 的 LocalDate/LocalDateTime 入口通过明确的日期粒度校验与静态
 
 本地 HANA `HanaTextDslIT,HanaConnectionIT` 共 4 项通过，同次 62 个离线测试通过；MySQL/PostgreSQL 共享契约共 2 项通过，同次 9 项选定离线/编译检查通过。消费者编译现有 7 个正例、14 个负例。IDEA 格式化、编译和关键文件检查通过；MCP 确认 HANA/MySQL 本轮 fixture 表遗留为 0，两份诊断日志清理，保留标准报告与持久数据库。
 
+## 结构化 JSON 路径与结果类型
+
+提交 `f0647c229019e261f4a3456ee43da2f34054d340` 的 [CI 39349207501](https://github.com/kenconnet666/easy_query_pro/actions/runs/39349207501) 已通过全部五个强制任务，包含有界 Unicode 类型及三库 DDL/CAST。
+
+新增不可变 JsonPath（字面 key/非负 index，最多 100 段）、JsonFragmentExpression，以及 jsonAt/jsonTextAt/jsonBooleanAt/jsonExists。JSON 片段需要显式 asText 才能用字符串方法；存在性、JSON null、SQL NULL、缺失、布尔类型与父节点不匹配都有独立契约。三库实现复用上游 SQLFunction、绑定与结果类型，不替换整套 SQLFunc，也不新建查询/事务执行器。
+
+原生探测确认 HANA 路径不能绑定（257），顶层标量不能直接作为原生 JSON 根（293），且路径有隐式展开差异。新增显式部署的 EQP_JSON_DOCUMENT，以 SQLScript NCLOB 参数和原生 JSON_TABLE 检查单值并筛选种类；原有 HANA 成员转义、JSON_QUERY/JSON_VALUE 与容量逻辑继续复用。HanaOptions 统一注册成当前 client 的不可变服务，避免基础层与增强层配置不同。
+
+MySQL 前缀类型检查抑制自动数组包装；PostgreSQL 经 JSON 类型读取，避免 JSONB 标量原生 `-> 0` 返回自身，并保留 JSON/JSONB 的区别。额外的 NO_BACKSLASH_ESCAPES 用例复现 Connector/J 客户端预处理把字符串变成 binary 十六进制的行为；文档和路径显式转 utf8mb4 后，两种预处理模式均通过，未更改应用会话模式或全局 String handler。
+
+本地初次 HANA 辅助函数与路径共 3 项通过，同次 71 个离线测试通过；PostgreSQL 的公共契约与 JSONB 根值专测共 2 项通过。修复编码后，MySQL 公共契约和两种预处理模式共 3 项、8 项离线测试通过。最后单独 HANA 路径契约再跑通过，同次 71 个离线测试通过。新加的字面文档参数案例由 MySQL/HANA 本地和后续 PostgreSQL CI 验证。javac 消费者检查现为 8 个正例、16 个负例。
+
+IDEA 格式化、编译和关键文件检查通过；MCP 确认本轮 HANA JSON 探测/文档/种类/路径 schema 与 PostgreSQL fixture schema 遗留均为 0。探测 Java 文件及本轮五份诊断日志已清理；标准报告与开发实例保留。HANA parser 的非标准宽松输入、输出容量、显式部署和性能边界见 [JSON 路径说明](dsl-json.md)。原生 MySQL JSON/PG JSONB 修改和完整性能/分片矩阵继续实施。
+
 ## 下一步
 
 1. 检查新提交的文本类型 CI，继续结构化 JSON path 与三库原生类型 DSL，并保持 HANA 未关闭项的跟踪。

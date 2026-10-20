@@ -59,6 +59,13 @@ class DslCompilationTest {
         compile(false, "d.value(\"hello\", CommonTypes.decimal(19, 2));");
     }
 
+    @Test
+    void jsonFragmentsRequireAnExplicitTextView() throws IOException {
+        compile(true, "JsonFragmentExpression fragment = d.jsonAt(p.name(), JsonPath.root().key(\"field\")); fragment.asText().toUpper(); d.jsonBooleanAt(p.name(), JsonPath.root()).eq(true);");
+        compile(false, "d.jsonAt(p.name(), JsonPath.root()).toUpper();");
+        compile(false, "NumberTypeExpression<Integer> number = d.jsonAt(p.name(), JsonPath.root());");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
@@ -66,6 +73,7 @@ class DslCompilationTest {
                 import com.easy.query.core.proxy.extension.functions.type.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
                 import org.dpdns.zerodep.easyquery.pro.dsl.TruncationUnit;
+                import org.dpdns.zerodep.easyquery.pro.dsl.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.type.*;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;

@@ -5,6 +5,8 @@ import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExtensionInstaller;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.JsonPathAccess;
+import org.dpdns.zerodep.easyquery.pro.hana.config.HanaOptions;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaSQLKeyword;
 
 public final class HanaExtensions {
@@ -17,5 +19,6 @@ public final class HanaExtensions {
                 new NullSafeComparison("(CASE MAP({0},{1},1,0) WHEN 1 THEN TRUE ELSE FALSE END)",
                         "(CASE MAP({0},{1},1,0) WHEN 1 THEN FALSE ELSE TRUE END)"));
         services.addService(TemporalTruncation.class, new HanaTemporalTruncation());
+        services.addServiceFactory(JsonPathAccess.class, provider -> new HanaJsonPathAccess(provider.getService(HanaOptions.class)));
     }
 }

@@ -63,6 +63,8 @@ builder.useDatabaseConfigure(new HanaDatabaseConfiguration(options));
 
 ## JSON 数组长度的显式部署
 
+结构化路径所需的节点检查函数单独使用 `HanaJsonSupport.createDocumentFunctionSql` 部署，详见 [JSON 路径说明](dsl-json.md)。它与本节数组长度函数共享 jsonSupportSchema 配置，但不会自动创建或覆盖任何函数。
+
 HANA 2.0 的 `JSON_TABLE` 无法关联外层表别名，不能直接作为逐行数组长度的子查询。适配器提供一个小型 SQLScript 标量函数，用函数参数传入文档，在数据库内调用原生 JSON parser 并计数；不会把每行拉到 JVM 解析或增加网络往返。
 
 部署到应用拥有的 schema：
