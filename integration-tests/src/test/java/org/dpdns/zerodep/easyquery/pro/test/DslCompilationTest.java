@@ -75,6 +75,16 @@ class DslCompilationTest {
         compile(false, "PgJsonbExpression<String> jsonb = PgSqlDsl.of(p).value(JsonInput.encoded(\"{}\"), PgSqlTypes.jsonb()).asText();");
     }
 
+    @Test
+    void mysqlNativeJsonKeepsBusinessTypesAndDoesNotAcceptPlainText() throws IOException {
+        compile(true, "MySqlJsonExpression<String> json = MySqlDsl.of(p).value(JsonInput.encoded(\"{}\"), MySqlTypes.json()); json.containsAllPaths(JsonPath.root()).eq(true); json.setPath(JsonPath.root(), JsonInput.jsonNull()).asText().toUpper();");
+        compile(true, "MySqlJsonExpression<org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload> json = MySqlDsl.of(m).view(m.payload(), MySqlTypes.json()); m.payload().set(json.setPath(JsonPath.root().key(\"count\"), JsonInput.encoded(\"3\")));");
+        compile(false, "MySqlDsl.of(p).value(\"{}\", MySqlTypes.json());");
+        compile(false, "MySqlDsl.of(p).value(JsonInput.jsonNull(), MySqlTypes.json()).setPath(JsonPath.root(), \"null\");");
+        compile(false, "MySqlDsl.of(p).value(JsonInput.jsonNull(), MySqlTypes.json()).toUpper();");
+        compile(false, "MySqlDsl.of(p).value(JsonInput.jsonNull(), PgSqlTypes.jsonb());");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
@@ -85,11 +95,14 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.dsl.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.mysql.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.type.*;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgJsonRecordProxy;
-                final class Consumer { void use(ProDsl d, TestProductProxy p, TestEventProxy e, PgJsonRecordProxy j) { %s } }
+                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.MySqlJsonRecordProxy;
+                final class Consumer { void use(ProDsl d, TestProductProxy p, TestEventProxy e, PgJsonRecordProxy j, MySqlJsonRecordProxy m) { %s } }
                 """.formatted(body));
         var compiler = ToolProvider.getSystemJavaCompiler();
         assertNotNull(compiler, "Consumer compilation requires a JDK");

@@ -302,9 +302,23 @@ JSON 与 JSONB 使用不同的描述和返回接口；JSON 通过显式 toJsonb 
 
 IDEA 格式化、编译和关键文件检查通过；MCP 确认 eqp_json_* fixture schema 遗留为 0。三份诊断日志清理，保留标准报告与开发实例。说明见 [PostgreSQL JSON/JSONB](pgsql-json.md)。本次与此前独立的 ExpressionScope 整理提交一起推送，完整三库/平台回归交给当前 CI；MySQL 原生 JSON 与 PG 数组/interval 等继续推进。
 
+## MySQL JSON 原生类型
+
+提交 `d12167248503a7050ed8ca78fbfc98f9f7eef998` 的 [CI 39364347947](https://github.com/kenconnet666/easy_query_pro/actions/runs/39364347947) 已通过全部五个强制任务，包括 PostgreSQL JSON/JSONB 与完整 HANA 回归。显式方言检查、共享 JSON 业务 fixture/MySQL 测试数据源分别整理为独立提交。
+
+MySqlTypes.json/MySqlDsl 复用 NativeJsonType、AbstractJsonExpression、ExpressionScope 与列 SQL 转换 SPI。实现选定的包含、单/多路径存在、按顺序修改及删除；通过 MySqlJsonChange 序列保留重复路径和父子先后关系。JSON 文档与路径显式按 utf8mb4 绑定，业务结果保留 T，普通 String handler 不变。
+
+MySQL 专属方法保留原生 NULL、数组自动包装和缺失父节点规则，公共读取仍采用 JsonPath 的严格导航。离线错误库测试最初因错误 fixture 的未注册转换器先失败，改为使用无方言映射的基础实体，确保测试真正到达方言检查。
+
+本地 4 组 MySqlJsonDslIT 通过，覆盖普通/NO_BACKSLASH_ESCAPES 和客户端/服务端预处理的笛卡尔组合；同次 10 个离线/编译测试通过。业务对象写入与 SQL 内修改、无重复序列化、回滚、双重数组删除、父子顺序修改、绑定中英文/补充字符/引号/反斜杠及 SQL NULL/JSON null 均有真实证据。消费者编译现在含 12 个正例和 23 个负例。
+
+IDEA 格式化和构建通过；批量格式化曾被 IDE 的新增文件 Git 提示阻塞，已通过电脑控制关闭提示并确认执行完成。MCP 确认本轮 eqp_mysql_json_* 测试表遗留为 0，自建诊断日志清理，持久数据库与标准测试报告保留。
+
+使用与限制见 [MySQL JSON](mysql-json.md)。继续由 CI 执行三库与平台完整回归，PG 数组/interval 和后续 G4–G7 尚未完成。
+
 ## 下一步
 
-1. 检查新提交的文本类型 CI，继续结构化 JSON path 与三库原生类型 DSL，并保持 HANA 未关闭项的跟踪。
-2. 继续收敛 G0 高风险接口：计算视图正式查询源和参数绑定 SPI、类型转换器以及编译负例。
-3. 完成函数审计、类型桥接的转换器/编译负例与 SQL 组合失败覆盖，明确不等价能力与剩余风险。
-4. 按依赖进入完整 HANA 函数/查询/类型实现，再实施通用 DSL 与三库类型增强。
+1. 检查 MySQL JSON 提交的 CI，继续 PostgreSQL 数组的元素类型、绑定/读取、下界和资源释放。
+2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
+3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
+4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。

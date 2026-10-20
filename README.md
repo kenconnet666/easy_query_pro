@@ -38,6 +38,7 @@ HANA 使用独立 Docker 部署和持久卷，内存上限 12 GiB、无额外 sw
 - [数据库端日期截断及历法边界](docs/dsl-temporal.md)
 - [结构化 JSON 路径、结果类型与 HANA 部署](docs/dsl-json.md)
 - [PostgreSQL JSON/JSONB 原生视图与列映射](docs/pgsql-json.md)
+- [MySQL JSON 原生视图、路径修改与列映射](docs/mysql-json.md)
 - [开发环境与运行方式](docs/development.md)
 - [分包与设计方案](docs/architecture.md)
 - [实施计划与验证条件](docs/plan.md)
