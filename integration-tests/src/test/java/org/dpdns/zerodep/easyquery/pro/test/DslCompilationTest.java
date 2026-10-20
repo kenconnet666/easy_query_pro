@@ -188,6 +188,8 @@ class DslCompilationTest {
                 import com.easy.query.core.proxy.extension.functions.type.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
                 import org.dpdns.zerodep.easyquery.pro.dsl.window.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.mysql.window.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.window.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.spi.*;
                 import org.dpdns.zerodep.easyquery.pro.test.extension.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.TruncationUnit;
@@ -229,5 +231,14 @@ class DslCompilationTest {
         compile(true, "com.easy.query.core.proxy.extension.functions.type.filter.NumberFilterTypeExpression<Double> population = d.variancePopulation(p.amount()); NumberTypeExpression<Double> filtered = population.filter(() -> p.id().gt(0)); NumberTypeExpression<Double> window = d.over(d.standardDeviationSample(p.amount()), d.window().orderBy(p.id()));");
         compile(false, "d.variancePopulation(p.name());");
         compile(false, "NumberTypeExpression<BigDecimal> invalid = d.standardDeviationPopulation(p.amount());");
+    }
+
+    @Test
+    void nativeWindowFactoriesPreserveSelfAndRejectOtherIntervalTypes() throws IOException {
+        compile(true, "var mysql = d.window(MySqlWindowSpec::create).orderBy(p.id()).rangeNumericBetween(RangeBoundary.preceding(1), RangeBoundary.currentRow()); var pg = d.window(PgWindowSpec::create).orderBy(p.amount()).rangeNumericBetween(RangeBoundary.preceding(BigDecimal.ONE), RangeBoundary.currentRow());");
+        compile(true, "ReportPgWindow frame = d.window(ReportPgWindow::new).partitionBy(p.name()).orderBy(e.eventDate()).rangeIntervalBetween(RangeBoundary.preceding(PgInterval.of(1,0,0)),RangeBoundary.currentRow()).calendarDays(2);");
+        compile(false, "PgSqlDsl.of(p).nativeWindow().rangeIntervalBetween(RangeBoundary.preceding(PgInterval.positiveInfinity()),RangeBoundary.currentRow());");
+        compile(false, "MySqlDsl.of(p).nativeWindow().rangeIntervalBetween(RangeBoundary.preceding(PgInterval.of(0,1,0)),RangeBoundary.currentRow());");
+        compile(false, "d.window(scope -> \"invalid\");");
     }
 }

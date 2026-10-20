@@ -17,6 +17,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.MySqlJsonExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationType;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationExpressions;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.window.MySqlWindowSpec;
 
 import java.time.Duration;
 
@@ -36,6 +37,10 @@ public class MySqlDsl extends ProDsl {
 
     public static MySqlDsl of(ProxyEntity<?, ?> entity) {
         return new MySqlDsl(entity);
+    }
+
+    public MySqlWindowSpec<?> nativeWindow() {
+        return MySqlWindowSpec.create(scope);
     }
 
     public <T> MySqlDurationExpression<T> view(PropTypeColumn<T> source, MySqlDurationType type) {

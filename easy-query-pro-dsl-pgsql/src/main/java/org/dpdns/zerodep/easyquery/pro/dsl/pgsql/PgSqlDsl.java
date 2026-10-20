@@ -21,6 +21,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgInterval;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalType;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalExpressions;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.window.PgWindowSpec;
 
 import java.util.Arrays;
 import java.util.List;
@@ -43,6 +44,10 @@ public class PgSqlDsl extends ProDsl {
 
     public static PgSqlDsl of(ProxyEntity<?, ?> entity) {
         return new PgSqlDsl(entity);
+    }
+
+    public PgWindowSpec<?> nativeWindow() {
+        return PgWindowSpec.create(scope);
     }
 
     public <T> PgIntervalExpression<T> view(PropTypeColumn<T> source, PgIntervalType type) {

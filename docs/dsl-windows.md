@@ -51,7 +51,44 @@ var page = uniqueWindows.cloneQueryable().toPageResult(1, 20);
 
 共同 ROWS 要求 ORDER BY，支持 unbounded/current/非负 N preceding/following，并要求结束位置不早于开始位置。0 归一为 CURRENT ROW。这个限制是 HANA、MySQL、PG 的共同范围：MySQL/PG 的原生同类倒序边界可以表示空 frame，HANA 2.00.088 会拒绝，不能称其为三库一致能力。
 
-MySQL/PG 数值及时间 RANGE 属于后续原生规格；不能复用 ROWS 的零归一化与位置比较。HANA 当前基线不支持目标 RANGE，不用 ROWS 代替最近 N 天。
+MySQL/PG 的数值和时间 RANGE 使用各自的原生规格；不复用 ROWS 的零归一化与位置比较。HANA 当前基线不支持目标 RANGE，不用 ROWS 代替最近 N 天。
+
+## MySQL 与 PostgreSQL 原生 RANGE
+
+两库均通过 `nativeWindow()` 增加 `rangeNumericBetween` 和 `rangeIntervalBetween`，共同 partition/order/ROWS 继续复用。数值窗口示例：
+
+```java
+var mysql = MySqlDsl.of(p);
+var frame = mysql.nativeWindow().orderBy(p.amount())
+        .rangeNumericBetween(RangeBoundary.preceding(new BigDecimal("0.10")), RangeBoundary.currentRow());
+var total = mysql.over(p.amount().sumBigDecimal(), frame);
+```
+
+整数偏移绑定为 Long，精确小数保留 BigDecimal。PG 整型键要求整数偏移，NUMERIC 键可以使用小数偏移；MySQL 可对整型键使用小数距离。当前有限偏移的键限定为已知整型/精确数值，以及 LocalDate/LocalDateTime；Object/未知业务映射先作明确 nativeCast。浮点键和浮点偏移暂未开放，包括有限浮点数与 NaN/Infinity。
+
+时间窗口分别使用以下类型，保留日期与日历含义：
+
+```java
+var mysql = MySqlDsl.of(p);
+var mysqlDays = mysql.nativeWindow().orderBy(p.day()).rangeIntervalBetween(
+        RangeBoundary.preceding(new MySqlRangeInterval(2, ChronoUnit.DAYS)), RangeBoundary.currentRow());
+```
+
+在 PostgreSQL 查询中使用对应入口：
+
+```java
+var pg = PgSqlDsl.of(p);
+var pgMonth = pg.nativeWindow().orderBy(p.day()).rangeIntervalBetween(
+        RangeBoundary.preceding(PgInterval.of(1, 0, 0)), RangeBoundary.currentRow());
+```
+
+MySQL 使用 INTERVAL 参数加受控单位，与 TIME 存储的 Duration 无关；固定 Duration 可以精确转换成微秒，不能舍弃纳秒尾部。PG 使用既有 PgInterval handler，需要按 PG 扩展的常规步骤调用 `PgSqlExtensions.configureTypeHandlers`。只接收非负 Finite 分量，Infinity 在泛型层排除，月份不换算为三十天。
+
+有有限 offset 时要求一个实际排序项；零 PRECEDING/FOLLOWING 保留原类别，同类倒序边界可合法返回空窗口。相同排序值作为 peer group 一起进入 RANGE，降序的前后方向交给数据库解释。显式 NULL 排序、时区时间、GROUPS/EXCLUDE 尚未开放；当前遵循各库默认 NULL 排序。
+
+`MySqlWindowSpec<S>`、`PgWindowSpec<S>` 都可以继承，应用实现 recreate 保留 S。共同挂载方法仅要求返回 WindowSpec 子类，不重复限制其 SELF，因此既接受 `pro.window(PgWindowSpec::create)`，也接受 `pro.window(ReportPgWindow::new)`。
+
+实库验收覆盖 MySQL 客户端/服务端 prepare（禁止静默降级）、PG 普通/强制 prepare；重复值、NULL 键、精确小数、零和空 frame、升降序、日期间隙、闰月边界、微秒距离、CTE/count/page 及参数克隆均有固定期望值。
 
 MySQL 8.4.11 对 `(SELECT 7 AS n)` 常量单行来源的 `ROWS BETWEEN 1 FOLLOWING AND 1 FOLLOWING` 存在预执行优化差异：原生 COUNT 返回 1、FIRST/MIN 等返回 7，执行计划仅为 `Rows fetched before execution`。两行 UNION 的末行以及单行 JSON_TABLE 来源都执行正常窗口、得到空 frame。该结果已通过独立原生 SELECT/EXPLAIN 核实；本包不加入 SQL 补偿。空 frame 回归采用非恒定输入并检查最后一行。
 

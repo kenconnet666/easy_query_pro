@@ -507,3 +507,13 @@ A03 新增总体/样本方差及标准差四个入口，复用 NumberFilterTypeE
 只读审查指出统计自身的 UNKNOWN 枚举和 FILTER 的 CASE 可以掩盖非法嵌套。新增负例在三库离线客户端复现后，将原输入校验放到 FILTER 包装之前，并识别明确声明的 Pro 聚合；不扫描最终 SQL 或重写上游未知包装。普通计算样本继续交原 SQL 表达式链，跨分片拒绝保留。
 
 32 个离线/消费者检查和 9 个三库报表用例通过；补充 HAVING 后，12 个统计离线检查和 3 个统计 IT 再次通过。IDEA 构建成功，三库本轮表/schema 遗留为 0，失败探测日志在记录证据后清理。当前统计提交的完整 CI 异步执行，继续推进原生 RANGE，结果见 [统计说明](dsl-statistics.md)。
+
+## 原生 RANGE 与参数化距离
+
+统计提交 `5ffebe2c771e80540dcca910b766fb2113a44fd9` 已通过 [CI 39437039654](https://github.com/kenconnet666/easy_query_pro/actions/runs/39437039654) 的五个强制任务。MySQL/PG 新增原生窗口规格，共用 RangeBoundary/RangeFrame 语法与 WindowSpec 状态，各自负责数值或时间偏移的类型和参数形式。
+
+保留零偏移类别，允许同类别倒序形成空 frame；PG 整数 offset 使用 BIGINT，精确小数使用 NUMERIC；MySQL 采用原生参数标记或 INTERVAL 参数加受控单位。时间范围区分自然月、自然日和固定微秒。有限 offset 的键与参数保持明确范围，不自动接受浮点、时区时间或混合正负 interval。默认工厂的泛型挂载放宽到 WindowSpec 子类，SELF 仍由规格自身约束，消费者可以继续保留具体扩展方法。
+
+27 个离线/消费者检查与 4 个实库参数模式用例通过。实库覆盖重复值、精确小数、NULL 键、零/空 frame、升降序、日期间隙、闰月及微秒、CTE/count/page 和 SQL/参数克隆。MySQL 两种 prepare 均禁用不支持语句的静默降级，PG 同时验证普通和强制准备；这些用例仅使用常量关系，没有创建数据库对象。补充禁止的无界组合与负 interval 后，7 个范围校验用例再次通过，IDEA 构建通过。
+
+用户要求完善中文注释后，先在新的 RANGE 值对象、方言规格和共同语法层补齐类型、扩展与错误契约；已有映射、窗口、统计与 HANA 关键生命周期的注释继续单独整理。完整 RANGE CI 异步提交，说明见 [窗口文档](dsl-windows.md)。

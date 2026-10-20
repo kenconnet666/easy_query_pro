@@ -106,7 +106,7 @@ public class ProDsl {
         return new RowsWindowSpec(scope);
     }
 
-    public <W extends WindowSpec<W>> W window(Function<? super ExpressionScope, ? extends W> factory) {
+    public <W extends WindowSpec<?>> W window(Function<? super ExpressionScope, ? extends W> factory) {
         return Objects.requireNonNull(Objects.requireNonNull(factory, "factory").apply(scope), "factory result");
     }
 

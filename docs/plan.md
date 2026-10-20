@@ -42,7 +42,7 @@
 | G4.5 | MySQL JSON、PG JSONB 与 PG SQL 数组的完整选定操作 | G4.2、G4.4 | MySQL JSON、PG JSON/JSONB 和一维数组选定操作已有实库证据；完整类型组合、分片及性能继续验收 |
 | G4.6 | 编译负例、跨 client/错库负例、组合、类型传播与资源释放 | G4.3–G4.5 | 共同/原生逐行表达式、三库单/双 DataSource、Draft 分类、路由隔离和回滚已验证；派生关系及完整业务组合继续实施 |
 | G4.7 | C04 泛型挂载、开放 DSL/默认 SPI、同族表达式重建与 SELF、clone 保留定制 | G4.6 | facade/表达式泛型挂载、共同能力继承、selector/关系工厂、CTE 克隆及 MySQL JSON/PG interval SELF 已验证；其余同族和窗口规格继续实施 |
-| G5.1 | 共同 ROWS、无 partition 的全局窗口与 MySQL/PG RANGE；复用已有函数 | G4.6、G4.7 | 共同 ROWS/全局窗口与报表链已实现并实库验证；映射组合收敛与原生 RANGE 继续实施 |
+| G5.1 | 共同 ROWS、无 partition 的全局窗口与 MySQL/PG RANGE；复用已有函数 | G4.6、G4.7 | 共同 ROWS/全局窗口已通过 CI；两库整数/精确小数及日期/微秒 RANGE 已通过实库和编译边界，待当前提交 CI 与完整报表组合 |
 | G5.2 | 三库全文检索、索引 fixture、模式与评分作用域 | G4.6 | 待实施 |
 | G5.3 | HANA 邻接树/森林、祖先/后代、深度、顺序、循环/孤儿策略 | G2.5、G4.6 | 待实施 |
 | G5.4 | HANA 参数化计算视图与表函数的真实 fixture、查询、绑定和组合 | G0.3、G4.6 | 待实施 |
