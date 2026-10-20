@@ -9,6 +9,7 @@ export {
   DataType,
   types,
   type Codec,
+  type CodecIdentity,
   type ValueMapping,
   type SqlKind,
 } from "./schema/data-type.js";

@@ -39,3 +39,13 @@ HANA Node CI 与既有 Java HANA/HDI 契约共用同一受限容器和临时凭�
 公开 DataType 构造入口的可空参数现在受值泛型约束，非空 T 不能启用 SQL NULL；storage 参数统一在构造边界校验，避免自定义类型绕过标准工厂产生非法长度或精度。schema、投影、来源与扩展命名空间拒绝 symbol/non-enumerable 键，同时保留类型负例，避免类型中存在而 SQL 结果缺失的字段。
 
 DataType/Column/Table 的基类不再提前冻结派生实例，允许扩展类初始化自身字段；自身拥有的描述做独立不可变快照。orderBy 同样快照排序项，调用方修改旧的 Order 不会反向改变已创建的查询。26 个单元用例和类型正负例通过，完整矩阵继续交 CI。
+
+## 2026-10-21：CTE、UNION 与 HANA 三值逻辑
+
+8f60c20d4b9436afba6537a1337ec6d952973431 的 [TS CI 39470891563](https://github.com/kenconnet666/easy_query_pro/actions/runs/39470891563) 与 [Java/三库 CI 39470891593](https://github.com/kenconnet666/easy_query_pro/actions/runs/39470891593) 全部成功，后者包含新增的 HANA Node 契约。
+
+CTE 复用冻结投影与来源身份，编译先收集依赖再按最终 SQL 绑定参数。WITH 始终位于顶层，count 不在派生表内部生成 WITH。UNION 每个槽核对 key/顺序/storage/codec，结果是一个新来源，外层不能继续捕获左分支的表列。结构参照 [Kysely 的集合操作](https://github.com/kysely-org/kysely/blob/master/src/parser/set-operation-parser.ts) 和 [Drizzle 的字段顺序检查](https://github.com/drizzle-team/drizzle-orm/blob/main/drizzle-orm/src/pg-core/query-builders/select.ts)，没有引入这些库作为依赖。
+
+审查复现同一个业务 mapping 叠在不同底层 codec 时，旧的最终 identity 比较会无声读错值。身份现保留完整映射链，nullable 不改链；不同链拒绝 UNION，相同链的可空性按并集处理。
+
+本地三库验证依赖 CTE、自连接、CTE 外层 count/分页、分支 limit 与外层 limit、UNION ALL 重复、UNION 去重（包括 NULL）、混合集合树、精确金额与 BIGINT。HANA 首次因 ORDER BY 中裸 IS NULL 报 SQL 语法错误；修复在编译器的条件/标量边界，值位置用三值 CASE，WHERE/JOIN 的 BOOLEAN 标量显式比较 TRUE。再次三库验证通过，比较投影分别返回 true/false/null，未把 UNKNOWN 强行归为 false。36 个单元用例与类型负例覆盖完整链兼容、字段异序、作用域捕获和最终参数顺序。测试自有表均经 finally 删除，持久实例保持运行。

@@ -1,7 +1,8 @@
 /** SQL 类型族与 JavaScript 值类型分别保存，decimal 的 string 载体不会获得文本列的 API。 */
 export type SqlKind = "integer" | "bigint" | "decimal" | "text" | "boolean" | "json";
+export type CodecIdentity = string | symbol | readonly (string | symbol)[];
 export interface Codec<T> {
-  readonly identity: string | symbol;
+  readonly identity: CodecIdentity;
   encode(value: T): unknown;
   decode(value: unknown): T;
 }
@@ -33,7 +34,7 @@ export class DataType<T, K extends SqlKind = SqlKind> {
     validateStorage(storage);
     this.storage = Object.freeze({ ...storage });
     this.codec = Object.freeze({
-      identity: codec.identity,
+      identity: Array.isArray(codec.identity) ? Object.freeze([...codec.identity]) : codec.identity,
       encode: codec.encode.bind(codec),
       decode: codec.decode.bind(codec),
     });
@@ -63,6 +64,13 @@ export class DataType<T, K extends SqlKind = SqlKind> {
     return new DataType<T | null, K>(this.storage, this.codec as Codec<T | null>, true);
   }
 
+  /** 完整映射链都是读取契约的一部分，不能只比较最外层业务对象的 identity。 */
+  hasSameCodec(other: AnyDataType): boolean {
+    const left = codecPath(this.codec.identity);
+    const right = codecPath(other.codec.identity);
+    return left.length === right.length && left.every((part, index) => part === right[index]);
+  }
+
   /** 映射复用底层 codec；数据库值先正规化，再进入业务对象转换。identity 用于 UNION 契约核查。 */
   map<V>(
     mapping: ValueMapping<V, Exclude<T, null>>,
@@ -71,13 +79,17 @@ export class DataType<T, K extends SqlKind = SqlKind> {
     return new DataType<V | (null extends T ? null : never), K>(
       this.storage,
       {
-        identity: mapping.identity,
+        identity: Object.freeze([...codecPath(source.codec.identity), mapping.identity]),
         encode: (value) => source.encode(mapping.to(value as V)),
         decode: (value) => mapping.from(source.decode(value) as Exclude<T, null>),
       },
       this.acceptsNull as null extends V | (null extends T ? null : never) ? boolean : false,
     );
   }
+}
+
+function codecPath(identity: CodecIdentity): readonly (string | symbol)[] {
+  return typeof identity === "string" || typeof identity === "symbol" ? [identity] : identity;
 }
 
 function validateStorage(type: StorageType): void {

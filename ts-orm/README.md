@@ -4,7 +4,7 @@
 
 当前处于实现阶段，完成标准和状态见 [执行计划](docs/plan.md)。Java 增强包由独立子代理继续推进；此目录使用自己的 Node/TypeScript 工程，避免影响 Maven 模块。
 
-当前基础已通过类型正负例、23 个行为用例以及 PostgreSQL/MySQL/HANA 的真实查询和事务验证；证据与尚未完成的能力见 [验证记录](docs/evidence.md)。仍在持续完善组合查询、写入与报表能力，当前包未发布。
+当前基础已通过类型正负例、36 个行为用例以及 PostgreSQL/MySQL/HANA 的真实查询和事务验证；证据与尚未完成的能力见 [验证记录](docs/evidence.md)。仍在持续完善组合查询、写入与报表能力，当前包未发布。
 
 设计边界：
 
@@ -55,11 +55,39 @@ await pool.end(); // 池属于应用，ORM 仅借用并归还连接
 
 schema 声明不执行 DDL。查询需要明确 select；同一个 base 可以独立派生多个 where 分支。as() 暴露新的关系字段并保留 codec，外层表达式的业务子类方法需显式重新 mount。count 使用派生查询保留 DISTINCT/limit 等语义，目前不做删投影优化。
 
+## CTE 与集合查询
+
+```ts
+const eligible = db
+  .from({ u: users })
+  .where(({ u }) => u.id.gt(0))
+  .select(({ u }) => ({ id: u.id, name: u.name }))
+  .asCte("eligible_users");
+const first = db
+  .from({ e: eligible })
+  .where(({ e }) => e.id.lte(100))
+  .select(({ e }) => ({ id: e.id, name: e.name }));
+const second = db
+  .from({ e: eligible })
+  .where(({ e }) => e.id.gt(100))
+  .select(({ e }) => ({ id: e.id, name: e.name }));
+const combined = db
+  .from({ result: first.unionAll(second) })
+  .orderBy(({ result }) => result.id.asc())
+  .select(({ result }) => ({ id: result.id, name: result.name }));
+```
+
+CTE 定义按依赖顺序在一个顶层 WITH 中生成；同一定义反复引用只声明一次，每次引用仍有独立别名。当前共同能力为非递归 CTE，同名不同定义、循环和遮蔽实体表会明确拒绝。
+
+union/unionAll 产出一个新来源，后续查询通过 from 绑定结果列。两侧投影必须有相同字段和顺序、SQL 存储描述及完整 codec 映射链；可空性自动合并。分支的排序/分页与结果的排序/分页分别保留。HANA 的 JSON 当前按 NCLOB 存储，不能用于 UNION 去重。
+
 ## 类型与扩展边界
 
 INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字符串。NULL 在业务 codec 之前处理；nullable().map() 的静态结果仍包含 null。undefined 不等于 SQL NULL。
 
 扩展通过 createDatabase 的 extensions 或 withExtensions 安装，namespace 具体类型在查询和事务中保留。mount(factory) 返回工厂的具体表达式类型。函数 renderer 返回 sqlFragment 结构节点，编译器按最终顺序绑定值；普通值先通过 valueOf(value, type)，标识符使用 identifier，不能把用户值放进静态 SQL 文本。
+
+原生函数返回 SQL 条件时声明 `syntax: "predicate"`，默认是标量值。HANA 的条件在 SELECT/ORDER BY 值位置会转换成保留 NULL 的 CASE；WHERE/JOIN 中的 BOOLEAN 标量则显式比较 TRUE。renderer 不需要自己拼接这类共同转换。
 
 PostgreSQL 适配使用查询局部文本 parser，不改全局配置；binary 模式不在当前适配范围。MySQL 使用服务端预处理，并局部保留精确数值/JSON文本。HANA 使用 SAP 官方客户端的显式连接池，完整获取结果后归还连接；池重置事务状态，应用负责最终关闭池。驱动包为可选 peer，使用相应子路径时安装 pg（TS 工程还需 @types/pg）、mysql2 或 @sap/hana-client。
 

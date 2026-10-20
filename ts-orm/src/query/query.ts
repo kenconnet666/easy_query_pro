@@ -2,6 +2,7 @@ import { compileSelect, type CompiledQuery } from "../compiler/select.js";
 import { Expression, and, type Predicate } from "../expression/expression.js";
 import { freezeNode } from "../expression/node.js";
 import { recordEntries, type NoSymbolKeys } from "../internal/record.js";
+import { setSource, type CompatibleSelection, type SetSelection } from "./set-operation.js";
 import type { Session } from "../execution/session.js";
 import type { Columns, Column, Table } from "../schema/table.js";
 import { validateName } from "../schema/table.js";
@@ -94,6 +95,7 @@ export class Query<S extends Scope, P extends Selection | never, E> {
       extensions,
       session,
       Object.freeze({
+        kind: "select",
         owner: session.owner,
         relations: Object.freeze(bound.relations),
         projection: Object.freeze([]),
@@ -222,6 +224,25 @@ export class Query<S extends Scope, P extends Selection | never, E> {
     if (!this.state.projection.length)
       throw new TypeError("Select before creating a derived source");
     return new DerivedSource(this.state);
+  }
+
+  asCte(this: [P] extends [never] ? never : Query<S, P, E>, name: string): DerivedSource<P> {
+    return this.as().asCte(name);
+  }
+
+  /** 集合运算产生新关系，后续过滤/排序显式从结果列开始，不泄漏左分支的表作用域。 */
+  union<OS extends Scope, Q extends Selection, OE>(
+    this: [P] extends [never] ? never : Query<S, P, E>,
+    other: Query<OS, Q, OE> & CompatibleSelection<P, Q>,
+  ): DerivedSource<SetSelection<P, Q>> {
+    return setSource<P, Q>(this.state, other.state, false);
+  }
+
+  unionAll<OS extends Scope, Q extends Selection, OE>(
+    this: [P] extends [never] ? never : Query<S, P, E>,
+    other: Query<OS, Q, OE> & CompatibleSelection<P, Q>,
+  ): DerivedSource<SetSelection<P, Q>> {
+    return setSource<P, Q>(this.state, other.state, true);
   }
   compile(this: [P] extends [never] ? never : Query<S, P, E>): CompiledQuery<ResultOf<P>> {
     return compileSelect(this.state, this.session.dialect);

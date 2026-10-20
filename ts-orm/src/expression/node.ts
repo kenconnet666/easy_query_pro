@@ -12,6 +12,8 @@ export interface RelationIdentity {
 export interface FunctionDefinition {
   readonly name: string;
   readonly phase: Phase;
+  /** 条件语法与 BOOLEAN 标量不是同一种 SQL 语法，HANA 在 SELECT/ORDER BY 中需显式转换。 */
+  readonly syntax?: "value" | "predicate";
   readonly render: Readonly<Partial<Record<DialectName, (arguments_: readonly Node[]) => Node>>>;
 }
 export type BinaryOperator =

@@ -109,3 +109,22 @@ db.from({ u: users, [symbolKey]: users });
 // @ts-expect-error Extension namespaces must be preserved by runtime enumeration.
 createDatabase({ dialect: postgresDialect, extensions: { [symbolKey]: () => ({}) } });
 void nullableCustomResult;
+
+const unionLeft = base.select(({ u }) => ({ id: u.id, name: u.name }));
+const unionRight = base.select(({ u }) => ({ id: u.id.nullable(), name: u.name }));
+const unionRows = db
+  .from({ combined: unionLeft.unionAll(unionRight).asCte("combined_users") })
+  .select(({ combined }) => ({ id: combined.id, name: combined.name }));
+declare const unionRow: Awaited<ReturnType<typeof unionRows.execute>>[number];
+const unionId: number | null = unionRow.id;
+// @ts-expect-error The right branch can produce SQL NULL.
+const nonNullUnionId: number = unionRow.id;
+// @ts-expect-error Both branches must have the same selected keys.
+unionLeft.union(base.select(({ u }) => ({ id: u.id })));
+// @ts-expect-error Same keys with different value types are not compatible.
+unionLeft.union(base.select(({ u }) => ({ id: u.name, name: u.name })));
+// @ts-expect-error Unselected queries cannot become set-operation branches.
+unionLeft.unionAll(base);
+// @ts-expect-error Set results are new relations, not the left branch's old scope.
+unionLeft.unionAll(unionRight).scope.u;
+void unionId;

@@ -35,17 +35,113 @@ function required(name: string): string {
   if (value === undefined) throw new Error("Missing integration-test variable: " + name);
   return value;
 }
-async function verify(harness: Harness): Promise<void> {
-  const { driver, dialect } = harness;
-  const db = createDatabase({ dialect, driver });
-  const name = "eqts_" + randomBytes(7).toString("hex");
-  const definition = table(name, {
+function fixtureTable(name: string) {
+  return table(name, {
     id: column(types.integer()).primaryKey(),
     name: column(types.text()),
     managerId: column(types.integer()).nullable().named("manager_id"),
     amount: column(types.decimal(19, 4)),
     big: column(types.bigint()),
   });
+}
+
+async function verifyComposition(
+  db: ReturnType<typeof createDatabase>,
+  definition: ReturnType<typeof fixtureTable>,
+): Promise<void> {
+  const base = db.from({ u: definition });
+  const eligible = base
+    .where(({ u }) => u.id.gt(0))
+    .select(({ u }) => ({ id: u.id, amount: u.amount, big: u.big }))
+    .asCte("eligible_users");
+  const bounded = db
+    .from({ e: eligible })
+    .where(({ e }) => e.id.lt(4))
+    .select(({ e }) => ({ id: e.id, amount: e.amount, big: e.big }))
+    .asCte("bounded_users");
+  const repeated = db
+    .from({ a: bounded })
+    .innerJoin({ b: bounded }, ({ a, b }) => a.id.eq(b.id))
+    .orderBy(({ a }) => a.id.asc())
+    .select(({ a }) => ({ id: a.id.add(10), amount: a.amount, big: a.big }));
+  assert.deepEqual(repeated.compile().parameters, [0, 4, 10]);
+  const rows = await repeated.execute();
+  assert.deepEqual(
+    rows.map((row) => row.id),
+    [11, 12, 13],
+  );
+  assert.equal(rows[0]!.amount, "123456789012345.1200");
+  assert.equal(rows[0]!.big, 9007199254740993n);
+  assert.equal(await repeated.count(), 3n);
+  assert.equal(await repeated.limit(1, 1).count(), 1n);
+
+  const first = base
+    .where(({ u }) => u.id.lte(2))
+    .orderBy(({ u }) => u.id.asc())
+    .select(({ u }) => ({ id: u.id }))
+    .limit(1);
+  const second = base
+    .where(({ u }) => u.id.gt(1))
+    .orderBy(({ u }) => u.id.asc())
+    .select(({ u }) => ({ id: u.id }))
+    .limit(1);
+  const combined = db
+    .from({ x: first.unionAll(second) })
+    .orderBy(({ x }) => x.id.asc())
+    .select(({ x }) => ({ id: x.id }));
+  assert.deepEqual(await combined.execute(), [{ id: 1 }, { id: 2 }]);
+  assert.equal(await combined.count(), 2n);
+  assert.deepEqual(await combined.limit(1, 1).execute(), [{ id: 2 }]);
+  const all = db.from({ x: first.unionAll(first) }).select(({ x }) => ({ id: x.id }));
+  const unique = db.from({ x: first.union(first) }).select(({ x }) => ({ id: x.id }));
+  assert.equal(await all.count(), 2n);
+  assert.equal(await unique.count(), 1n);
+  // 内层先去重再与右分支保留重复，不能把混合集合树扁平化成单一运算。
+  assert.equal(
+    await db
+      .from({ x: unique.unionAll(first) })
+      .select(({ x }) => ({ id: x.id }))
+      .count(),
+    2n,
+  );
+
+  const ids = base.where(({ u }) => u.id.eq(1)).select(({ u }) => ({ value: u.id }));
+  const missing = base.where(({ u }) => u.id.eq(1)).select(({ u }) => ({ value: u.managerId }));
+  const nulls = db
+    .from({ x: ids.unionAll(missing).asCte("nullable_ids") })
+    .orderBy(({ x }) => x.value.isNull().asc())
+    .select(({ x }) => ({ value: x.value }));
+  assert.deepEqual(await nulls.execute(), [{ value: 1 }, { value: null }]);
+  assert.equal(
+    await db
+      .from({ x: missing.union(missing) })
+      .select(({ x }) => ({ value: x.value }))
+      .count(),
+    1n,
+  );
+  const booleans = await base
+    .orderBy(({ u }) => u.id.asc())
+    .select(({ u }) => ({ missing: u.managerId.isNull(), matches: u.managerId.eq(1) }))
+    .execute();
+  assert.deepEqual(booleans, [
+    { missing: true, matches: null },
+    { missing: false, matches: true },
+    { missing: false, matches: false },
+  ]);
+  assert.equal(
+    await base
+      .where(() => valueOf(true, types.boolean()))
+      .select(({ u }) => ({ id: u.id }))
+      .count(),
+    3n,
+  );
+}
+
+async function verify(harness: Harness): Promise<void> {
+  const { driver, dialect } = harness;
+  const db = createDatabase({ dialect, driver });
+  const name = "eqts_" + randomBytes(7).toString("hex");
+  const definition = fixtureTable(name);
   const insert = (
     client: typeof db,
     row: { id: number; name: string; managerId: number | null; amount: string; big: bigint },
@@ -143,6 +239,7 @@ async function verify(harness: Harness): Promise<void> {
       [valueOf("A", types.text()), valueOf("B", types.text())],
     );
     assert.equal((await base.select(() => ({ value: reordered })).first())!.value, "BAB");
+    await verifyComposition(db, definition);
     assert.deepEqual(
       await base
         .where(({ u }) => u.name.eq("x' OR 1=1 --"))

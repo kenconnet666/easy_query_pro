@@ -33,7 +33,7 @@ Query/Expr/关系引用不可变。表达式带来源身份，编译时核对作
 | T01 | schema/codec/表达式/作用域         | 无生成器推导、NULL与省略、参数类型、错来源拒绝  | 基础及类型负例通过，写入状态与更多类型继续          |
 | T02 | SELECT/JOIN/显式投影与不可变分叉   | 同源自连接、LEFT JOIN、字段重排与decoder        | 基础通过两库实测，更多JOIN/嵌套投影继续             |
 | T03 | 三库编译与驱动                     | 参数顺序、标识符引用、真实结果、连接释放        | 三库真实查询/事务通过，继续扩充复杂结果类型         |
-| T04 | 派生表/CTE/UNION与count/page       | 按输出位置映射、codec兼容、真实结果行数         | 派生/count/limit已有证据，CTE/UNION/page继续        |
+| T04 | 派生表/CTE/UNION与count/page       | 按输出位置映射、codec兼容、真实结果行数         | 派生/非递归CTE/UNION/count通过三库，page继续        |
 | T05 | INSERT/UPDATE/DELETE和事务         | 写入类型、默认/生成列、回滚、失效tx、失败释放   | 显式事务/command通过，类型化写入builder待实施       |
 | T06 | 泛型namespace与表达式factory       | 扩展隔离、方法链类型保留、明确支持方言          | namespace/mount及结构化renderer已验证，完整组合继续 |
 | T07 | 分组/HAVING/条件聚合/窗口/报表     | NULL、空集、聚合层、窗口边界、分页              | 待实施                                              |
