@@ -1,0 +1,70 @@
+# EasyQuery TypeScript ORM
+
+在 EasyQuery Pro 仓库内独立构建的 TypeScript ORM。以 EasyQuery 3.2.17 的表达式、映射、查询组合和扩展机制为主要参考，结合 TypeScript 的映射类型、类型推导和函数组合，使用显式 schema，无需注解或生成器。
+
+当前处于实现阶段，完成标准和状态见 [执行计划](docs/plan.md)。Java 增强包由独立子代理继续推进；此目录使用自己的 Node/TypeScript 工程，避免影响 Maven 模块。
+
+当前基础已通过类型正负例、23 个行为用例以及 PostgreSQL/MySQL 的真实查询和事务验证；证据与尚未完成的能力见 [验证记录](docs/evidence.md)。HANA 当前只有 SQL 编译，Node 驱动仍在实施，不能用 Java 适配器的结果代替 TS 验收。
+
+设计边界：
+
+- schema 是运行时元数据与静态类型的唯一来源。
+- Query、关系引用与表达式是不可变值，同一基础查询可以安全分叉。
+- SQL、按位置绑定的参数、投影解码计划由一次结构化编译产生。
+- 公共能力优先，MySQL/PostgreSQL/HANA 差异由显式方言与驱动实现。
+- client 扩展命名空间保留具体类型；业务表达式通过 factory 和普通函数组合挂载。
+- 事务使用显式异步回调，在同一连接上执行并验证关闭状态。
+- 不默认把 DECIMAL/BIGINT 变为 JS number，也不把无时区时间默认解释成 JS Date。
+
+开发命令：
+
+```sh
+pnpm install
+pnpm build
+pnpm typecheck
+pnpm test
+```
+
+仅建立文件或类型签名不算完成；每个可用能力都需要类型负例、运行时结果和相应数据库证据。
+
+## 查询示例
+
+```ts
+import { Pool } from "pg";
+import { column, createDatabase, postgresDialect, table, types } from "@easy-query-pro/orm";
+import { postgresDriver } from "@easy-query-pro/orm/postgres";
+
+const users = table("app_user", {
+  id: column(types.integer()).primaryKey(),
+  name: column(types.text(200)),
+  managerId: column(types.integer()).nullable().named("manager_id"),
+});
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const db = createDatabase({ dialect: postgresDialect, driver: postgresDriver(pool) });
+
+const base = db.from({ user: users });
+const report = base
+  .leftJoin({ manager: users }, ({ user, manager }) => user.managerId.eq(manager.id))
+  .where(({ user }) => user.id.gt(0))
+  .select(({ user, manager }) => ({ id: user.id, name: user.name, manager: manager.name }));
+
+const rows = await report.execute(); // manager: string | null
+const total = await report.count(); // bigint，统计当前查询的实际输出行
+await pool.end(); // 池属于应用，ORM 仅借用并归还连接
+```
+
+schema 声明不执行 DDL。查询需要明确 select；同一个 base 可以独立派生多个 where 分支。as() 暴露新的关系字段并保留 codec，外层表达式的业务子类方法需显式重新 mount。count 使用派生查询保留 DISTINCT/limit 等语义，目前不做删投影优化。
+
+## 类型与扩展边界
+
+INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字符串。NULL 在业务 codec 之前处理；nullable().map() 的静态结果仍包含 null。undefined 不等于 SQL NULL。
+
+扩展通过 createDatabase 的 extensions 或 withExtensions 安装，namespace 具体类型在查询和事务中保留。mount(factory) 返回工厂的具体表达式类型。函数 renderer 返回 sqlFragment 结构节点，编译器按最终顺序绑定值；普通值先通过 valueOf(value, type)，标识符使用 identifier，不能把用户值放进静态 SQL 文本。
+
+PostgreSQL 适配使用查询局部文本 parser，不改全局配置；binary 模式不在当前适配范围。MySQL 使用服务端预处理，并局部保留精确数值/JSON文本。驱动包为可选 peer，使用相应子路径时安装 pg（TS 工程还需 @types/pg）或 mysql2。
+
+## 本地与 CI
+
+在此目录运行 `pwsh -File tools/test-local.ps1` 可读取已有 Debian Docker 测试实例的进程内凭据并运行两库契约；不打印密码或写入环境文件。普通 pnpm test 不要求数据库。
+
+独立 CI 将 Node 22/24 与 Windows/Linux 检查并行，MySQL/PostgreSQL 分别使用已有 Compose 的 2 GiB/1 GiB 限制。长测试交 CI；本地只做改动相关的必要验证。

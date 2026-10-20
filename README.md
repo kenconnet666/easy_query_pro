@@ -2,6 +2,8 @@
 
 基于 EasyQuery 3.2.17 的 Java 17 增强包，目标数据库限定为 MySQL、PostgreSQL、SAP HANA。优先适配 HANA 2.0 本地部署，保持 EasyQuery 的统一查询体验；只有通用 API 无法准确表达的数据库能力才提供显式方言 DSL。
 
+仓库新增独立的 [TypeScript ORM 子项目](ts-orm/README.md)：以 EasyQuery 为主要设计参考，使用无生成器 schema、不可变查询、typed codec 和泛型扩展挂载。它有独立 Node 工程与 CI，不属于 Maven reactor；实现与验收状态见 [TS 执行计划](ts-orm/docs/plan.md)。
+
 完整蓝图已获授权并进入实施。HANA 底层已开始实现：离线 SQL、普通 CRUD/事务、identity 与 sequence 回填已有本地真实数据库证据。完整函数、元数据和增强 DSL 仍在推进，当前阶段不能视为可发布产品；详细状态与限制见 [执行记录](docs/execution.md)。
 
 | 子项目 | 职责 | 生产依赖 |

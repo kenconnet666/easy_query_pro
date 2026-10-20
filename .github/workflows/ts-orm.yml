@@ -1,0 +1,108 @@
+name: TypeScript ORM
+on:
+  push:
+    paths: ['ts-orm/**', '.github/workflows/ts-orm.yml', 'infra/compose.yaml']
+  pull_request:
+    paths: ['ts-orm/**', '.github/workflows/ts-orm.yml', 'infra/compose.yaml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ts-orm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: TypeScript / ${{ matrix.os }} / Node ${{ matrix.node }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['22.18.0', '24.18.0']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ts-orm
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: ts-orm/package.json
+          cache: true
+          cache_dependency_path: ts-orm/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm test 2>&1 | tee unit-tests.log
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: ts-orm-${{ matrix.os }}-node-${{ matrix.node }}
+          path: |
+            ts-orm/dist/
+            ts-orm/unit-tests.log
+          retention-days: 7
+
+  databases:
+    name: TypeScript database / ${{ matrix.database }}
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [mysql, postgres]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: ts-orm
+        shell: bash
+    env:
+      COMPOSE_PROJECT_NAME: eqts-ci-${{ matrix.database }}-${{ github.run_id }}-${{ github.run_attempt }}
+      COMPOSE_FILE: ../infra/compose.yaml
+      COMPOSE_PROFILES: ${{ matrix.database }}
+      TEST_DATABASE: ${{ matrix.database }}
+      EQTS_PG_TEST: ${{ matrix.database == 'postgres' && '1' || '0' }}
+      EQTS_MYSQL_TEST: ${{ matrix.database == 'mysql' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.18.0'
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: ts-orm/package.json
+          cache: true
+          cache_dependency_path: ts-orm/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Generate ephemeral database credentials
+        run: |
+          password=$(openssl rand -hex 24)
+          echo "::add-mask::$password"
+          {
+            echo "EQP_DB_PASSWORD=$password"
+            echo "EQTS_PG_PASSWORD=$password"
+            echo "EQTS_MYSQL_PASSWORD=$password"
+          } >> "$GITHUB_ENV"
+      - name: Start isolated database with a memory limit
+        run: |
+          docker compose up --detach --wait --wait-timeout 120
+          expected=1073741824
+          if [ "$TEST_DATABASE" = mysql ]; then expected=2147483648; fi
+          container=$(docker compose ps -q "$TEST_DATABASE")
+          docker inspect "$container" | jq -e --argjson expected "$expected" \
+            '.[0].HostConfig | .Memory == $expected and .MemorySwap == $expected'
+      - run: pnpm test:integration 2>&1 | tee integration-tests.log
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: ts-orm-database-${{ matrix.database }}
+          path: ts-orm/integration-tests.log
+          retention-days: 7
+      - name: Remove owned test resources
+        if: always()
+        run: docker compose down --volumes --remove-orphans

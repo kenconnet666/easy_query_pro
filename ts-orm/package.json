@@ -1,0 +1,62 @@
+{
+  "name": "@easy-query-pro/orm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Extensible TypeScript ORM inspired by EasyQuery",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "test": "pnpm run build:test && node --test dist-test/test/unit/*.test.js",
+    "build:test": "tsc -p tsconfig.test.json",
+    "test:integration": "pnpm run build:test && node --test dist-test/test/integration/*.test.js",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./postgres": {
+      "types": "./dist/drivers/postgres.d.ts",
+      "import": "./dist/drivers/postgres.js"
+    },
+    "./mysql": {
+      "types": "./dist/drivers/mysql.d.ts",
+      "import": "./dist/drivers/mysql.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
+    "mysql2": "3.24.6",
+    "pg": "8.23.1",
+    "prettier": "3.9.10",
+    "typescript": "7.0.2"
+  },
+  "packageManager": "pnpm@11.22.0",
+  "peerDependencies": {
+    "pg": "^8.23.1",
+    "@types/pg": "^8.23.1",
+    "mysql2": "^3.24.6"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    },
+    "@types/pg": {
+      "optional": true
+    },
+    "mysql2": {
+      "optional": true
+    }
+  }
+}
