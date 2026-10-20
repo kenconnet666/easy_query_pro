@@ -12,6 +12,7 @@ import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpress
 import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import com.easy.query.core.util.EasyClassUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExpressionScope;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.MappedValueExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 
 import java.util.List;
@@ -77,14 +78,11 @@ public final class PgArrayExpressions {
             throw new IllegalArgumentException("SQL arrays require PostgreSQL");
     }
 
-    private static final class Expression<E, T> extends AnyTypeExpressionImpl<T> implements PgArrayExpression<E, T> {
-        private final ExpressionScope scope;
+    private static final class Expression<E, T> extends MappedValueExpression<T> implements PgArrayExpression<E, T> {
         private final PgArrayType<E> type;
 
         private Expression(ExpressionScope scope, PropTypeColumn<T> source, PgArrayType<E> type, Function<SQLFunc, SQLFunction> expression) {
-            super(scope.context(), source.getTable(), source instanceof IgnoreValueConverterTypeExpression ? null : source.getValue(),
-                    factory -> scope.function(expression.apply(factory), AggregationType.UNKNOWN, true, source.getTable()), source.getPropertyType());
-            this.scope = scope;
+            super(scope, source, expression);
             this.type = type;
         }
 

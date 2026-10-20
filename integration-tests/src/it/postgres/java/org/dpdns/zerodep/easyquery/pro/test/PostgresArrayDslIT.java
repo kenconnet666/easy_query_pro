@@ -145,4 +145,15 @@ class PostgresArrayDslIT {
             owner.setAutoCommit(true);
         }
     }
+
+    @Test
+    void wholeArrayAndBusinessListRetainTheirReadersInDraftProjections() {
+        var selected = query.queryable(PgArrayRecord.class).where(p -> p.id().eq(1)).select(p -> Select.DRAFT.of(
+                PgSqlDsl.of(p).view(p.labels(), PgSqlTypes.array(String.class)),
+                PgSqlDsl.of(p).view(p.numbers(), PgSqlTypes.array(Integer.class))));
+        var row = selected.singleNotNull();
+        assertEquals(Arrays.asList("a", "中😀", "NULL", null), row.getValue1());
+        assertEquals(PgSqlTypes.array(Integer.class).value(Arrays.asList(1, null, 2)), row.getValue2());
+        assertEquals(row.getValue1(), selected.cloneQueryable().singleNotNull().getValue1());
+    }
 }

@@ -71,6 +71,8 @@ class PostgresIntervalDslIT {
 
     @Test
     void sqlMutationReturnsIntervalValuesAndParticipatesInRollback() {
+        assertEquals(PgInterval.of(-1, 0, 0), query.queryable(PgIntervalRecord.class).select(p -> Select.DRAFT.of(
+                PgSqlDsl.of(p).view(p.span(), PgSqlTypes.interval()).negated(), p.id())).singleNotNull().getValue1());
         try (var transaction = query.getEasyQueryClient().beginTransaction()) {
             assertEquals(1L, query.updatable(PgIntervalRecord.class).setColumns(p -> {
                 var pg = PgSqlDsl.of(p);

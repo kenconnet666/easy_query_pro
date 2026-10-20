@@ -7,13 +7,13 @@ import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.extension.functions.type.BooleanTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.DateTimeTypeExpression;
-import com.easy.query.core.proxy.extension.functions.type.IgnoreValueConverterTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.impl.AnyTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.DateTimeTypeExpressionImpl;
 import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import com.easy.query.core.util.EasyClassUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExpressionScope;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.MappedValueExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 
 import java.time.LocalDate;
@@ -55,15 +55,12 @@ public final class PgIntervalExpressions {
         return new Expression<>(scope, cast, factory -> scope.operand(cast, factory));
     }
 
-    private static final class Expression<T> extends AnyTypeExpressionImpl<T> implements PgIntervalExpression<T> {
-        private final ExpressionScope scope;
+    private static final class Expression<T> extends MappedValueExpression<T> implements PgIntervalExpression<T> {
 
         private Expression(ExpressionScope scope, PropTypeColumn<T> source, Function<SQLFunc, SQLFunction> function) {
-            super(scope.context(), source.getTable(), source instanceof IgnoreValueConverterTypeExpression ? null : source.getValue(),
-                    factory -> scope.function(function.apply(factory), AggregationType.UNKNOWN, true, source.getTable()), source.getPropertyType());
+            super(scope, source, function);
             if (scope.dialect() != SqlDialect.POSTGRESQL)
                 throw new IllegalArgumentException("INTERVAL requires PostgreSQL");
-            this.scope = scope;
         }
 
         @Override

@@ -169,4 +169,16 @@ class PostgresJsonDslIT {
             owner.setAutoCommit(true);
         }
     }
+
+    @Test
+    void computedBusinessValuesKeepTheirReaderInDraftAndScalarProjections() {
+        var selected = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(List.of("name"), JsonInput.encoded("\"projected\""), true), p.id()));
+        var expected = new JsonPayload("projected", 3);
+        assertEquals(expected, selected.singleNotNull().getValue1());
+        assertEquals(expected, selected.cloneQueryable().singleNotNull().getValue1());
+        assertEquals(new JsonPayload("O'Reilly 中😀", 3), query.queryable(PgJsonRecord.class)
+                .selectColumn(p -> PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb())).singleNotNull());
+        assertEquals(1, converter.writes());
+    }
 }

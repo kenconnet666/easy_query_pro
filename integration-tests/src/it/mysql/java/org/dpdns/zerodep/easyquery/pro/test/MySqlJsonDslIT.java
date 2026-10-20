@@ -113,6 +113,10 @@ class MySqlJsonDslIT {
     }
 
     private static void verifyBusinessMappingAndRollback(DefaultEasyEntityQuery query, String table, JsonPayload.Converter converter, JsonPayload original) {
+        var projected = query.queryable(MySqlJsonRecord.class).asTable(table).select(p -> Select.DRAFT.of(
+                MySqlDsl.of(p).view(p.payload(), MySqlTypes.json()).setPath(JsonPath.root().key("count"), JsonInput.encoded("5")), p.id()));
+        assertEquals(new JsonPayload(original.name(), 5), projected.singleNotNull().getValue1());
+        assertEquals(new JsonPayload(original.name(), 5), projected.cloneQueryable().singleNotNull().getValue1());
         try (var transaction = query.getEasyQueryClient().beginTransaction()) {
             assertEquals(1L, query.updatable(MySqlJsonRecord.class).asTable(table).setColumns(p -> p.payload().set(MySqlDsl.of(p).view(p.payload(), MySqlTypes.json())
                     .setPath(JsonPath.root().key("count"), JsonInput.encoded("4")))).where(p -> p.id().eq(1)).executeRows());

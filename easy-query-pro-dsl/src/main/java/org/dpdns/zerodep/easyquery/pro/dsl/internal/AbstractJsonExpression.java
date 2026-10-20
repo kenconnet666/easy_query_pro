@@ -7,7 +7,6 @@ import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.extension.functions.type.BooleanTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.StringTypeExpression;
-import com.easy.query.core.proxy.extension.functions.type.IgnoreValueConverterTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.impl.AnyTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl;
 import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
@@ -26,18 +25,14 @@ import java.util.function.Function;
 /**
  * Reuses the existing property mapping and the portable reader without exposing text methods on JSON.
  */
-public abstract class AbstractJsonExpression<T> extends AnyTypeExpressionImpl<T> implements JsonExpression<T> {
+public abstract class AbstractJsonExpression<T> extends MappedValueExpression<T> implements JsonExpression<T> {
     private static final Set<String> KNOWN_TYPES = Set.of("JSON", "JSONB", "TEXT", "TINYTEXT", "MEDIUMTEXT", "LONGTEXT", "BYTEA", "UUID", "INT", "INT2", "INT4", "INT8", "BOOL", "DATETIME", "TIMESTAMPTZ");
-    protected final ExpressionScope scope;
     protected final ProDsl portable;
     private final NativeJsonType type;
 
     protected AbstractJsonExpression(ExpressionScope scope, ProDsl portable, NativeJsonType type, PropTypeColumn<T> source,
                                      Function<SQLFunc, SQLFunction> expression) {
-        super(scope.context(), source.getTable(), source instanceof IgnoreValueConverterTypeExpression ? null : source.getValue(),
-                factory -> scope.function(expression.apply(factory), AggregationType.UNKNOWN, true, source.getTable()),
-                EasyClassUtil.getObjectTypeWhenPrimitive(Objects.requireNonNull(source.getPropertyType(), "source Java type")));
-        this.scope = scope;
+        super(scope, source, expression);
         this.portable = portable;
         this.type = type;
     }
