@@ -11,6 +11,7 @@
             <variableProperties datatype="NVARCHAR" length="255" mandatory="true">
                 <valueDomain type="empty"/>
                 <selection multiLine="false"/>
+                <defaultRange lowValue="other"/>
             </variableProperties>
         </variable>
     </localVariables>

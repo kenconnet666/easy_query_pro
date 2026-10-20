@@ -20,7 +20,7 @@
 
 部署走 HDI `WRITE` / `MAKE`，JDBC CallableStatement 读取返回码和消息表。SQL 调用没有抛异常不等于 HDI 部署成功，必须验证返回码为 0。使用顶层 CALL 直接传入临时参数表，避免 SQLScript 嵌套调用对临时表和表变量的限制。
 
-验证通过 `PLACEHOLDER."$$P_NAME$$" => ?` 绑定值，并核对带单引号和中文的结果、金额精度及额外行过滤。检查系统目录中的视图类型，确保工件是计算视图。最后在 finally 中删除本次随机容器，包括已部署内容；临时表随专用连接关闭清理。测试不会修改或删除已有业务 schema。
+验证通过 `PLACEHOLDER."$$P_NAME$$" => ?` 绑定值，并核对带单引号和中文的结果、金额精度及额外行过滤。检查系统目录中的视图类型，确保工件是计算视图。类型化 HanaCalculationView 再复用同一已部署模型，验证外层筛选、Draft、CTE、聚合、独立 JOIN、count/page，以及参数值与外层条件的绑定顺序。最后在 finally 中删除本次随机容器，包括已部署内容；临时表随专用连接关闭清理。测试不会修改或删除已有业务 schema。
 
 ```powershell
 .\tools\hana.ps1 -Action start
@@ -31,4 +31,4 @@
 
 XML 结构和输入参数写法参考 SAP 官方示例仓库 [hana-shine-xsa](https://github.com/SAP-samples/hana-shine-xsa/tree/0cfd539e629edee37942ee3acc54de25f811c9d3)，固定 commit 为 `0cfd539e629edee37942ee3acc54de25f811c9d3`，查看了 `core-db/src/models/PROD.hdbcalculationview`、`SALES_YEAR_COMPARISON.hdbcalculationview` 和 `.hdiconfig`。本项目使用独立、最小的三列测试模型，不引入示例的业务结构、CDS、XSA 或运行依赖。
 
-本测试建立的是 G0/G5 可复用的真实数据库验证条件。正式计算视图 DSL 的类型、参数、组合查询与错误诊断仍需要在此基础上实现和验收。
+标量计算视图来源及其泛型/输入校验已经接入该 fixture，API 见 [HANA 查询来源](hana-query-sources.md)。默认值 XML 使用同一固定 SAP 样例中的 `defaultRange lowValue` 形态。多值输入协议、选定表函数和完整 H11 仍继续实施，单个 fixture 通过不代表全部 H11 完成。

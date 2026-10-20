@@ -206,6 +206,8 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.hana.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.*;
+                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaViewRowProxy;
                 import org.dpdns.zerodep.easyquery.pro.dsl.hana.lob.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.type.*;
@@ -252,5 +254,12 @@ class DslCompilationTest {
         compile(true, "var grouped = q.groupBy(x -> GroupKeys.of(x.id(), x.name())); var report = ProGroups.rollup(grouped, g -> Select.DRAFT.of(g.key1(), g.key2(), ProGroups.mask(g, g.key1(), g.key2()))); Integer id = report.singleNotNull().getValue1(); String name = report.singleNotNull().getValue2(); Integer mask = report.singleNotNull().getValue3();");
         compile(true, "var grouped = q.leftJoin(q, (a,b) -> a.id().eq(b.id())).groupBy((a,b) -> GroupKeys.of(a.id(), b.name())); var report = PgGroups.groupingSets(grouped, g -> java.util.List.of(GroupingSet.of(g.key1()), GroupingSet.of(g.key2())), g -> Select.DRAFT.of(g.key1(), g.key2(), g.groupTable().t2.amount().sumBigDecimal())); BigDecimal total = report.singleNotNull().getValue3();");
         compile(false, "var grouped = q.groupBy(x -> GroupKeys.of(x.id())); var report = ProGroups.rollup(grouped, g -> Select.DRAFT.of(g.key1())); String wrong = report.singleNotNull().getValue1();");
+    }
+
+    @Test
+    void hanaSourceInputsAndOutputProxyStayTyped() throws IOException {
+        compile(true, "var name = HanaInput.required(\"P_NAME\", String.class); var view = HanaCalculationView.of(\"REPORT\", \"VIEW\", HanaViewRowProxy::createTable, name); BigDecimal amount = view.query(null, name.bind(\"text\")).singleNotNull().getAmount();");
+        compile(false, "var name = HanaInput.required(\"P_NAME\", String.class); name.bind(7);");
+        compile(false, "var view = HanaCalculationView.of(\"REPORT\", \"VIEW\", HanaViewRowProxy::createTable); String wrong = view.query(null).singleNotNull().getAmount();");
     }
 }

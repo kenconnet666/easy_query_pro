@@ -1,6 +1,14 @@
 package org.dpdns.zerodep.easyquery.pro.test;
 
 import org.junit.jupiter.api.Test;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.HanaExtensions;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaCalculationView;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaInput;
+import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaViewRowProxy;
+import com.easy.query.core.proxy.sql.Select;
+import com.easy.query.core.proxy.sql.GroupKeys;
+import com.easy.query.core.basic.jdbc.parameter.SQLParameter;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -38,6 +46,7 @@ class HanaHdiIT {
                 deploy(connection, container);
                 grantSchemaAccess(connection, container);
                 verifyCalculationView(connection, container);
+                verifyQueryableSource(container);
             } finally {
                 invoke(connection, "CALL _SYS_DI.DROP_CONTAINER('" + container
                         + "', #EQP_HDI_DROP_PARAMETERS, ?, ?, ?)");
@@ -110,6 +119,48 @@ class HanaHdiIT {
                 assertFalse(result.next());
             }
         }
+    }
+
+    private static void verifyQueryableSource(String schema) throws SQLException {
+        var client = TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure).getEasyQueryClient();
+        var name = HanaInput.required("P_NAME", String.class);
+        var view = HanaCalculationView.of(schema, "EQP_CALC", HanaViewRowProxy::createTable, name);
+        var matching = view.query(client, name.bind("O'Reilly 中文"));
+        var row = matching.cloneQueryable().singleNotNull();
+        assertEquals(1, row.getId());
+        assertEquals("O'Reilly 中文", row.getName());
+        assertEquals(new BigDecimal("123.4500"), row.getAmount());
+        assertEquals(1L, matching.cloneQueryable().count());
+        assertEquals(1L, matching.cloneQueryable().orderBy(r -> r.id().asc()).toPageResult(1, 1).getTotal());
+        assertTrue(view.query(client, name.bind("' OR 1=1 --")).toList().isEmpty());
+        var nullableName = HanaInput.required("P_NAME", String.class).nullable();
+        var nullableView = HanaCalculationView.of(schema, "EQP_CALC", HanaViewRowProxy::createTable, nullableName);
+        assertTrue(nullableView.query(client, nullableName.bind(null)).toList().isEmpty());
+        var defaultName = HanaInput.optional("P_NAME", String.class).nullable();
+        var defaultView = HanaCalculationView.of(schema, "EQP_CALC", HanaViewRowProxy::createTable, defaultName);
+        assertEquals(2, defaultView.query(client).singleNotNull().getId());
+        assertTrue(defaultView.query(client, defaultName.bind(null)).toList().isEmpty());
+        var filtered = matching.cloneQueryable().where(r -> r.id().gt(0)).select(r -> Select.DRAFT.of(r.name(), r.amount()));
+        var sql = filtered.cloneQueryable().toSQLResult();
+        assertEquals(List.of("O'Reilly 中文", 0), sql.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals("O'Reilly 中文", filtered.cloneQueryable().toCteAs("calculation_rows").singleNotNull().getValue1());
+        var grouped = matching.cloneQueryable().groupBy(r -> GroupKeys.of(r.name()))
+                .select(g -> Select.DRAFT.of(g.key1(), g.groupTable().amount().sumBigDecimal()));
+        assertEquals(0, new BigDecimal("123.4500").compareTo(grouped.singleNotNull().getValue2()));
+        // 两次 query 分别生成代理，验证来源定义可以复用为同一 SQL 中的独立 JOIN 别名。
+        var joined = view.query(client, name.bind("O'Reilly 中文"))
+                .leftJoin(view.query(client, name.bind("other")), (left, right) -> left.id().eq(right.id()))
+                .select((left, right) -> Select.DRAFT.of(left.id(), right.name()));
+        var joinedRow = joined.singleNotNull();
+        assertEquals(1, joinedRow.getValue1());
+        org.junit.jupiter.api.Assertions.assertNull(joinedRow.getValue2());
+        try (var transaction = client.beginTransaction()) {
+            assertEquals(1L, client.sqlExecute("INSERT INTO \"" + schema + "\".\"EQP_SOURCE\" VALUES (?,?,?)",
+                    List.of(3, "transaction value", new BigDecimal("7.0000"))));
+            assertEquals(3, view.query(client, name.bind("transaction value")).singleNotNull().getId());
+            transaction.rollback();
+        }
+        assertTrue(view.query(client, name.bind("transaction value")).toList().isEmpty());
     }
 
     private static void invoke(Connection connection, String call) throws SQLException {

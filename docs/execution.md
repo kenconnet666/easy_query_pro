@@ -537,3 +537,11 @@ A02 新增共同 ProGroups.rollup/mask、PG/HANA groupingSets 和结构化 Group
 JOIN 原型还确认 EasyQuery 3.2.17 的两个同源 clone 共享 Proxy，ON 退化为右侧列自比较，总额 60 变成 180。该行为在进入 ProGroups 前已经发生；测试改为两个独立来源，并把 clone 自连接边界写入投影文档，未在汇总层掩盖错误 ON。
 
 41 个离线/泛型消费者检查与 12 个三库实库报表用例通过，覆盖普通分支、真实 NULL、小计、DTO、参数键预投影、JOIN、SMART、CTE/count/page 和既有窗口/统计。补充 mask 数量及绑定 Draft 所有权负例后，12 个分组离线检查再次通过。IDEA 格式、构建通过，MCP 确认本轮报表 fixture 遗留为零；新增分组用例仅使用常量关系，没有创建新实例或数据库对象。完整候选 CI 异步提交，下一步继续 HANA 参数化来源和时间序列增强，不以 A02 阶段代替完整目标验收。
+
+## HANA 标量计算视图来源
+
+分组提交 `9b9252f44a629b6048cff18174375cf36e1dcb32` 已通过 [CI 39453615339](https://github.com/kenconnet666/easy_query_pro/actions/runs/39453615339)。H11 本轮新增 HanaInput 与 HanaCalculationView，通过原 queryable(sql, class, parameters) 返回 EntityQueryable，不引入执行器或额外数据库往返。定义固定对象名、输入顺序和输出 Proxy 工厂，每次调用创建新的来源代理，输入值只走 JDBC 参数。
+
+真实 HDI fixture 从直接 JDBC 扩展到完整查询链，显式映射 ID/NAME/AMOUNT 大写列。已验证单引号/中文、注入文本不扩大结果、BigDecimal、外层参数顺序、Draft、CTE、聚合、独立来源 JOIN 和 count/page。默认值 XML 参照固定 SAP SHINE 模型的 defaultRange，省略参数命中默认值而显式 NULL 返回空结果；缺参、重复赋值、同名异声明、错类型和重复使用已绑定 Proxy 在离线边界拒绝。
+
+复审新增的 PositiveInput 负例复现 nullable 重建丢失子类校验，现改为可空声明对非 NULL 委托原验证。补充原 client 事务内写入可读、回滚后消失的实库证据。最终 7 个离线/消费者检查与 1 个真实 HDI 生命周期用例通过；IDEA 构建通过，MCP 确认本次 EQP_HDI schema 遗留为零。完整 CI 异步提交。多值模型协议与标量输入表函数仍是 H11 的后续必需项；子代理已查得官方 XML 与单个 JDBC 字符串的列表协议，下一步实库验证，不把普通 CSV 或空字符串元素当作空列表。

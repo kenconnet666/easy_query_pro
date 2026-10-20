@@ -1,0 +1,55 @@
+# HANA 参数化查询来源
+
+`HanaCalculationView<P,T>` 将已部署的计算视图接入原 EntityQueryable。它负责对象名称引用、输入参数声明和绑定；部署、权限、连接池、事务、执行器与结果映射继续使用既有组件。
+
+## 声明输入和输出
+
+```java
+var name = HanaInput.required("P_NAME", String.class);
+var view = HanaCalculationView.of(
+        "REPORT_SCHEMA",
+        "SALES_CALC",
+        SaleViewProxy::createTable,
+        name);
+
+var rows = view.query(entityQuery.getEasyQueryClient(), name.bind("O'Reilly 中文"));
+var page = rows.cloneQueryable()
+        .where(r -> r.amount().gt(new BigDecimal("100")))
+        .orderBy(r -> r.id().asc())
+        .toPageResult(1, 20);
+```
+
+client 需要安装 `HanaExtensions`。schema 和视图名作为两个完整标识符分别引用；名称中包含点、空格或引号也不会变成额外 SQL 片段。输入名使用模型中的裸名称，例如 `P_NAME`，不要自行加 `$$`。值生成 JDBC 占位符，包含单引号的字符串仍作为一个值。
+
+应用可通过 protected 构造器和 validate 增加参数值域约束，覆盖 validate 时保留基础检查。nullable 只放开显式 NULL，非 NULL 仍使用原声明的验证，因此正数等业务约束不会在配置可空后丢失。
+
+输出代理字段需匹配模型的实际列名。HDI fixture 输出 `ID/NAME/AMOUNT`，因此使用 `@Column("ID")` 等显式映射，金额保持 BigDecimal。输出类型无需实现额外的增强查询接口。
+
+## 参数契约
+
+| 声明与调用 | 行为 |
+| --- | --- |
+| `required(name, type)` | 应用必须显式赋值；缺参在构造查询时拒绝 |
+| `optional(name, type)` | 允许省略；不生成该 PLACEHOLDER，数据库负责模型默认行为 |
+| `input.nullable()` | 创建允许显式 SQL NULL 的新声明；应先配置，再放入来源定义 |
+| `input.bind(value)` | 编译期保持 T，运行时再次校验 NULL 与值类型 |
+| 同名但不同的声明对象 | 拒绝；绑定必须引用来源定义中实际声明的输入 |
+| 重复声明/重复赋值/未知参数 | 构造查询时拒绝，不静默覆盖 |
+
+`required` 是应用声明，不会查询数据库目录来猜测模型是否存在默认值。把一个数据库必填参数错误地声明成 optional，省略后仍可能由 HANA 报错。显式 NULL 与“省略后取默认值”有不同语义，不能互换。
+
+绑定顺序固定为声明顺序，与调用方提供 Binding 的顺序无关。自定义 Java 值需要该 client 的 JDBC handler；来源参数不自动继承某个输出实体列的 converter。值只保存引用，不深复制业务对象，构造后不要再修改可变值。
+
+HANA 2.00.088 的真实 HDI fixture 已分别验证：省略 P_NAME 使用模型的 `other` 默认值，显式 JDBC NULL 返回空结果，带引号/中文的输入精确匹配。默认值使用 SAP 固定示例中的 `defaultRange lowValue`；结果是该模型的行为，不把所有模型的 NULL 过滤规则统一成客户端判断。
+
+## 组合与生命周期
+
+每次 `view.query(...)` 都向 proxyFactory 请求新的未绑定 Proxy。来源定义可作为应用配置复用，同一个视图的两次查询可安全放到 JOIN 两侧；返回已经绑定的 Proxy 会提前拒绝。终端调用和后续分支仍遵循 EasyQuery 3.2.17 的[查询 clone 契约](dsl-projections.md)。
+
+输入仍属于匿名来源，外层 where、groupBy、排序、Draft/DTO、CTE、count/page 使用原查询构造链。来源参数先绑定，外层表达式参数按原有顺序追加。定义本身不缓存 Connection、ResultSet 或运行中的查询对象。
+
+实库测试还验证了原 client 的同一事务：写入未提交行后通过计算视图读取可见，回滚后该行消失。来源类不自行提交、切换连接或创建另一个事务上下文。
+
+实际 fixture 沿用[HDI 部署测试](hana-hdi.md)，先证明对象类型是 CALC，再验证正式查询入口。不会用普通 SQL view 或表函数替代计算视图验证。当前入口覆盖标量输入；模型多值协议和选定表函数仍是 H11 后续交付项，不能将一个普通 Java List 当作已支持的多值输入。
+
+参数名语法与模型默认值依据 [SAP Column View Parameter Binding](https://help.sap.com/docs/SAP_HANA_PLATFORM/de2486ee947e43e684d39702027f8a94/f1c17eb3a5b04f8b82d5908218e3fa68.html) 和 [CS_VIEW_PARAMETERS](https://help.sap.com/docs/SAP_HANA_PLATFORM/4fe29514fd584807ac9f2a04f6754767/3abb2714091d495b9eb277ce6f9daa07.html)。本包不自动反查目录推断 API 类型；支持范围以版本固定的实库测试为准。
