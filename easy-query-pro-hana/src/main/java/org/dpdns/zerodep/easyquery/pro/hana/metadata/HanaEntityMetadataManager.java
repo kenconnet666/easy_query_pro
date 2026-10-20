@@ -12,10 +12,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 3.2.17 的基础类型列表未包含 Instant，使用公开 metadata 扩展点保留其标量语义。
+ * Adds the HANA scalar Java types omitted by 3.2.17 through the public metadata extension point.
  */
 public final class HanaEntityMetadataManager extends DefaultEntityMetadataManager {
-    private final EntityMetadata instant = new InstantMetadata();
+    private final EntityMetadata instant = new ScalarMetadata(Instant.class);
+    private final EntityMetadata binary = new ScalarMetadata(byte[].class);
 
     public HanaEntityMetadataManager(ServiceProvider services, MapColumnNameChecker checker, MapKeyNameConversion conversion) {
         super(services, checker, conversion);
@@ -23,19 +24,22 @@ public final class HanaEntityMetadataManager extends DefaultEntityMetadataManage
 
     @Override
     public EntityMetadata getEntityMetadata(Class<?> type) {
-        return type == Instant.class ? instant : super.getEntityMetadata(type);
+        if (type == Instant.class) return instant;
+        if (type == byte[].class) return binary;
+        return super.getEntityMetadata(type);
     }
 
     @Override
     public List<EntityMetadata> getAllLoadedEntityMetadata() {
         var result = new ArrayList<>(super.getAllLoadedEntityMetadata());
         result.add(instant);
+        result.add(binary);
         return result;
     }
 
-    private static final class InstantMetadata extends EntityMetadata {
-        private InstantMetadata() {
-            super(Instant.class);
+    private static final class ScalarMetadata extends EntityMetadata {
+        private ScalarMetadata(Class<?> type) {
+            super(type);
             entityMetadataType = EntityMetadataTypeEnum.BASIC_TYPE;
         }
     }

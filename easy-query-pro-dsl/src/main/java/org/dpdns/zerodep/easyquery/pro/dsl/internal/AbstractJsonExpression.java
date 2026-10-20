@@ -42,6 +42,7 @@ public abstract class AbstractJsonExpression<T> extends MappedValueExpression<T>
         return type;
     }
 
+
     @Override
     public final JsonFragmentExpression at(JsonPath path) {
         return portable.jsonAt(this, path);

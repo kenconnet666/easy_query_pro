@@ -121,6 +121,16 @@ class DslCompilationTest {
         compile(false, "DateTimeTypeExpression<java.time.LocalTime> time = MySqlDsl.of(p).value(java.time.Duration.ZERO, MySqlTypes.durationTime(6));");
     }
 
+    @Test
+    void hanaLobViewsExposeOnlySupportedOperationsAndExplicitScalarConversions() throws IOException {
+        compile(true, "HanaTextLobExpression<String> text = HanaDsl.of(p).value(\"large text\", HanaTypes.nclob()); text.isSqlNull().eq(false); StringTypeExpression<String> scalar = text.asText(); scalar.toUpper(); AnyTypeExpression<byte[]> bytes = HanaDsl.of(p).value(new byte[]{1}, HanaTypes.blob()).sliceBytes(1, 1);");
+        compile(false, "HanaDsl.of(p).value(\"large text\", HanaTypes.nclob()).toUpper();");
+        compile(false, "StringTypeExpression<String> length = HanaDsl.of(p).value(\"large text\", HanaTypes.nclob()).utf16Length();");
+        compile(false, "HanaDsl.of(p).value(\"large text\", HanaTypes.nclob()).eq(\"other\");");
+        compile(false, "HanaDsl.of(p).value(\"large text\", HanaTypes.text());");
+        compile(false, "StringTypeExpression<String> bytes = HanaDsl.of(p).value(new byte[]{1}, HanaTypes.blob()).sliceBytes(1, 1);");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
@@ -136,6 +146,8 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.hana.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.hana.lob.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.type.*;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;

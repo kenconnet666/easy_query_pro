@@ -10,6 +10,8 @@ import com.easy.query.core.inject.ServiceCollection;
 import com.easy.query.core.func.SQLFunc;
 import com.easy.query.core.sql.JdbcSQLExecutor;
 import org.dpdns.zerodep.easyquery.pro.hana.expression.HanaExpressionFactory;
+import org.dpdns.zerodep.easyquery.pro.hana.expression.HanaSQLSegmentFactory;
+import com.easy.query.core.expression.segment.factory.SQLSegmentFactory;
 import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaJdbcSQLExecutor;
 import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaJdbcTypeHandlerManager;
 import org.dpdns.zerodep.easyquery.pro.hana.jdbc.HanaInsertExecution;
@@ -47,6 +49,7 @@ public final class HanaDatabaseConfiguration implements DatabaseConfiguration {
     public void configure(ServiceCollection services) {
         services.addService(SQLKeyword.class, HanaSQLKeyword.class);
         services.addService(ExpressionFactory.class, HanaExpressionFactory.class);
+        services.addService(SQLSegmentFactory.class, HanaSQLSegmentFactory.class);
         services.addService(HanaOptions.class, options);
         services.addServiceFactory(SQLFunc.class, provider -> new HanaSQLFunc(provider.getService(HanaOptions.class)));
         services.addService(JdbcSQLExecutor.class, HanaJdbcSQLExecutor.class);

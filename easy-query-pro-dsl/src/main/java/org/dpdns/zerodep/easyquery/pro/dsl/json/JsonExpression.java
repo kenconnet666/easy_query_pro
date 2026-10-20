@@ -5,11 +5,17 @@ import com.easy.query.core.proxy.extension.functions.type.BooleanTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.StringTypeExpression;
 import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NativeJsonType;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ScalarComparisonRestriction;
 
 /**
  * Native JSON operations preserve the Java mapping of the original complete column value.
  */
-public interface JsonExpression<T> extends PropTypeColumn<T>, DSLSQLFunctionAvailable {
+public interface JsonExpression<T> extends PropTypeColumn<T>, DSLSQLFunctionAvailable, ScalarComparisonRestriction {
+    @Override
+    default String scalarComparisonError() {
+        return "JSON values require explicit text comparison or native JSON operators";
+    }
+
     NativeJsonType sqlType();
 
     StringTypeExpression<String> asText();

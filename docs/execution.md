@@ -368,9 +368,21 @@ ORM 插入复现 Connector/J 9.7.0 客户端 Duration 编码残留 S 的问题�
 
 独立整理提交 `5f3ce39` 将三组 MySQL fixture 的表生命周期收拢到 MySqlTestDatabase.Table。MCP 确认本轮三类 MySQL 表和 PG JSON/数组/interval schema 遗留均为 0。IDEA 构建通过；两份 Duration 探测源文件及本轮编译/原生/聚合/映射诊断日志记录后清理，标准报告保留。说明见 [MySQL TIME 时长](mysql-duration.md)。
 
+## HANA 受限 LOB 与返回类型标记
+
+提交 `69e22f25fb4094ac9ebb88e0b71b371e5a1de747` 的 [CI 39374888549](https://github.com/kenconnet666/easy_query_pro/actions/runs/39374888549) 已通过全部五个强制任务，包含公共投影修复、MySQL 表生命周期整理与 Duration 的连接池/批量组合。
+
+HanaTypes/HanaDsl 新增 CLOB/NCLOB/TEXT/BLOB 的明确视图。NULL、UTF-16/字节长度、受限切片和完整标量文本转换进入现有表达式链；TEXT 仅作为存储类型。HANA 实测 TO_NVARCHAR(NCLOB) 保留 6004 单元并允许排序，BLOB → VARBINARY 直接 CAST 报 266，而 SUBSTR 返回 VARBINARY。NCLOB 切片可拆开代理项，因此 API 明确使用 UTF-16 单元，未假称按 code point 切片。
+
+通过公开 SQLSegmentFactory、SQLFunction 和 TableVisitor 保留已知 LOB 的返回类型。DISTINCT 对当前投影验证；函数分组通过公开 visitor 读取返回类型，不检查标量表达式内部的 LOB 操作数，因此显式标量转换不被误拒绝。克隆保留返回标记，clone 后新增 DISTINCT 会失败且原查询仍可使用。基础选择接口继承 asc/desc，不能用编译负例伪称它们不存在；改为在构造排序时拒绝，并补充条件关闭/NULLS 模式的检查。
+
+通用比较通过 ScalarComparisonRestriction 保留 JSON 的原有限制，并允许 HANA LOB 明确要求标量转换。byte[] 标量通过公开 metadata 扩展点补入；3.2.17 APT 的 byte[] → Byte[] 问题通过已存在的 asAnyType(byte[].class) 校正，没有 fork processor 或修改上游私有字段。
+
+本地最终 23 个离线/消费者编译检查和 7 个 HANA 实库用例通过，包含新 LOB 视图与原有大对象、流式、失败清理回归；消费者检查现在为 18 个正例、43 个负例。最后补齐直接 Selector 接口的返回标记后，2 个查询限制用例再次通过。IDEA 构建与关键文件错误检查通过，MCP 确认 EQP_TYPED_LOB_* schema 遗留为 0，探测源文件及本轮诊断日志已清理。更多关系包装/分片组合仍属于 G4.6，不将基础查询限制通过视作全部组合完结。说明见 [HANA LOB DSL](hana-lob-dsl.md)。
+
 ## 下一步
 
-1. 检查 MySQL TIME 与投影修复提交的 CI，继续 HANA 受限 LOB/JSON 文本视图及三库原生类型目录。
+1. 检查 HANA LOB 提交的 CI，继续 HANA JSON 文本视图及三库原生类型目录。
 2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
 3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
 4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。

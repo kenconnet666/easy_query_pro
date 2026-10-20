@@ -12,6 +12,13 @@ final class HanaQuerySQLExpression extends QuerySQLExpressionImpl {
 
     @Override
     public String toSQL(ToSQLContext context) {
+        if (distinct && projects != null && projects.getSQLSegments().stream().anyMatch(HanaSQLSegmentFactory::hasLobResult)) {
+            throw HanaSQLSegmentFactory.unsupported("DISTINCT");
+        }
+        if (group != null && group.getSQLSegments().stream().anyMatch(HanaSQLSegmentFactory::hasLobResult))
+            throw HanaSQLSegmentFactory.unsupported("GROUP BY");
+        if (order != null && order.getSQLSegments().stream().anyMatch(HanaSQLSegmentFactory::hasLobResult))
+            throw HanaSQLSegmentFactory.unsupported("ORDER BY");
         var expression = entitySQLExpressionMetadata.getExpressionContext();
         if (expression.hasDeclareExpressions() && expression.getDeclareExpressions().stream()
                 .anyMatch(AnonymousTreeCTERECURSIVEQueryExpressionBuilder.class::isInstance)) {
