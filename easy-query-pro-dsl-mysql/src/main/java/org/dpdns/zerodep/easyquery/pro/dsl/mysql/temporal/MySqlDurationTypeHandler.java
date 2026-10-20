@@ -11,7 +11,9 @@ import java.time.Duration;
 import java.util.Locale;
 
 /**
- * Uses Connector/J's typed Duration reader and chooses the correct binding for each preparation mode.
+ * 复用 Connector/J 的 Duration 读取，并按预处理模式选择正确的 TIME 参数表示。
+ * 服务端 prepare 保留二进制 TIME 类型信息；客户端模式使用规范时长文本。
+ * 通过 JDBC Wrapper 判断真实 statement 类型以兼容连接池，不另借连接或改变原事务。
  */
 public final class MySqlDurationTypeHandler extends ObjectTypeHandler {
     private static final MySqlDurationType NATIVE_CAPACITY = new MySqlDurationType(6);
@@ -24,12 +26,12 @@ public final class MySqlDurationTypeHandler extends ObjectTypeHandler {
     @Override
     public void setParameter(EasyParameter parameter) throws SQLException {
         Duration value = NATIVE_CAPACITY.prepareValue((Duration) parameter.getValue());
-        // Binary TIME parameters preserve server-side type inference; wrappers expose the real statement through JDBC.
+        // 保留服务端的 TIME 参数类型，连接池包装通过 JDBC Wrapper 暴露判断能力。
         if (value == null || parameter.getPs().isWrapperFor(ServerPreparedStatement.class)) {
             super.setParameter(parameter);
             return;
         }
-        // Connector/J's client encoder leaves a trailing S for seconds-only durations, which strict INSERT rejects.
+        // 客户端编码器可能给仅含秒的 Duration 留下尾部 S，严格 INSERT 会拒绝，故采用规范时长文本。
         var magnitude = value.abs();
         String time = String.format(Locale.ROOT, "%s%02d:%02d:%02d.%06d", value.isNegative() ? "-" : "",
                 magnitude.toHours(), magnitude.toMinutesPart(), magnitude.toSecondsPart(), magnitude.getNano() / 1000);

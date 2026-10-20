@@ -23,6 +23,10 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * 三库共用的报表结果契约。重复日期、不同分区和 NULL 金额用于区分 ROWS、默认 peer frame 与全局窗口，
+ * 断言固定业务结果，避免只检查 SQL 文本而漏掉筛选位置或读取器造成的错误。
+ */
 final class WindowReportContract {
     private WindowReportContract() {
     }
@@ -67,7 +71,7 @@ final class WindowReportContract {
         var runtime = query.getEasyQueryClient().getRuntimeContext();
         var quote = runtime.getQueryConfiguration().getDialect();
         String from = runtime.getService(SqlDialect.class) == SqlDialect.HANA ? " FROM DUMMY" : "";
-        // A constant single-row query takes a faulty pre-evaluation path in MySQL 8.4.11; keep both input rows.
+        // MySQL 8.4.11 对常量单行有预执行优化差异；保留两行，再检查最后一行的空 frame。
         var rows = query.queryable("SELECT 7 AS " + quote.getQuoteName("number") + ",TRUE AS " + quote.getQuoteName("enabled") + from
                 + " UNION ALL SELECT 9,FALSE" + from, PrimitiveScalars.class).orderBy(p -> p.number().asc());
         var result = rows.cloneQueryable().select(p -> {
@@ -106,6 +110,7 @@ final class WindowReportContract {
         assertDecimals(Arrays.asList("30", "17.5", "7", "5", null), all.stream().map(r -> r.getValue6()).toList());
         assertDecimals(Arrays.asList("30", "35", "7", "10", null), all.stream().map(r -> r.getValue7()).toList());
         assertDecimals(List.of("45", "45", "45", "45", "45"), all.stream().map(r -> r.getValue8()).toList());
+        // 直接 EQ/IN 才覆盖上游 SMART 的目标下推分支；只测试 asBigDecimal().ge(...) 会漏掉这个问题。
         windows.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().getBehavior().addBehavior(EasyBehaviorEnum.SMART_PREDICATE);
         var day = windows.cloneQueryable().where(p -> p.value2().eq(LocalDate.of(2024, 1, 2))).singleNotNull();
         assertDecimals(List.of("35", "45"), List.of(day.getValue4(), day.getValue5()));

@@ -16,7 +16,8 @@ import java.util.Collections;
 import java.util.HashMap;
 
 /**
- * Keeps result-reader snapshots at relation boundaries; SQL generation remains in the upstream builders.
+ * 在派生关系和 CTE 边界保存结果读取快照，SQL 构造继续委托上游 builder。
+ * 应用可覆写受保护创建钩子扩展关系行为；复制时仍须保留已有 reader 快照与查询上下文。
  */
 public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFactory {
     @Override
@@ -37,13 +38,21 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
         return new Cte(this, name, source, context, resultClass, readers);
     }
 
+    /**
+     * 派生关系采用两阶段快照，两个时机不能合并。
+     *
+     * <p>内外层可能共享 ExpressionContext，外层 valueConvert 又会先于 selector 写入同一 map，
+     * 因此 registered 在关系创建时立即复制，防止外层同名别名污染内层。
+     * Draft 的输出类型却是在关系创建之后才补入上下文，所以最终 readers 需要延迟解析。
+     * 快照冻结的是映射关系，不复制 reader 内部的业务服务，也不持有 JDBC 资源。
+     */
     protected static class Relation extends AnonymousDefaultTableExpressionBuilder {
         private final Map<String, ColumnReader> registered;
         private Map<String, ColumnReader> readers;
 
         protected Relation(TableAvailable table, MultiTableTypeEnum kind, EntityQueryExpressionBuilder source) {
             super(table, kind, source);
-            // Outer select callbacks share this context and register valueConvert before the selector is created.
+            // 先冻结注册来源；此时 Draft 的位置类型可能尚未补齐。
             var current = source.getExpressionContext().getResultValueConverterMap(false);
             registered = current == null ? Map.of() : Collections.unmodifiableMap(new HashMap<>(current));
             if (source instanceof SQLAnonymousUnionEntityQueryExpressionBuilder)
@@ -51,7 +60,7 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
         }
 
         protected Map<String, ColumnReader> readers() {
-            // Draft result types are assigned immediately after relation creation; reader registrations are already final.
+            // 延迟读取位置类型，但只使用关系创建时冻结的注册项。
             if (readers == null)
                 readers = ColumnReaders.snapshot(entityQueryExpressionBuilder, getEntityMetadata(), registered);
             return readers;
@@ -60,6 +69,7 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
         @Override
         public EntityTableExpressionBuilder copyEntityTableExpressionBuilder() {
             var copy = super.copyEntityTableExpressionBuilder();
+            // 上游仍经 runtime factory 创建副本，再沿用已解析快照，避免重新读取被外层修改的 map。
             if (copy instanceof Relation relation) relation.readers = readers();
             return copy;
         }
@@ -79,6 +89,7 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
 
         @Override
         public EntityQueryExpressionBuilder cloneEntityExpressionBuilder() {
+            // 回到原工厂钩子，保留应用安装的 CTE 子类；沿用快照，不重新推导 reader。
             return factory.createCte(getCteTableName(), source, getExpressionContext(), getQueryClass(), readers);
         }
     }

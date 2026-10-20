@@ -120,6 +120,16 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
         }
     }
 
+    /**
+     * 只接管需要主键回填的插入，其他路径继续交给上游执行器。
+     *
+     * <p>identity/sequence 通过当前物理连接的会话值读取，每次 INSERT 后必须立即读取对应键，
+     * 两者之间不能运行可能执行嵌套 SQL 的用户监听器。批次复用 statement，但逐行取键，
+     * 不能替换成 JDBC batch 后读取最后一个会话值。
+     *
+     * <p>本方法不创建或提交事务。中途失败是否整批回滚由调用方事务决定；已经写回 Java 实体的键
+     * 不会因数据库回滚自动撤销。带分片标记的会话取键当前明确拒绝，分片写入可使用应用生成的键。
+     */
     private <T> int insertRows(ExecutorContext context, EasyConnection connection, String sql, List<T> entities,
                                List<SQLParameter> parameters, boolean fillKeys, boolean sharding, boolean replica) throws SQLException {
         if (context instanceof HanaInsertExecution.Context insertContext) {
@@ -215,6 +225,11 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
         }
     }
 
+    /**
+     * 按生成列顺序构造同一会话中的取键查询。
+     * 每个 identity/sequence 来源只允许消费一次：若同一来源被多个列消耗，CURRVAL 无法还原每列的键。
+     * 仅识别本包注册的 HanaSequenceGenerator，不从任意自定义生成器 SQL 猜测会话取键方式。
+     */
     private String generatedKeyQuery(List<ColumnMetadata> columns) {
         if (columns.isEmpty()) {
             throw new IllegalArgumentException("HANA key backfill requires @Column(generatedKey = true)");

@@ -23,6 +23,11 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * 两库共用的 RANGE 结果契约，故意使用重复排序值、日期间隙和微秒间隙。
+ * 所有数据来自常量派生关系，无需创建表；id 可以重复以验证 peer group，而不是模拟实体主键写入。
+ * 同一契约在客户端/服务端准备模式下执行，确保 offset 真正经过 JDBC 绑定。
+ */
 final class RangeWindowContract {
     private RangeWindowContract() {
     }

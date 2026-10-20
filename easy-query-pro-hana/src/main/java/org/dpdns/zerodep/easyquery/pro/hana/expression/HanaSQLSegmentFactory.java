@@ -16,6 +16,10 @@ import java.util.Set;
 
 import java.util.function.Function;
 
+/**
+ * 通过已知表达式的返回标记维护 HANA LOB 在投影、排序和分组中的限制。
+ * 标记可穿过透明包装，但不解析最终 SQL，也不承诺推断任意用户原生 SQL 的返回类型。
+ */
 public class HanaSQLSegmentFactory extends DefaultSQLSegmentFactory {
     @Override
     public SQLNativeSegment createSQLNativeSegment(ExpressionContext context, String template, SQLNativeExpression expression) {
@@ -44,6 +48,10 @@ public class HanaSQLSegmentFactory extends DefaultSQLSegmentFactory {
         return HanaLobSqlSupport.unsupportedClause(clause);
     }
 
+    /**
+     * 检查当前表达式的返回值，而非“任一参数是否含 LOB”。例如 LENGTH(NCLOB) 返回标量，
+     * 不能因内部访问过 NCLOB 就误拒绝其排序或分组。
+     */
     static boolean hasLobResult(SQLSegment segment) {
         if (segment instanceof NativeProjection nativeSegment) return nativeSegment.lob;
         if (segment instanceof TableSQLSegment function) {
@@ -71,7 +79,7 @@ public class HanaSQLSegmentFactory extends DefaultSQLSegmentFactory {
 
         @Override
         public void accept(TableVisitor visitor) {
-            // Function wrappers expose their nested segment via this public visitor. Stop at its return type, not its operands.
+            // 返回类型 visitor 到此读取本节点标记并停止；普通表 visitor 仍遍历参数以保留表归属分析。
             if (visitor instanceof ResultTypeVisitor result) result.lob = lob;
             else super.accept(visitor);
         }

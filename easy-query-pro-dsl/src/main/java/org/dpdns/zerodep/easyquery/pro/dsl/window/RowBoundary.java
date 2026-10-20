@@ -3,7 +3,13 @@ package org.dpdns.zerodep.easyquery.pro.dsl.window;
 import java.util.Objects;
 
 /**
- * A validated ROWS offset, rendered as SQL grammar rather than as a data value.
+ * 三库共同 ROWS 的单侧边界，偏移量表示物理行数。
+ *
+ * <p>行数是受控结构参数，先验证非负整数再按 SQL 语法输出；不接受外部 SQL 文本。
+ * 共同规则将零行偏移归一化为 CURRENT ROW。原生 RANGE 的类别校验不同，不能复用此归一化。
+ *
+ * @param kind   起点/终点的边界类别
+ * @param offset 仅有限 PRECEDING/FOLLOWING 使用的非负行数
  */
 public record RowBoundary(Kind kind, int offset) {
     public enum Kind {UNBOUNDED_PRECEDING, PRECEDING, CURRENT_ROW, FOLLOWING, UNBOUNDED_FOLLOWING}

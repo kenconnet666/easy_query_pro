@@ -33,7 +33,13 @@ import java.util.function.UnaryOperator;
 import java.util.function.BiFunction;
 
 /**
- * Shared client ownership, property conversion and final table-scope checks for extension facades.
+ * 将 Pro 表达式绑定到创建它的 client、查询上下文和锚点表，并传播计算语义。
+ *
+ * <p>SQL 仍通过上游 SQLFunction/SQLSegment 构造和执行。本类补充查询归属以及行数、分片等约束，
+ * 让方言 facade 和应用扩展共享同一套规则。
+ *
+ * <p>“保持输出行数”与“可以逐行独立计算”是两个不同条件：普通标量通常同时满足，聚合会收缩行数；
+ * 窗口虽然保持行数，仍需要数据库得到完整分区，不能据此使用普通分片合并或把外层过滤任意下推。
  */
 public class ExpressionScope {
     private final EntitySQLContext context;
@@ -69,14 +75,19 @@ public class ExpressionScope {
         return dialect;
     }
 
+    /**
+     * 扩展作者对函数计算方式的显式声明。只有能证明逐行独立的 UNKNOWN 表达式才能关闭服务器求值标记；
+     * 单看 UNKNOWN 枚举不能证明安全，因为上游复合函数可能隐藏聚合。
+     */
     public SQLFunction function(SQLFunction delegate, AggregationType aggregation, boolean requiresServerEvaluation, TableAvailable... sources) {
         return new ScopedFunction(delegate, aggregation, requiresServerEvaluation,
                 aggregation == AggregationType.UNKNOWN && !requiresServerEvaluation, FunctionKind.EXPRESSION, sources);
     }
 
     /**
-     * Declares a trusted, bare, non-distinct aggregate supplied by an extension.
-     * The caller owns dialect syntax and must apply scalar wrappers after OVER; no shard merge is inferred.
+     * 声明一个可信的、非 DISTINCT 裸聚合，供统计等扩展挂接 OVER。
+     * 调用者保证当前方言的函数语法正确；此标记不提供分片合并算法。
+     * CAST/NULLIF 等外包装应在 OVER 之后追加，不能把整个包装误当作一个裸聚合函数。
      */
     public SQLFunction aggregate(SQLFunction delegate, TableAvailable... sources) {
         return new ScopedFunction(delegate, delegate.getAggregationType(), true, false, FunctionKind.AGGREGATE, sources);
@@ -100,24 +111,28 @@ public class ExpressionScope {
     }
 
     /**
-     * Windows retain rows but require the complete database partition before any shard merging.
+     * 窗口保留输入行数，但依赖数据库完整分区。投影分类可以使用行数标记，分片检查仍必须保留。
      */
     public SQLFunction window(SQLFunction delegate, TableAvailable... sources) {
         return new ScopedFunction(delegate, AggregationType.UNKNOWN, true, true, FunctionKind.WINDOW, sources);
     }
 
+    /**
+     * 整值映射只透传已知语义，不把换了 Java 表达式外壳的未知函数重新声明为逐行安全。
+     */
     public SQLFunction projection(SQLFunction delegate, TableAvailable... sources) {
         return new ScopedFunction(delegate, AggregationType.UNKNOWN, !isRowLocal(delegate), preservesRows(delegate), FunctionKind.EXPRESSION, sources);
     }
 
     /**
-     * A scalar operation stays row-local only when every operand carries that guarantee.
+     * 标量包装只有在所有操作数都具备逐行保证时，才能继续作为逐行表达式。
+     * 上游算术可能把 SUM/AVG 隐藏在 UNKNOWN 函数中，因此必须检查来源保证，不能只检查结果枚举。
      */
     public SQLFunction operation(SQLFunction delegate, AggregationType aggregation, SQLFunction... operands) {
         boolean requiresServerEvaluation = aggregation != AggregationType.UNKNOWN;
         boolean preservesRows = aggregation == AggregationType.UNKNOWN;
         for (var operand : operands) {
-            // UNKNOWN alone is insufficient: upstream arithmetic can hide SUM/AVG inside another function.
+            // UNKNOWN 还可能表示未分类的聚合包装，不能把它当成普通列表达式。
             if (!isRowLocal(operand))
                 requiresServerEvaluation = true;
             preservesRows &= preservesRows(operand);
@@ -133,6 +148,10 @@ public class ExpressionScope {
         return function instanceof ScopedFunction scoped && scoped.preservesRows;
     }
 
+    /**
+     * 检查同一查询层内带有 Pro 标记的窗口。别名透明，独立标量子查询在其边界停止遍历。
+     * 返回 false 不证明任意上游/原生 SQL 没有窗口；未提供语义标记的入口需要显式查询边界。
+     */
     public static boolean containsWindow(SQLSegment segment) {
         var visitor = new WindowVisitor();
         EasySQLSegmentUtil.sqlSegmentTableVisit(segment, visitor);
@@ -167,6 +186,10 @@ public class ExpressionScope {
         }, left.getPropertyType());
     }
 
+    /**
+     * 把来源接回上游函数链。普通属性保留原 SQL 列转换；已是函数的来源直接组合其函数，
+     * 避免把派生结果再次按原实体列转换或序列化。
+     */
     public SQLFunction operand(PropTypeColumn<?> source, SQLFunc factory) {
         if (source instanceof DSLSQLFunctionAvailable function) return function.func().apply(factory);
         // 普通属性先走上游的 SQL 属性转换；派生结果不再套用整列值转换器。
@@ -239,13 +262,14 @@ public class ExpressionScope {
 
             @Override
             public ScopedSegment cloneSQLColumnSegment() {
+                // 包装不保存别名分配或参数游标；最终别名仍由本次 ToSQLContext 解析。
                 return this;
             }
 
             @Override
             public void accept(TableVisitor visitor) {
                 if (kind == FunctionKind.WINDOW && visitor instanceof WindowVisitor windows) windows.found = true;
-                // Preserve the wrapped result and table metadata through this transparent scope boundary.
+                // 透明包装必须继续传递返回类型和表访问，否则外层 LOB/窗口检查会丢失语义。
                 EasySQLSegmentUtil.sqlSegmentTableVisit(segment, visitor);
             }
 

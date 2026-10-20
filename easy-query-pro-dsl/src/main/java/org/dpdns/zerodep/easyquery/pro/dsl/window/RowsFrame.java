@@ -7,6 +7,11 @@ import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import java.util.List;
 import java.util.Objects;
 
+/**
+ * 采用 HANA、MySQL、PG 共同可用范围的 ROWS frame。
+ * 结束位置不能早于开始位置；MySQL/PG 某些原生倒序空窗口不属于这个共同契约。
+ * 调用时要求明确排序，防止“前 N 行”随执行计划改变；实际边缘行仍可产生 SQL NULL 结果。
+ */
 public record RowsFrame(RowBoundary start, RowBoundary end) implements WindowFrame {
     public RowsFrame {
         Objects.requireNonNull(start, "start");

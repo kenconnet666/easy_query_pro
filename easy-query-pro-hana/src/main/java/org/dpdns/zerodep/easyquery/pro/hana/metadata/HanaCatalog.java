@@ -24,7 +24,9 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
- * 只读目录访问。schema/name 是原始标识符，不是 SQL 引用文本；null schema 在当前连接解析。
+ * 只读目录访问。schema/name 接收原始标识符，由本层引用；null schema 在当前连接解析。
+ * describe 在同一借用连接上读取关系、列、索引和外键，但没有额外创建目录事务一致性快照。
+ * 权限过滤和对象不存在严格区分，不能把元数据缺失当作可以安全覆盖对象的依据。
  */
 public final class HanaCatalog {
     private final DataSource dataSource;
@@ -68,6 +70,11 @@ public final class HanaCatalog {
         });
     }
 
+    /**
+     * SYS 目录可能被权限过滤，查询为空不能直接当作对象不存在。
+     * 用零行查询进一步探测；只有明确的对象不存在错误才返回 empty，权限及其他错误继续上抛，
+     * 防止 Code First 在不可判定状态下误执行创建或覆盖操作。
+     */
     private Optional<Relation> find(Connection connection, String schema, String name) throws SQLException {
         var relations = relations(connection, schema, name);
         if (!relations.isEmpty()) return Optional.of(relations.get(0));
@@ -94,6 +101,10 @@ public final class HanaCatalog {
                 rows.getString("COMMENTS"), "TRUE".equals(rows.getString("IS_TEMPORARY"))));
     }
 
+    /**
+     * 保留目录中的 NULL：浮点 DECIMAL 的 SCALE=NULL 不等同于定点 DECIMAL 的 scale=0；
+     * LENGTH 或可空性未知时也不能擅自补成固定长度/NOT NULL。
+     */
     private List<Column> columns(Connection connection, Relation relation) throws SQLException {
         boolean table = relation.kind() == Kind.TABLE;
         String sql = "SELECT COLUMN_NAME,POSITION,DATA_TYPE_NAME,LENGTH,SCALE,IS_NULLABLE,DEFAULT_VALUE,GENERATION_TYPE,GENERATED_ALWAYS_AS,COMMENTS"
@@ -141,6 +152,9 @@ public final class HanaCatalog {
         }).toList();
     }
 
+    /**
+     * 未显式给出 schema 时，在本次借用的同一个连接上解析当前 schema，不使用进程级缓存。
+     */
     private String schema(Connection connection, String requested) throws SQLException {
         String schema = requested;
         if (schema == null)

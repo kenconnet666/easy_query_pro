@@ -13,6 +13,16 @@ import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.HanaJsonTextType;
 
 import java.math.BigDecimal;
 
+/**
+ * HANA 类型目录，明确区分存储类型、可 CAST 目标和只声明操作语义的 view。
+ *
+ * <p>Java 类型相同不意味着 SQL 能力相同：SHORTTEXT/TEXT 是存储或索引选择，不能自动当作 CAST 目标；
+ * JSON 文本存储在 NVARCHAR/NCLOB 中，也不会因此变成 JSONB。VARCHAR/CLOB 的 ASCII 约束是本包明确的
+ * 参数契约，Unicode 使用 NVARCHAR/NCLOB；相关文本容量按 UTF-16 单元计算，代理对通常占两个单位。
+ *
+ * <p>typed value 拒绝不能精确表示的参数，nativeCast 保留数据库的原生转换行为。
+ * 定点 DECIMAL 与浮点 DECIMAL/SMALLDECIMAL 的精度及指数规则分别建模，不能互相替代。
+ */
 public final class HanaTypes {
     private static final CharacterLob CLOB = new CharacterLob("CLOB");
     private static final CharacterLob NCLOB = new CharacterLob("NCLOB");
@@ -30,10 +40,16 @@ public final class HanaTypes {
         return new HanaCharacterType(HanaCharacterType.Kind.NVARCHAR, utf16Capacity);
     }
 
+    /**
+     * typed value 防止自动补齐改变原值；需要 ALPHANUM 原生补齐语义时使用显式 nativeCast。
+     */
     public static TextType alphanum(int utf16Capacity) {
         return new HanaCharacterType(HanaCharacterType.Kind.ALPHANUM, utf16Capacity);
     }
 
+    /**
+     * 只开放 SHORTTEXT 存储声明，不暴露当前数据库不存在的 SHORTTEXT CAST。
+     */
     public static StorageType<String> shortText(int utf16Capacity) {
         return new ShortText(utf16Capacity);
     }
@@ -57,6 +73,9 @@ public final class HanaTypes {
         }
     }
 
+    /**
+     * HANA TINYINT 的 0..255 使用 Short 承载，避免与 Java 有符号 byte 的值域混淆。
+     */
     public static NumericType<Short> tinyint() {
         return Tinyint.INSTANCE;
     }

@@ -16,7 +16,10 @@ import java.time.LocalDateTime;
 import java.util.function.Function;
 
 /**
- * Reuses the native interval operations while allowing whole-value chains to retain a concrete subtype.
+ * 可扩展的 interval 整值表达式基类，复用原生运算并保留具体 SELF 类型。
+ *
+ * @param <T> 左值的业务类型及读取契约
+ * @param <S> plus/minus/negated 后保留的具体表达式类型；日期结果和比较仍返回相应标量族
  */
 public abstract class AbstractPgIntervalExpression<T, S extends PgIntervalExpression<T>> extends MappedValueExpression<T> implements PgIntervalExpression<T> {
 
@@ -28,7 +31,11 @@ public abstract class AbstractPgIntervalExpression<T, S extends PgIntervalExpres
     }
 
     /**
-     * Pass the previous expression and supplied SQL callback unchanged so SQL operations and the business reader remain attached.
+     * 必须将传入的上一段表达式和 SQL 回调原样传给新实例。
+     * 如果改回最初实体列，已经组合的 SQL 运算和业务 reader 会脱离当前链。
+     *
+     * @param mappingSource 上一段表达式的映射来源
+     * @param expression    本次完整运算的 SQL 构造回调
      */
     protected abstract S recreate(PropTypeColumn<T> mappingSource, Function<SQLFunc, SQLFunction> expression);
 

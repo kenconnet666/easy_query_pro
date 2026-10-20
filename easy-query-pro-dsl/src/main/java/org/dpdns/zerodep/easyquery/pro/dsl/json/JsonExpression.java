@@ -8,7 +8,13 @@ import org.dpdns.zerodep.easyquery.pro.dsl.type.NativeJsonType;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ScalarComparisonRestriction;
 
 /**
- * Native JSON operations preserve the Java mapping of the original complete column value.
+ * 保留完整 JSON 列业务映射的原生操作入口。
+ *
+ * <p>T 可以是业务对象，不要求实体字段改成 String。整文档修改沿用原 reader，提取文本、布尔等标量后
+ * 则使用新的结果类型，不再套用整文档转换器。view 只声明已有存储语义，不生成 CAST 或改动实体元数据。
+ * JSON 的比较与普通字符串比较不同，需要显式文本转换或相应方言的 JSON 运算。
+ *
+ * @param <T> 整列 JSON 的业务表示
  */
 public interface JsonExpression<T> extends PropTypeColumn<T>, DSLSQLFunctionAvailable, ScalarComparisonRestriction {
     @Override

@@ -18,7 +18,9 @@ import java.util.TimeZone;
 import org.postgresql.jdbc.TimestampUtils;
 
 /**
- * Element type and array storage are explicit; no global List or Object[] mapping is installed.
+ * 显式声明数组元素类型与 SQL 存储类型，并用 PgArrayValue 携带运行时元素信息。
+ * Java 泛型擦除后仅有 List.class 不足以确定数组 OID，因此不注册全局 List/Object[] handler。
+ * 当前支持的元素族集中在 TYPES 中；新增族需同时确认元素绑定、读取和数组形状契约。
  */
 public final class PgArrayType<E> implements StorageType<PgArrayValue<E>>, CastTarget<PgArrayValue<E>> {
     private static final TimestampUtils TIMESTAMPS = new TimestampUtils(false, () -> TimeZone.getTimeZone("UTC"));
@@ -59,6 +61,9 @@ public final class PgArrayType<E> implements StorageType<PgArrayValue<E>>, CastT
         return elementSqlName + "[]";
     }
 
+    /**
+     * null 表示 SQL NULL；空 List 表示空数组；含 null 元素的 List 保留元素 NULL，三者不混淆。
+     */
     public PgArrayValue<E> value(List<? extends E> elements) {
         return elements == null ? null : new PgArrayValue<>(this, elements);
     }
@@ -72,7 +77,7 @@ public final class PgArrayType<E> implements StorageType<PgArrayValue<E>>, CastT
     }
 
     Object jdbcElement(Object value) {
-        // Use the driver's era, infinity and microsecond rules for both scalar and array parameters.
+        // 标量和数组参数统一使用驱动的纪元、infinity 和微秒规则，避免自行拼日期造成语义偏差。
         if (value instanceof LocalDate date) return TIMESTAMPS.toString(date);
         if (value instanceof LocalDateTime timestamp) return TIMESTAMPS.toString(timestamp);
         return value;

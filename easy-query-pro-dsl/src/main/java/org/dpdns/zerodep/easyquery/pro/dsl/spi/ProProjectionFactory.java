@@ -28,8 +28,14 @@ import com.easy.query.core.metadata.ColumnMetadata;
 import com.easy.query.core.metadata.EntityMetadata;
 
 /**
- * Preserves derived Draft readers and classifies known Pro scalars through upstream selector/segment SPI.
- * DTO mappings and explicit valueConvert readers keep their own result contract.
+ * 通过上游 selector/segment SPI 维护 Pro 投影的读取规则和行数语义。
+ *
+ * <p>上游函数列默认按聚合列处理，UNKNOWN 也不例外。已明确保持行数的 Pro 标量和窗口使用
+ * ScalarColumn，防止进入普通聚合合并路径；未知表达式继续委托上游。
+ * 窗口虽然保留行数，仍由作用域、SMART 谓词和 DISTINCT count 组件约束其求值位置。
+ *
+ * <p>显式 valueConvert 与普通 DTO 目标映射保持优先级。自定义 selector 应继承或委托默认实现，
+ * 保留读取器所有权、别名解析和行数分类，避免局部覆盖破坏其他数据库的共享契约。
  */
 public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
     @Override
@@ -37,10 +43,16 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
         return new Provider<>(this, index, query);
     }
 
+    /**
+     * 应用扩展普通 selector 的挂载点；默认 Provider 与上游查询共用此创建链。
+     */
     protected Selector createSelector(EntityQueryExpressionBuilder query, SQLBuilderSegment projects) {
         return new ScalarSelector(query, projects);
     }
 
+    /**
+     * 应用扩展别名/DTO selector 的挂载点；result 决定是否沿用源读取规则。
+     */
     protected AsSelector createAsSelector(EntityQueryExpressionBuilder query, SQLBuilderSegment projects, EntityMetadata result) {
         return new ScalarAsSelector(query, projects, result);
     }
@@ -155,6 +167,9 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
             return recreate(expression);
         }
 
+        /**
+         * 子类可在此保留附加状态与具体类型，避免 clone 后退回基础列实现。
+         */
         protected ScalarColumn recreate(SQLSegment expression) {
             return new ScalarColumn(table, columnMetadata, runtimeContext, expression, alias);
         }

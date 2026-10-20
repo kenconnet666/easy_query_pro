@@ -18,6 +18,11 @@ import java.sql.Types;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * 复用销售 fixture 检验统计语义：五个有效金额均值为 9，总体方差 35.6、样本方差 44.5。
+ * 第六行是 NULL，用于确认忽略样本而非填零；过滤出的 10/20 两项还能区分正确 CASE NULL 与错误 CASE 0。
+ * 微小小数和 2^53 边界分别检验转换时机与明确的 Double 近似契约。
+ */
 final class StatisticsContract {
     private StatisticsContract() {
     }

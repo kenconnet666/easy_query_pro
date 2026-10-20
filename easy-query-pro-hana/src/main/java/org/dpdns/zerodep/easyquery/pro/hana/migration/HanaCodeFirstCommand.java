@@ -18,6 +18,16 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
+/**
+ * 执行已经划分好语句边界的 HANA 迁移命令，并区分自有事务和环境事务。
+ *
+ * <p>自有事务在执行前进入专用 DDL 会话范围，由 HanaEasyConnection 在提交、回滚及归还时恢复模式。
+ * 已有环境事务只能校验 AUTOCOMMIT DDL 已关闭，不能替调用方切换模式，因为切换本身可能隐式提交
+ * 先前的 DML。这里只承诺受控路径的事务规则，不把任意 HANA DDL 都视为可安全回滚。
+ *
+ * <p>preview 用于展示和回调，执行使用独立 statements。不能按分号重新拆分展示文本，
+ * 否则注释、默认值或单条原生命令中的分号会破坏语句边界。
+ */
 final class HanaCodeFirstCommand implements CodeFirstCommand {
     private final QueryRuntimeContext context;
     private final List<String> statements;
@@ -58,6 +68,9 @@ final class HanaCodeFirstCommand implements CodeFirstCommand {
         }
     }
 
+    /**
+     * 环境事务存在时保留其所有权；不存在时转为自有事务并按此入口语义提交。
+     */
     @Override
     public void executeWithEnvTransaction(Consumer<CodeFirstCommandArg> consumer) {
         Objects.requireNonNull(consumer, "consumer");

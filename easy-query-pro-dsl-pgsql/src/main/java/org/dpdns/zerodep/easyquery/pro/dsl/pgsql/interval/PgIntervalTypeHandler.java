@@ -8,14 +8,18 @@ import org.postgresql.util.PGobject;
 
 import java.sql.SQLException;
 
+/**
+ * 精确读取服务器 interval 表示，支持已验证的文本样式及强制二进制传输。
+ * codec 面向服务器输出，不承担解析任意用户 interval 文本的职责；绑定仍使用 pgJDBC 的 interval 类型。
+ */
 public final class PgIntervalTypeHandler implements JdbcTypeHandler {
     @Override
     public Object getValue(JdbcProperty property, StreamResultSet result) throws SQLException {
-        // PGInterval loses sql_standard fields and cannot decode valid intervals above Integer.MAX_VALUE hours.
+        // PGInterval 会丢失部分 sql_standard 字段，也不能可靠解析超过 Integer.MAX_VALUE 小时的合法值。
         String text = result.getString(property.getJdbcIndex());
         if (text != null) return PgIntervalCodec.decode(text);
         if (result.wasNull()) return null;
-        // Forced interval binary transfer makes pgJDBC getString return null even when the SQL value is present.
+        // 强制二进制传输时 getString 可能为空而 SQL 值并非 NULL，需再读取精确二进制分量。
         return PgIntervalCodec.decodeBinary(result.getBytes(property.getJdbcIndex()));
     }
 

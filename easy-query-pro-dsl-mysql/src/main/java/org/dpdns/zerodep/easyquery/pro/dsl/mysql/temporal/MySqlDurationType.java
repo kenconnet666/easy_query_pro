@@ -7,7 +7,9 @@ import org.dpdns.zerodep.easyquery.pro.dsl.type.StorageType;
 import java.time.Duration;
 
 /**
- * MySQL TIME as elapsed time, independently of LocalTime's time-of-day mapping.
+ * 将 MySQL TIME 映射为有符号 Duration，保留其与一天内 LocalTime 的区别。
+ * 参数必须落在本包已验证的 TIME 值域及声明 fsp 刻度上；不自动舍弃尾部纳秒或作舍入。
+ * 该预校验只针对 typed value，不能替代数据库表达式和 nativeCast 的原生行为。
  */
 public record MySqlDurationType(int fractionalPrecision) implements StorageType<Duration>, CastTarget<Duration> {
     private static final Duration MAXIMUM = Duration.ofSeconds(3_020_399);

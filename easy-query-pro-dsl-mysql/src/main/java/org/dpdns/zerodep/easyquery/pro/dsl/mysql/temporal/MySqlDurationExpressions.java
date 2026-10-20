@@ -114,7 +114,7 @@ public final class MySqlDurationExpressions {
 
         @Override
         public NumberTypeExpression<BigDecimal> toSeconds() {
-            // TIME_TO_SEC discards fractions; multiplication avoids div_precision_increment rounding.
+            // 当前 MySQL 路径的 TIME_TO_SEC 只给整数秒，另加带符号微秒；用乘法避免 div_precision_increment 舍入。
             return new NumberTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
                     factory -> scope.scalar(factory, this, value -> factory.anySQLFunction("(TIME_TO_SEC({0}) + SIGN({0}) * MICROSECOND({0}) * 0.000001)", args -> args.sqlFunc(value))), BigDecimal.class);
         }

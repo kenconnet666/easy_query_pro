@@ -21,7 +21,11 @@ import com.easy.query.core.util.EasySQLSegmentUtil;
 import java.util.Collection;
 
 /**
- * Retains the upstream segment implementations and rejects a known invalid window count optimization.
+ * 在上游 SQL segment 创建点维护同一查询层的窗口边界。
+ *
+ * <p>别名包装应透明传递窗口标记，标量子查询则有独立计算层。原生函数参数中的子查询也必须遵守
+ * 同一边界，否则外层 DISTINCT count 会误认内层窗口。本类只检查已知语义标记，不解析最终 SQL。
+ * HANA 方言复用这些包装，同时继续委托自己的 LOB 返回类型 visitor。
  */
 public class ProSQLSegmentFactory extends DefaultSQLSegmentFactory {
     @Override
@@ -57,6 +61,10 @@ public class ProSQLSegmentFactory extends DefaultSQLSegmentFactory {
         return super.createSelectCountDistinctSegment(columns);
     }
 
+    /**
+     * 上游单列 DISTINCT count 会改写为 COUNT(DISTINCT expression)。同层窗口既不允许这种嵌套，
+     * 又有 NULL 行计数差异；调用方应先 distinct().toCteAs(name)，再在外层 count/page。
+     */
     public static void validateDistinctCount(Collection<SQLSegment> columns) {
         if (columns.stream().anyMatch(ExpressionScope::containsWindow)) {
             throw new UnsupportedOperationException("Counting a DISTINCT window projection requires distinct().toCteAs(name) before count/page");
@@ -94,7 +102,7 @@ public class ProSQLSegmentFactory extends DefaultSQLSegmentFactory {
 
         @Override
         public void accept(TableVisitor visitor) {
-            // A scalar subquery has its own window evaluation level; ordinary table visitors still enter it.
+            // 只阻止当前层的窗口检查进入独立子查询，普通表 visitor 仍须保留关联关系分析。
             if (!(visitor instanceof ExpressionScope.WindowVisitor)) super.accept(visitor);
         }
 
@@ -148,6 +156,7 @@ public class ProSQLSegmentFactory extends DefaultSQLSegmentFactory {
         @Override
         public void accept(TableVisitor visitor) {
             if (visitor instanceof ExpressionScope.WindowVisitor) {
+                // 原生 expression(query) 不经过 ScalarSubquery，需在参数节点处单独守住计算层边界。
                 var sameLevel = expression.getExpressions().stream().filter(argument -> !(argument instanceof SubQueryParamExpression)).toList();
                 EasySQLSegmentUtil.paramExpressionTableVisit(sameLevel, visitor);
             } else delegate.accept(visitor);

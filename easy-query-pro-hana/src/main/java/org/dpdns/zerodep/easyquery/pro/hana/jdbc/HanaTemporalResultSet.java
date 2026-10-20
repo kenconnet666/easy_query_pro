@@ -22,7 +22,12 @@ import java.time.LocalTime;
 import java.time.ZoneOffset;
 
 /**
- * 在原始 JDBC 结果进入分片排序/内存聚合之前，保留 SQL 无时区日期的逻辑值。
+ * 在 JDBC 结果进入上游分片排序/内存合并之前，保留无时区 DATE/TIME/TIMESTAMP 的日历字段。
+ *
+ * <p>结果以 java.time 值传递，避免先受 JVM 默认时区规范化。UTC Calendar 只是稳定提取字段的手段，
+ * 不表示业务无时区时间具有 UTC 含义；Instant 的时间点映射由独立 handler 约定。
+ *
+ * <p>raw 只用于带 Calendar 的读取，游标前进和关闭仍由 source 负责，不能重复管理底层资源。
  */
 class HanaTemporalResultSet implements StreamResultSet {
     private final StreamResultSet source;
@@ -35,6 +40,9 @@ class HanaTemporalResultSet implements StreamResultSet {
         this.types = types;
     }
 
+    /**
+     * 仅包装包含时间列的结果，并保留上游 JDBC 分片结果的标识接口。
+     */
     static StreamResultSet wrap(StreamResultSet source, ResultSet raw) throws SQLException {
         var metadata = source.getMetaData();
         int[] types = new int[metadata.getColumnCount()];
@@ -166,6 +174,10 @@ class HanaTemporalResultSet implements StreamResultSet {
         return (LocalDateTime) value;
     }
 
+    /**
+     * 旧 java.sql 日期类型会经过 JVM 时区；显式请求这些类型时，若转换改变日历字段必须报错，
+     * 不能静默把不存在的本地日期/时间规范化为另一值。
+     */
     private static SQLException legacyDateLoss(int column) {
         return new SQLException("HANA temporal value at column " + column + " cannot be represented by java.sql temporal types in the JVM timezone; use a java.time projection", "22008");
     }

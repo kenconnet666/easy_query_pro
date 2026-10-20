@@ -51,7 +51,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
- * Portable additions that compose with EasyQuery's existing query and expression types.
+ * 可与 EasyQuery 原查询和表达式组合的共同增强入口。
+ *
+ * <p>优先提供三库语义明确的能力，真实方言差异由各数据库 facade 增补。facade 共用 ExpressionScope，
+ * 应用可继承并通过工厂挂载具体类型，无需重建查询执行器。SQL CAST、Java 操作视图和参数值校验
+ * 承担不同职责，不能因 Java 返回类型相同就互相替代。
  */
 public class ProDsl {
     protected final ExpressionScope scope;
@@ -77,52 +81,81 @@ public class ProDsl {
     }
 
     /**
-     * Mounts a concrete DSL extension in the same client and query scope.
+     * 在当前查询中挂载具体 DSL，返回类型保留 D，应用自定义方法不会退化成基础 ProDsl。
+     * 工厂应调用对应 facade 的受保护构造器，保留数据库身份与查询归属检查。
      */
     public static <D extends ProDsl> D of(ProxyEntity<?, ?> entity, Function<? super ExpressionScope, ? extends D> factory) {
         return Objects.requireNonNull(Objects.requireNonNull(factory, "factory").apply(new ExpressionScope(entity)), "factory result");
     }
 
     /**
-     * Samples are converted to DOUBLE before aggregation to avoid dialect-dependent DECIMAL truncation.
+     * 总体方差；样本先转 DOUBLE 再统计，避免不同数据库按 DECIMAL scale 提前丢失小数。
      */
     public NumberFilterTypeExpression<Double> variancePopulation(PropTypeColumn<? extends Number> source) {
         return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.VAR_POP);
     }
 
+    /**
+     * 样本方差；忽略 NULL，少于两个有效样本返回 NULL，条件样本继续使用上游 filter。
+     */
     public NumberFilterTypeExpression<Double> varianceSample(PropTypeColumn<? extends Number> source) {
         return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.VAR_SAMP);
     }
 
+    /**
+     * 总体标准差，采用共同近似 Double 契约；单个有效样本为零，空样本为 NULL。
+     */
     public NumberFilterTypeExpression<Double> standardDeviationPopulation(PropTypeColumn<? extends Number> source) {
         return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.STDDEV_POP);
     }
 
+    /**
+     * 样本标准差；明确使用 SAMP，不依赖各数据库含义可能不同的 STDDEV 别名。
+     */
     public NumberFilterTypeExpression<Double> standardDeviationSample(PropTypeColumn<? extends Number> source) {
         return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.STDDEV_SAMP);
     }
 
+    /**
+     * 创建共同窗口规格；空 partition 表示全局窗口，ROWS 边界与排序按业务显式指定。
+     */
     public RowsWindowSpec window() {
         return new RowsWindowSpec(scope);
     }
 
+    /**
+     * 挂载应用或方言规格并保留具体 W。SELF 约束由规格自身维护，不在这里重复为 WindowSpec&lt;W&gt;，
+     * 因而既接受返回通配符规格的内置工厂，也接受返回具体子类的构造器。
+     */
     public <W extends WindowSpec<?>> W window(Function<? super ExpressionScope, ? extends W> factory) {
         return Objects.requireNonNull(Objects.requireNonNull(factory, "factory").apply(scope), "factory result");
     }
 
+    /**
+     * 将已有裸聚合挂到窗口，保留原数值/文本等表达式族；标量包装应在 OVER 之后追加。
+     */
     public <T, C extends PropTypeColumn<T>> C over(ColumnObjectFunctionAvailable<T, C> aggregate, WindowSpec<?> window) {
         return WindowFunctions.aggregate(scope, aggregate, window);
     }
 
+    /**
+     * 对象族额外保留源 reader，使派生业务值的 MIN/MAX 窗口不退回 JDBC 原始对象。
+     */
     public <T> AnyTypeExpression<T> over(ColumnAnyFunctionAvailable<T> aggregate, WindowSpec<?> window) {
         return WindowFunctions.aggregate(scope, aggregate, window, (bound, mapping, function) -> new MappedValueExpression<T>(bound, mapping, function) {
         });
     }
 
+    /**
+     * 工厂重载返回具体 E，窗口之后仍可调用自定义方法；映射来源由共同入口传入。
+     */
     public <T, E extends PropTypeColumn<T>> E over(PropTypeColumn<T> aggregate, WindowSpec<?> window, ExpressionFactory<T, ? extends E> factory) {
         return WindowFunctions.aggregate(scope, aggregate, window, factory);
     }
 
+    /**
+     * 复用 firstValue/lastValue/nthValue；要求明确排序，next/prev 继续走上游 offset API。
+     */
     public <T, C extends PropTypeColumn<T>> NextSelector<T, C> overValue(ColumnObjectFunctionAvailable<T, C> source, WindowSpec<?> window) {
         return WindowFunctions.value(scope, source, window);
     }
@@ -141,7 +174,8 @@ public class ProDsl {
     }
 
     /**
-     * Emits the database's CAST, including its native rounding, overflow and invalid-input behavior.
+     * 生成实际数据库 CAST，保留原生舍入、溢出及非法输入行为。
+     * 这与参数 value 的无损预校验不同，也与不生成转换 SQL 的 view 不同。
      */
     public <N extends Number> NumberTypeExpression<N> nativeCast(PropTypeColumn<?> source, NumericType<N> target) {
         Objects.requireNonNull(target, "target");
@@ -150,7 +184,7 @@ public class ProDsl {
     }
 
     /**
-     * Preserves native truncation rules; use value for a losslessly validated text parameter.
+     * 文本 CAST 采用原生截断规则；需要无损校验的输入参数应使用 value。
      */
     public StringTypeExpression<String> nativeCast(PropTypeColumn<?> source, TextType target) {
         return new StringTypeExpressionImpl<>(context, anchor, null, conversion(source, target), String.class);
@@ -163,7 +197,8 @@ public class ProDsl {
     }
 
     /**
-     * Mounts an existing SQL value without changing its storage type or source mapping.
+     * 为已有 SQL 值挂载操作视图，不改变物理存储或原读取映射。
+     * 工厂必须沿用传入的来源；具体类型族的物理声明检查由其构造器负责。
      */
     public <T, E extends PropTypeColumn<T>> E view(PropTypeColumn<T> source, ExpressionFactory<T, ? extends E> factory) {
         scope.requireSource(source);
@@ -182,7 +217,7 @@ public class ProDsl {
     }
 
     /**
-     * Binds an exactly representable value; precision loss is rejected before SQL execution.
+     * 绑定能被目标类型精确表示的参数，执行前拒绝精度损失，不静默舍入输入值。
      */
     public <N extends Number> NumberTypeExpression<N> value(N value, NumericType<N> type) {
         Objects.requireNonNull(type, "type");

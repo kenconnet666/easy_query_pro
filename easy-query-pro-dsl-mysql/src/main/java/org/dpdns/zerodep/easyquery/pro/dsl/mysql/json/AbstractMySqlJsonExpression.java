@@ -18,7 +18,10 @@ import java.util.function.Function;
 import java.util.function.BiFunction;
 
 /**
- * Whole-document operations preserve the source reader and the concrete extension type.
+ * 可扩展的 MySQL JSON 整文档操作基类，统一保留源 reader、参数校验和作用域。
+ *
+ * @param <T> 完整文档的业务类型
+ * @param <S> set/remove 后保留的具体表达式类型；文本提取和布尔结果不继续冒充 JSON 整值
  */
 public abstract class AbstractMySqlJsonExpression<T, S extends MySqlJsonExpression<T>> extends AbstractJsonExpression<T> implements MySqlJsonExpression<T> {
     protected AbstractMySqlJsonExpression(ExpressionScope scope, ProDsl portable, PropTypeColumn<T> source, Function<SQLFunc, SQLFunction> expression) {
@@ -27,7 +30,8 @@ public abstract class AbstractMySqlJsonExpression<T, S extends MySqlJsonExpressi
     }
 
     /**
-     * Pass the previous expression and supplied SQL callback unchanged; using the original entity column would lose the chain.
+     * 使用传入的上一段表达式和 SQL 回调重建 S，不能回退到最初实体列而丢失已组合的修改。
+     * 构造器继续执行错库、跨 client 和已知物理声明检查，自定义子类不应绕开这些共同约束。
      */
     protected abstract S recreate(PropTypeColumn<T> mappingSource, Function<SQLFunc, SQLFunction> expression);
 
@@ -76,6 +80,7 @@ public abstract class AbstractMySqlJsonExpression<T, S extends MySqlJsonExpressi
         if (checked.isEmpty()) throw new IllegalArgumentException("JSON_SET requires at least one change");
         var values = checked.stream().map(change -> literal(scope, MySqlTypes.json(), change.value())).toList();
         var template = new StringBuilder("JSON_SET({0}");
+        // 客户端 prepare 配合 NO_BACKSLASH_ESCAPES 可能产生二进制参数字面量，显式 UTF-8 转换确保路径为文本。
         for (int i = 0; i < checked.size(); i++) {
             template.append(",CONVERT({").append(2 * i + 1).append("} USING utf8mb4),{").append(2 * i + 2).append('}');
         }

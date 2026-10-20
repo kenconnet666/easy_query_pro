@@ -35,7 +35,11 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 /**
- * Resolves readers from their source relation before output aliases can overwrite the current query's reader map.
+ * 按来源关系解析并传播投影列的读取契约，包括 JDBC handler、业务转换和解密行为。
+ *
+ * <p>派生表、CTE 和列重排会重复使用 value1/value2 等别名，必须按“源关系 + 输出列”寻找 reader，
+ * 不能直接使用当前上下文的同名项。本类只保存读取规则，不保存某次查询的 Connection 或 ResultSet，
+ * 实际读取仍使用上游执行器传入的当前结果行。
  */
 final class ColumnReaders {
     private ColumnReaders() {
@@ -54,17 +58,25 @@ final class ColumnReaders {
         });
     }
 
+    /**
+     * Draft/标量需携带源映射；普通 DTO 使用目标字段的 handler，保留 Integer 到 Long 等映射能力。
+     */
     static boolean usesSourceReaders(EntityMetadata result) {
         return DraftResult.class.isAssignableFrom(result.getEntityClass())
                 || result.getEntityMetadataType() == EntityMetadataTypeEnum.BASIC_TYPE;
     }
 
+    /**
+     * 安装自动读取规则，同时保留本次投影的新显式 valueConvert。
+     * 上游在 selector 之前注册显式 reader，因此只替换 Pro 自动项和已属于源关系的继承项；
+     * 新出现的不透明用户 reader 优先级更高，不能被自动推导覆盖或删除。
+     */
     static void setAutomatic(EntityExpressionBuilder query, String property, ColumnReader reader) {
         if (property == null) return;
         var registered = query.getExpressionContext().getResultValueConverterMap(reader != null);
         if (registered == null) return;
         var current = registered.get(property);
-        // Upstream valueConvert registers before the selector runs. Only replace our own or inherited readers.
+        // 当前 map 可能已经混入外层回调注册的 reader，必须按所有权判断可否覆盖。
         if (current != null && !(current instanceof BoundReader) && !isInherited(query, current)) return;
         if (reader == null) registered.remove(property);
         else registered.put(property, reader instanceof BoundReader ? reader : new BoundReader(reader, reader));
@@ -113,6 +125,10 @@ final class ColumnReaders {
         return snapshot(query, result, query.getExpressionContext().getResultValueConverterMap(false));
     }
 
+    /**
+     * 固定关系的输出读取规则：显式 reader 优先，DTO 使用目标列，Draft 使用按位置记录的类型，
+     * 最后才回到普通源列元数据。UNION 按输出位置检查兼容性，不能依赖各分支的别名一致。
+     */
     static Map<String, ColumnReader> snapshot(EntityQueryExpressionBuilder query, EntityMetadata result, Map<String, ColumnReader> registered) {
         if (query instanceof SQLAnonymousUnionEntityQueryExpressionBuilder union) {
             Map<String, ColumnReader> first = null;
@@ -124,7 +140,7 @@ final class ColumnReaders {
             return first == null ? Map.of() : first;
         }
         var columns = query.getProjects().getSQLSegments();
-        // An unprojected derived query renders SELECT *; its columns still belong to the inner relation.
+        // 未显式投影的单个派生关系会输出 SELECT *，其读取规则仍属于内层，不能得到一个空快照。
         if (columns.isEmpty() && !query.hasGroup() && query.getTables().size() == 1) {
             var table = query.getTable(0);
             if (table instanceof ProExpressionBuilderFactory.Relation relation) return relation.readers();
@@ -166,6 +182,10 @@ final class ColumnReaders {
         return new BoundReader(key, new ColumnReaderImpl(column.getEntityMetadata(), column, null));
     }
 
+    /**
+     * 窗口空 frame 可能生成 SQL NULL，原实体 primitive 的默认 0/false 不适用于这个结果。
+     * 仅调整已知 handler 的 JDBC 可空读取，再保留原业务转换；不反射或猜测不透明 reader 的 NULL 契约。
+     */
     static ColumnReader nullable(ColumnReader reader) {
         if (!(reader instanceof BoundReader bound)) return reader;
         if (bound.key instanceof BasicKey key && key.type.isPrimitive()) {
@@ -184,13 +204,14 @@ final class ColumnReaders {
     }
 
     static ResultColumnMetadata scalarMetadata(int index, ColumnReader reader) {
-        // The reader already performs decryption/conversion. Basic metadata prevents applying those twice.
+        // 原 reader 已完成解密/转换，Basic metadata 不能再挂同一转换器，避免二次转换。
         return new BasicResultColumnMetadata(Object.class, new ReaderHandler(reader), new BasicJdbcProperty(index, Object.class));
     }
 
     private record ReaderHandler(ColumnReader reader) implements JdbcTypeHandler {
         @Override
         public Object getValue(JdbcProperty property, StreamResultSet rows) throws SQLException {
+            // JDBC 属性使用一基索引，ColumnReader 使用零基索引；只在桥接处转换一次。
             return reader.read(property.getJdbcIndex() - 1, rows);
         }
 
@@ -218,6 +239,9 @@ final class ColumnReaders {
         return reader instanceof BoundReader bound ? bound.key : reader;
     }
 
+    /**
+     * primitive 与包装类型的 NULL 行为不同，比较 UNION 契约时不能先装箱后视为等价。
+     */
     private record BasicKey(Class<?> type, JdbcTypeHandler handler) {
     }
 
