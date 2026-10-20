@@ -104,4 +104,6 @@ HANA 2.00.088 的 HDI `EQP_FUNCTION.hdbfunction` 已验证命名 JDBC 绑定、�
 
 函数工件由应用或 HDI 部署，查询入口不会自动创建或授权。使用 `SQL SECURITY INVOKER` 时应用身份需要函数 EXECUTE 及函数体访问对象所需权限；本包不提升权限。HDI 测试注册 `com.sap.hana.di.function` 并使用独立容器授权，结束时回收全部工件。
 
+真实 HDI fixture 还使用独立非 SYSTEM 运行时用户，仅获当前容器的 SELECT/EXECUTE：标量/多值计算视图、表函数默认值和显式 NULL、CTE/count/page 均实际执行，写入明确返回权限错误 258。部署、目录检查和数据填充仍由 owner 完成，见 [HDI 权限与生命周期](hana-hdi.md)；不同模型的授权规则不自动由 Java 参数声明推断。
+
 命名和默认值依据 [HANA 2.0 SQLScript 默认参数说明](https://help.sap.com/docs/SAP_HANA_PLATFORM/de2486ee947e43e684d39702027f8a94/9a0f61afbca947ae85938194b63aba23.html?locale=en-us)，`.hdbfunction` 结构参考固定 [SAP SHINE 表函数](https://github.com/SAP-samples/hana-shine-xsa/blob/0cfd539e629edee37942ee3acc54de25f811c9d3/core-db/src/functions/get_buyer_city.hdbfunction)。本项目的标量绑定与查询组合由自己的实库 fixture 验收。

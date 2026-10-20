@@ -65,6 +65,14 @@ final class HanaTestDatabase {
         return "EQP_" + prefix + "_" + UUID.randomUUID().toString().replace("-", "");
     }
 
+    static SQLException databaseCause(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            // 上游会先包一层 errorCode=0；断言要看到驱动的实际诊断，不能误认包装错误。
+            if (cause instanceof SQLException sql && sql.getErrorCode() != 0) return sql;
+        }
+        throw new AssertionError("Expected a HANA database diagnostic", failure);
+    }
+
     static TestTable createTable(String prefix, String columns) throws SQLException {
         String name = uniqueName(prefix);
         var connection = connect();

@@ -783,3 +783,15 @@ IDEA 格式与现有工程构建通过；独立示例以 Invoker 的实际编译
 HANA 观察到 68 个 ResultSet 门面，MySQL/PG 为 34。核对本机 Hikari 7.0.2 sources 与 HanaJdbcSQLExecutor 的 executeQuery/getResultSet 路径，确认这是同一底层结果的两种包装入口；所有门面均关闭，不把它解释为双倍 SQL。最终测量段 HANA/MySQL/PG 分别为 668/1231/157 ms，仅作本机样本，详细环境与边界见 [查询资源验收](query-resources.md)。
 
 IDEA 格式与构建通过，MCP 确认本轮三库自有表/schema 遗留为零，两份根诊断日志记录后清理。前一排名提交 `72e46b1cdfc780d808aadf2ec3cded56b836ce78` 的 [CI 39508644916](https://github.com/kenconnet666/easy_query_pro/actions/runs/39508644916) 为 cancelled；主线程随后确认包含排名与共同分片修复的后续提交 `1755a6d59484849285e72eae69a3552780ffd5d2` [Java CI 39508698033](https://github.com/kenconnet666/easy_query_pro/actions/runs/39508698033) 成功。该基线不包含当前资源批，当前候选仍交自己的完整 CI。
+
+## HANA 真实物理来源与 HDI 运行时权限
+
+沿现有 schema/user 生命周期新增两个物理来源权限用例。owner 建立列存表、同步全文索引和数据，应用用户只获对应目标表 SELECT；CURRENT_USER 明确验证实际身份。全文 coffee 命中 id 1/6，评分有限、count/page 与分组→全局窗口→CTE→SMART 结果正确；另一张未授权表 SELECT 和目标表 UPDATE 均保留 HANA 258。
+
+层级用例将既有六节点数据真正写入自有邻接表，再由只获 SELECT 的应用用户执行参数过滤、森林根分页、祖先/后代和 CTE 汇总。根 tree_size 为 4/2，重叠起点金额为 100/70；owner 随后 REVOKE SELECT，同一 hierarchy 定义再次执行时返回 258。没有用常量 UNION 查询冒充权限验证，也没有把查询定义快照当作数据或授权缓存。
+
+HDI 生命周期继续使用同一批已部署工件，再通过 GRANT_CONTAINER_SCHEMA_PRIVILEGES 向另一名运行时用户仅授予当前容器的 SELECT/EXECUTE。标量/多值计算视图、表函数默认值与显式 NULL、CTE/count/page 正常执行，UPDATE 被拒绝。模型为 SQL SECURITY INVOKER，底表 SELECT 仍然必要；部署 API、目录检查和数据填充没有转交应用用户。测试用户先关闭回收，再销毁容器。
+
+只整理测试公共设施：HanaTestDatabase.databaseCause 负责穿过上游 errorCode=0 包装，Search/Hierarchy 共用真实非零 HANA 诊断提取；生产源码未改动。指定 JBR 17 的定向 verify 先通过 2 个基础离线与 4 个 Search/Hierarchy 实库用例，随后再通过 2 个基础离线与完整 HanaHdiIT 生命周期 1 项。唯一实库用例共 5 项，HDI 最终运行在 2026-10-21 06:52:06 完成。
+
+IDEA 格式与构建通过，MCP 确认本轮全文/层级 schema、HDI 容器 schema 和三类测试用户全部为零；两份根诊断日志记录后清理。前一资源提交 `53bda76a37a4c3c23550d6a1ac93701a45ebd297` 的 [CI 39510512104](https://github.com/kenconnet666/easy_query_pro/actions/runs/39510512104) 为 cancelled，按真实状态保留，不阻塞 R01 产物与文档工作。

@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class HanaHdiIT {
     @Test
@@ -50,6 +51,7 @@ class HanaHdiIT {
                 verifyQueryableSource(container);
                 verifyMultiValueSources(connection, container);
                 verifyTableFunctionSource(container);
+                verifyRuntimePrivileges(connection, container);
             } finally {
                 invoke(connection, "CALL _SYS_DI.DROP_CONTAINER('" + container
                         + "', #EQP_HDI_DROP_PARAMETERS, ?, ?, ?)");
@@ -241,6 +243,43 @@ class HanaHdiIT {
             transaction.rollback();
         }
         assertTrue(function.query(client, name.bind("function transaction")).toList().isEmpty());
+    }
+
+    private static void verifyRuntimePrivileges(Connection owner, String container) throws SQLException {
+        try (var user = HanaTestDatabase.createUser("HDI_READER")) {
+            try (var statement = owner.createStatement()) {
+                statement.execute("CREATE LOCAL TEMPORARY COLUMN TABLE #EQP_HDI_RUNTIME_PRIVILEGES LIKE _SYS_DI.TT_SCHEMA_PRIVILEGES");
+            }
+            try (var privileges = owner.prepareStatement("INSERT INTO #EQP_HDI_RUNTIME_PRIVILEGES VALUES (?,'',?)")) {
+                for (String privilege : List.of("SELECT", "EXECUTE")) {
+                    privileges.setString(1, privilege);
+                    privileges.setString(2, user.name());
+                    privileges.executeUpdate();
+                }
+            }
+            invoke(owner, "CALL _SYS_DI.GRANT_CONTAINER_SCHEMA_PRIVILEGES('" + container
+                    + "', #EQP_HDI_RUNTIME_PRIVILEGES, _SYS_DI.T_NO_PARAMETERS, ?, ?, ?)");
+            // SQL SECURITY INVOKER 的表函数还需要底表 SELECT；EXECUTE 本身不是读取数据的授权。
+            var client = TestClients.configured(user.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure).getEasyQueryClient();
+            assertEquals(user.name(), client.sqlQuery("SELECT CURRENT_USER FROM DUMMY", String.class).get(0));
+            var name = HanaInput.required("P_NAME", String.class);
+            var view = HanaCalculationView.of(container, "EQP_CALC", HanaViewRowProxy::createTable, name);
+            assertEquals(1, view.query(client, name.bind("O'Reilly 中文")).singleNotNull().getId());
+            var names = HanaInput.requiredTextList("P_NAMES");
+            var multiple = HanaCalculationView.of(container, "EQP_CALC_NAMES", HanaViewRowProxy::createTable, names);
+            assertEquals(List.of(2, 5), multiple.query(client, names.bind(List.of("other", ""))).orderBy(p -> p.id().asc())
+                    .toList().stream().map(row -> row.getId()).toList());
+            var optionalName = HanaInput.optional("P_NAME", String.class).nullable();
+            var function = HanaTableFunction.of(container, "EQP_FUNCTION", HanaViewRowProxy::createTable, optionalName);
+            assertEquals(2, function.query(client).singleNotNull().getId());
+            assertEquals(6L, function.query(client, optionalName.bind(null)).count());
+            var page = function.query(client, optionalName.bind(null)).toCteAs("runtime_function_rows")
+                    .where(p -> p.id().gt(1)).orderBy(p -> p.id().asc()).toPageResult(2, 2);
+            assertEquals(5L, page.getTotal());
+            assertEquals(List.of(4, 5), page.getData().stream().map(row -> row.getId()).toList());
+            assertEquals(258, HanaTestDatabase.databaseCause(assertThrows(RuntimeException.class,
+                    () -> client.sqlExecute("UPDATE \"" + container + "\".\"EQP_SOURCE\" SET \"NAME\"=\"NAME\" WHERE \"ID\"=-1"))).getErrorCode());
+        }
     }
 
     private static void invoke(Connection connection, String call) throws SQLException {

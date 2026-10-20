@@ -104,4 +104,6 @@ var joined = search.query(SearchHitProxy::createTable)
 
 `HanaSearchDslTest` 和消费者编译用例覆盖类型边界、参数顺序、来源快照、不可变组合、错库、CTE/派生来源、输出 Proxy 生命周期和晚追加分片。`HanaSearchIT` 创建专用 schema、真实列存表和两个同步全文索引，检查目录并与原生 JDBC 比较 EXACT/FUZZY、多列和组合评分，覆盖引号/中文/原生 OR/短语、NULL、未命中、阈值边界、根级 OR 筛选、分页/CTE/SMART/普通来源 JOIN 与 UNION ALL，同时验证读取器隔离和事务回滚。schema 及索引随测试清理，结果证据见 [执行记录](execution.md)。
 
+权限契约另用新建的非 SYSTEM 用户验证：owner 创建表和同步索引，只向应用用户授予这张业务表的 SELECT。确认 CURRENT_USER 后执行 coffee 搜索得到 id 1/6，评分有限、count=2、第二页 id=6；分组→全局窗口→CTE→SMART 展示过滤仍保留两条命中的总数。未授权的另一张物理表查询，以及目标表 UPDATE 均返回 HANA 258。目录与索引确认只由 owner 完成，没有向应用授予 CREATE ANY 或 CATALOG READ；这也不意味着普通用户在自己的 schema 没有固有权限。
+
 官方语义依据：[CONTAINS](https://help.sap.com/docs/SAP_HANA_PLATFORM/4fe29514fd584807ac9f2a04f6754767/20f952437519101487edc3d9aba84238.html)、[SCORE](https://help.sap.com/docs/SAP_HANA_PLATFORM/4fe29514fd584807ac9f2a04f6754767/20e6f8e97519101489a0cd3c29991e72.html)、[CREATE FULLTEXT INDEX](https://help.sap.com/docs/SAP_HANA_PLATFORM/4fe29514fd584807ac9f2a04f6754767/20d4117e75191014ba5aaab91b3f087d.html)、[HANA 2.0 SPS 08 Search Developer Guide](https://help.sap.com/doc/95545fb91e744a87a43fae1ca08a61cf/2.0.08/en-US/SAP_HANA_Search_Developer_Guide_en.pdf)。HANA Cloud 与其他 revision 未由当前本地证据自动覆盖。

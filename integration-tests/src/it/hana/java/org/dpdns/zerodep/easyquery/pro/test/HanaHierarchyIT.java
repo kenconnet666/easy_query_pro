@@ -40,6 +40,47 @@ class HanaHierarchyIT {
             """;
 
     @Test
+    void selectOnlyPhysicalSourcesSupportNavigationAndRecheckRevokedPrivileges() throws SQLException {
+        try (var schema = HanaTestDatabase.createSchema("HIERARCHY_PERMISSIONS");
+             var user = HanaTestDatabase.createUser("HIERARCHY_READER")) {
+            String table = schema.qualified("eqp_hierarchy_edge");
+            try (var owner = schema.connection().createStatement()) {
+                owner.execute("CREATE COLUMN TABLE " + table
+                        + " (\"id\" INTEGER PRIMARY KEY,\"parent_id\" INTEGER,\"sort_order\" INTEGER,\"name\" NVARCHAR(100),\"amount\" DECIMAL(19,4))");
+                assertEquals(6, owner.executeUpdate("INSERT INTO " + table + " " + EDGES));
+                owner.execute("GRANT SELECT ON " + table + " TO " + user.name());
+            }
+            var query = TestClients.configured(user.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure);
+            assertEquals(user.name(), query.getEasyQueryClient().sqlQuery("SELECT CURRENT_USER FROM DUMMY", String.class).get(0));
+            var source = query.queryable(HanaHierarchyEdgeProxy.createTable()).asSchema(ignored -> schema.name())
+                    .where(p -> p.amount().ge(BigDecimal.TEN));
+            var hierarchy = HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()).siblingsAsc(p.sortOrder()));
+            var roots = hierarchy.query(HanaHierarchyRowProxy::createTable).where(p -> p.level().eq(1));
+            roots.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().getBehavior().addBehavior(EasyBehaviorEnum.SMART_PREDICATE);
+            assertEquals(List.of(4L, 2L), roots.cloneQueryable().orderBy(p -> p.rank().asc()).toList().stream()
+                    .map(HanaHierarchyRow::getTreeSize).toList());
+            assertEquals(2L, roots.cloneQueryable().count());
+            assertEquals(5, roots.cloneQueryable().orderBy(p -> p.rank().asc()).toPageResult(2, 1).getData().get(0).getId());
+            var report = hierarchy.descendantsOf(List.of(1, 3)).query(HanaHierarchyNavigationRowProxy::createTable)
+                    .groupBy(p -> GroupKeys.of(p.startRank()))
+                    .select(g -> Select.DRAFT.of(g.key1(), g.groupTable().amount().sumBigDecimal(), g.count()))
+                    .toCteAs("granted_tree_totals");
+            var totals = report.cloneQueryable().orderBy(p -> p.value1().asc()).toList();
+            assertEquals(List.of(4L, 2L), totals.stream().map(row -> row.getValue3()).toList());
+            assertEquals(0, new BigDecimal("100").compareTo(totals.get(0).getValue2()));
+            assertEquals(0, new BigDecimal("70").compareTo(totals.get(1).getValue2()));
+            assertEquals(List.of(1, 3), hierarchy.ancestorsOf(List.of(4)).distanceBetween(-2, -1)
+                    .query(HanaHierarchyNavigationRowProxy::createTable).orderBy(p -> p.rank().asc()).toList()
+                    .stream().map(HanaHierarchyRow::getId).toList());
+            try (var owner = schema.connection().createStatement()) {
+                owner.execute("REVOKE SELECT ON " + table + " FROM " + user.name());
+            }
+            assertEquals(258, HanaTestDatabase.databaseCause(assertThrows(RuntimeException.class,
+                    () -> hierarchy.query(HanaHierarchyRowProxy::createTable).count())).getErrorCode());
+        }
+    }
+
+    @Test
     void forestsRootsDepthAndOuterPagingKeepTheirDifferentSemantics() throws SQLException {
         var hierarchy = HanaHierarchy.from(edges(""), p -> HanaHierarchySpec.of(p.id(), p.parentId()).siblingsAsc(p.sortOrder()));
         var rows = hierarchy.query(HanaHierarchyRowProxy::createTable).orderBy(p -> p.rank().asc()).toList();
@@ -225,14 +266,7 @@ class HanaHierarchyIT {
 
     private static void assertHierarchyError(org.junit.jupiter.api.function.Executable action) {
         var failure = assertThrows(RuntimeException.class, action);
-        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            // 上游会先包装一层 errorCode=0 的 SQLException，必须继续找到真实的 HANA 诊断。
-            if (cause instanceof SQLException sql && sql.getErrorCode() != 0) {
-                assertTrue(sql.getMessage().contains("Hierarchy error"), failure.toString());
-                return;
-            }
-        }
-        fail("Expected a HANA hierarchy error with an SQLException cause", failure);
+        assertTrue(HanaTestDatabase.databaseCause(failure).getMessage().contains("Hierarchy error"), failure.toString());
     }
 
     private static EntityQueryable<HanaHierarchyEdgeProxy, HanaHierarchyEdge> edges(String suffix) throws SQLException {

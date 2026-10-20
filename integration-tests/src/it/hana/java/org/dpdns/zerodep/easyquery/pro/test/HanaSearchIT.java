@@ -2,6 +2,8 @@ package org.dpdns.zerodep.easyquery.pro.test;
 
 import com.easy.query.core.enums.EasyBehaviorEnum;
 import com.easy.query.core.proxy.sql.Select;
+import com.easy.query.core.proxy.sql.GroupKeys;
+import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.HanaExtensions;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaSearch;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaSearchSpec;
@@ -17,6 +19,52 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class HanaSearchIT {
+    @Test
+    void selectOnlyUserCanSearchAndReportOnGrantedPhysicalTables() throws SQLException {
+        try (var schema = HanaTestDatabase.createSchema("FULLTEXT_PERMISSIONS");
+             var user = HanaTestDatabase.createUser("FULLTEXT_READER")) {
+            createDocuments(schema);
+            try (var owner = schema.connection().createStatement()) {
+                owner.execute("CREATE COLUMN TABLE " + schema.qualified("ungranted") + " (\"id\" INTEGER)");
+                owner.execute("GRANT SELECT ON " + schema.qualified("eqp_search_document") + " TO " + user.name());
+            }
+            // 索引与目录检查只由 fixture owner 完成；业务 client 不授予 CREATE ANY/CATALOG READ。
+            var query = TestClients.configured(user.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure);
+            var client = query.getEasyQueryClient();
+            assertEquals(user.name(), client.sqlQuery("SELECT CURRENT_USER FROM DUMMY", String.class).get(0));
+            var search = HanaSearch.from(query.queryable(SearchDocumentProxy.createTable()).asSchema(ignored -> schema.name()),
+                    p -> HanaSearchSpec.exact("coffee", p.title()));
+            var hits = search.query(SearchHitProxy::createTable);
+            var rows = hits.cloneQueryable().orderBy(p -> p.id().asc()).toList();
+            assertEquals(List.of(1, 6), rows.stream().map(row -> row.getId()).toList());
+            rows.forEach(row -> assertTrue(Double.isFinite(row.getScore())));
+            assertEquals(2L, hits.cloneQueryable().count());
+            var page = hits.cloneQueryable().orderBy(p -> p.id().asc()).toPageResult(2, 1);
+            assertEquals(2L, page.getTotal());
+            assertEquals(6, page.getData().get(0).getId());
+
+            var report = search.query(SearchHitProxy::createTable).groupBy(p -> GroupKeys.of(p.title()))
+                    .select(g -> Select.DRAFT.of(g.key1(), g.count()))
+                    .select(p -> {
+                        var pro = ProDsl.of(p);
+                        return Select.DRAFT.of(p.value1(), p.value2(), pro.over(p.value2().asLong().sum(), pro.window()),
+                                pro.rowNumber(pro.window().orderBy(p.value1())));
+                    }).toCteAs("granted_search_report");
+            report.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().getBehavior().addBehavior(EasyBehaviorEnum.SMART_PREDICATE);
+            var tea = report.cloneQueryable().where(p -> p.value1().eq("coffee tea")).singleNotNull();
+            assertEquals(1L, tea.getValue2());
+            assertEquals(2L, tea.getValue3());
+            assertEquals(2L, tea.getValue4());
+            assertEquals(2L, report.cloneQueryable().count());
+            assertEquals("coffee tea", report.cloneQueryable().orderBy(p -> p.value1().asc()).toPageResult(2, 1)
+                    .getData().get(0).getValue1());
+            assertEquals(258, HanaTestDatabase.databaseCause(assertThrows(RuntimeException.class,
+                    () -> client.sqlQuery("SELECT COUNT(*) FROM " + schema.qualified("ungranted"), Long.class))).getErrorCode());
+            assertEquals(258, HanaTestDatabase.databaseCause(assertThrows(RuntimeException.class,
+                    () -> client.sqlExecute("UPDATE " + schema.qualified("eqp_search_document") + " SET \"title\"=\"title\" WHERE \"id\"=-1"))).getErrorCode());
+        }
+    }
+
     @Test
     void typedSearchMatchesNativeScoresAndKeepsCompositionOutsideTheSearch() throws SQLException {
         try (var schema = HanaTestDatabase.createSchema("FULLTEXT_DSL")) {
@@ -57,7 +105,7 @@ class HanaSearchIT {
             var joinedSearches = search.query(SearchHitProxy::createTable)
                     .innerJoin(search.query(SearchHitProxy::createTable), (left, other) -> left.id().eq(other.id()))
                     .select((left, other) -> Select.DRAFT.of(left.id(), left.score(), other.score()));
-            var unsupported = databaseCause(assertThrows(RuntimeException.class, joinedSearches::toList));
+            var unsupported = HanaTestDatabase.databaseCause(assertThrows(RuntimeException.class, joinedSearches::toList));
             assertEquals(7, unsupported.getErrorCode());
             assertTrue(unsupported.getMessage().contains("score()"));
             var union = search.query(SearchHitProxy::createTable).unionAll(search.query(SearchHitProxy::createTable));
@@ -193,10 +241,4 @@ class HanaSearchIT {
     private record Hit(int id, double score) {
     }
 
-    private static SQLException databaseCause(Throwable failure) {
-        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof SQLException sql && sql.getErrorCode() != 0) return sql;
-        }
-        throw new AssertionError("Expected a database diagnostic", failure);
-    }
 }
