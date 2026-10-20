@@ -1,6 +1,7 @@
 import { compileSelect, type CompiledQuery } from "../compiler/select.js";
 import { Expression, and, type Predicate } from "../expression/expression.js";
 import { freezeNode } from "../expression/node.js";
+import { recordEntries, type NoSymbolKeys } from "../internal/record.js";
 import type { Session } from "../execution/session.js";
 import type { Columns, Column, Table } from "../schema/table.js";
 import { validateName } from "../schema/table.js";
@@ -44,7 +45,7 @@ function bindSources<R extends Sources>(
     null,
   ) as Scope;
   const relations: Relation[] = [];
-  for (const [alias, source] of Object.entries(sources)) {
+  for (const [alias, source] of recordEntries(sources, "Query sources")) {
     validateName(alias);
     if (source instanceof DerivedSource && source.query.owner !== owner)
       throw new TypeError("A derived source cannot cross database clients");
@@ -82,7 +83,7 @@ export class Query<S extends Scope, P extends Selection | never, E> {
   ) {}
 
   static from<R extends Sources, E>(
-    sources: R,
+    sources: R & NoSymbolKeys<R>,
     session: Session,
     extensions: E,
   ): Query<BoundSources<R>, never, E> {
@@ -115,9 +116,11 @@ export class Query<S extends Scope, P extends Selection | never, E> {
     return this.change({ ...this.state, where: combined });
   }
 
-  select<const R extends Selection>(selection: (scope: S, extensions: E) => R): Query<S, R, E> {
+  select<const R extends Selection>(
+    selection: (scope: S, extensions: E) => R & NoSymbolKeys<R>,
+  ): Query<S, R, E> {
     const values = selection(this.scope, this.extensions);
-    const projection = Object.entries(values).map(([key, expression], index) => {
+    const projection = recordEntries(values, "Query projection").map(([key, expression], index) => {
       validateName(key);
       if (!(expression instanceof Expression))
         throw new TypeError("Selections require typed expressions");
@@ -138,14 +141,14 @@ export class Query<S extends Scope, P extends Selection | never, E> {
   }
 
   innerJoin<const R extends Sources>(
-    sources: R & (Extract<keyof R, keyof S> extends never ? unknown : never),
+    sources: R & NoSymbolKeys<R> & (Extract<keyof R, keyof S> extends never ? unknown : never),
     on: (scope: Merge<S, BoundSources<R>>, extensions: E) => Predicate,
   ): Query<Merge<S, BoundSources<R>>, P, E> {
     return this.join<R, false>(sources, on, false);
   }
 
   leftJoin<const R extends Sources>(
-    sources: R & (Extract<keyof R, keyof S> extends never ? unknown : never),
+    sources: R & NoSymbolKeys<R> & (Extract<keyof R, keyof S> extends never ? unknown : never),
     on: (scope: Merge<S, BoundSources<R>>, extensions: E) => Predicate,
   ): Query<Merge<S, BoundSources<R, true>>, P, E> {
     return this.join<R, true>(sources, on, true);
@@ -194,7 +197,14 @@ export class Query<S extends Scope, P extends Selection | never, E> {
     const ordering = Array.isArray(selected) ? selected : [selected as Order];
     return this.change({
       ...this.state,
-      ordering: Object.freeze([...this.state.ordering, ...ordering]),
+      ordering: Object.freeze([
+        ...this.state.ordering,
+        ...ordering.map((item) => {
+          if (item.direction !== "ASC" && item.direction !== "DESC")
+            throw new TypeError("Order direction must be ASC or DESC");
+          return Object.freeze({ ...item });
+        }),
+      ]),
     });
   }
 

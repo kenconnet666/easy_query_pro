@@ -22,13 +22,24 @@ export interface ValueMapping<T, U> {
  * nullable 在进入业务 codec 前处理 SQL NULL，避免 Number(null) 或业务构造器吞掉空值。
  */
 export class DataType<T, K extends SqlKind = SqlKind> {
+  readonly storage: StorageType<K>;
+  readonly codec: Codec<T>;
+  readonly acceptsNull: boolean;
   constructor(
-    readonly storage: StorageType<K>,
-    readonly codec: Codec<T>,
-    readonly acceptsNull = false,
+    storage: StorageType<K>,
+    codec: Codec<T>,
+    acceptsNull: null extends T ? boolean : false = false,
   ) {
-    Object.freeze(storage);
-    Object.freeze(this);
+    validateStorage(storage);
+    this.storage = Object.freeze({ ...storage });
+    this.codec = Object.freeze({
+      identity: codec.identity,
+      encode: codec.encode.bind(codec),
+      decode: codec.decode.bind(codec),
+    });
+    this.acceptsNull = acceptsNull;
+    // 基类不能抢先冻结子类实例，否则扩展类的字段初始化会在 super() 之后失败。
+    if (new.target === DataType) Object.freeze(this);
   }
 
   encode(value: T): unknown {
@@ -64,8 +75,37 @@ export class DataType<T, K extends SqlKind = SqlKind> {
         encode: (value) => source.encode(mapping.to(value as V)),
         decode: (value) => mapping.from(source.decode(value) as Exclude<T, null>),
       },
-      this.acceptsNull,
+      this.acceptsNull as null extends V | (null extends T ? null : never) ? boolean : false,
     );
+  }
+}
+
+function validateStorage(type: StorageType): void {
+  switch (type.kind) {
+    case "text":
+      if (!Number.isInteger(type.length) || type.length! < 1 || type.length! > 5000)
+        throw new RangeError("Common text length must be 1..5000");
+      return;
+    case "decimal":
+      if (
+        !Number.isInteger(type.precision) ||
+        type.precision! < 1 ||
+        type.precision! > 38 ||
+        !Number.isInteger(type.scale) ||
+        type.scale! < 0 ||
+        type.scale! > type.precision!
+      )
+        throw new RangeError(
+          "Common DECIMAL requires 1 <= precision <= 38 and 0 <= scale <= precision",
+        );
+      return;
+    case "integer":
+    case "bigint":
+    case "boolean":
+    case "json":
+      return;
+    default:
+      throw new TypeError("Unsupported SQL storage kind");
   }
 }
 
@@ -134,8 +174,6 @@ export const types = {
     );
   },
   text(length = 255): DataType<string, "text"> {
-    if (!Number.isInteger(length) || length < 1 || length > 5000)
-      throw new RangeError("Common text length must be 1..5000");
     return new DataType(
       { kind: "text", length },
       {
@@ -151,17 +189,6 @@ export const types = {
     );
   },
   decimal(precision = 19, scale = 4): DataType<string, "decimal"> {
-    if (
-      !Number.isInteger(precision) ||
-      precision < 1 ||
-      precision > 38 ||
-      !Number.isInteger(scale) ||
-      scale < 0 ||
-      scale > precision
-    )
-      throw new RangeError(
-        "Common DECIMAL requires 1 <= precision <= 38 and 0 <= scale <= precision",
-      );
     return new DataType(
       { kind: "decimal", precision, scale },
       {

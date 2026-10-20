@@ -2,6 +2,7 @@ import {
   column,
   createDatabase,
   Expression,
+  DataType,
   postgresDialect,
   table,
   types,
@@ -89,3 +90,22 @@ const rebound = db.from({ d: special.as() });
 // @ts-expect-error A derived column is a new base expression and must be explicitly remounted.
 rebound.scope.d.text.custom();
 void [id, name, department, insertion, row, exactDerived];
+
+// @ts-expect-error A non-null value type cannot enable SQL NULL in the public constructor.
+new DataType<string, "text">({ kind: "text", length: 20 }, types.text(20).codec, true);
+const nullableCustom = new DataType<string | null, "text">(
+  { kind: "text", length: 20 },
+  types.text(20).codec,
+  true,
+);
+const nullableCustomResult: string | null = nullableCustom.decode(null);
+const symbolKey = Symbol("hidden");
+// @ts-expect-error SQL projections cannot contain symbol keys that disappear during enumeration.
+base.select(({ u }) => ({ id: u.id, [symbolKey]: u.name }));
+// @ts-expect-error Column definitions must also have enumerable string keys.
+table("bad_columns", { id: column(types.integer()), [symbolKey]: column(types.text()) });
+// @ts-expect-error Sources use SQL aliases and cannot contain symbol keys.
+db.from({ u: users, [symbolKey]: users });
+// @ts-expect-error Extension namespaces must be preserved by runtime enumeration.
+createDatabase({ dialect: postgresDialect, extensions: { [symbolKey]: () => ({}) } });
+void nullableCustomResult;

@@ -33,3 +33,9 @@ MySQL 实测暴露文本 CAST 的 collation 冲突：列默认 utf8mb4_0900_ai_c
 HANA driver 使用 SDK 完整结果 API，不暴露需要继续占用连接的游标；驱动对象只借用应用池。归还时调用 disconnect，依据 [SAP 连接池清理规则](https://help.sap.com/docs/SAP_HANA_CLIENT/f1b440ded6144a54ada97ff95dac7adf/f7bfbd320dcd4170a78d800362c98bd0.html) 由池回滚未结束事务并重置连接，不用 setAutoCommit(true) 隐式提交失败事务。显式池使用 poolCapacity/maxConnectedOrPooled 配置。@sap/hana-client 原生包的构建脚本已检查并单独允许，其余依赖未开放任意构建。
 
 HANA Node CI 与既有 Java HANA/HDI 契约共用同一受限容器和临时凭据；PG/MySQL 保持独立并行任务。新增提交的流水线状态需按该 SHA 单独检查。
+
+## 2026-10-21：公开类型与不可变边界审查
+
+公开 DataType 构造入口的可空参数现在受值泛型约束，非空 T 不能启用 SQL NULL；storage 参数统一在构造边界校验，避免自定义类型绕过标准工厂产生非法长度或精度。schema、投影、来源与扩展命名空间拒绝 symbol/non-enumerable 键，同时保留类型负例，避免类型中存在而 SQL 结果缺失的字段。
+
+DataType/Column/Table 的基类不再提前冻结派生实例，允许扩展类初始化自身字段；自身拥有的描述做独立不可变快照。orderBy 同样快照排序项，调用方修改旧的 Order 不会反向改变已创建的查询。26 个单元用例和类型正负例通过，完整矩阵继续交 CI。

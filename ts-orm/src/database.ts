@@ -7,6 +7,7 @@ import type { DriverResult } from "./execution/driver.js";
 import type { Driver } from "./execution/driver.js";
 import { Session } from "./execution/session.js";
 import { Query, type Sources, type BoundSources } from "./query/query.js";
+import { recordEntries, type NoSymbolKeys } from "./internal/record.js";
 
 export interface ExtensionContext {
   readonly dialect: Dialect["name"];
@@ -31,7 +32,10 @@ function instantiate<R extends ExtensionFactories>(
   });
   return Object.freeze(
     Object.fromEntries(
-      Object.entries(factories).map(([name, factory]) => [name, factory(context)]),
+      recordEntries(factories, "Extension namespaces").map(([name, factory]) => [
+        name,
+        factory(context),
+      ]),
     ),
   ) as ExtensionApis<R>;
 }
@@ -44,14 +48,18 @@ export class Database<R extends ExtensionFactories = Record<never, never>> {
   readonly extensions: ExtensionApis<R>;
   constructor(
     private readonly session: Session,
-    private readonly factories: R,
+    private readonly factories: R & NoSymbolKeys<R>,
     apis?: ExtensionApis<R>,
   ) {
-    this.factories = Object.freeze({ ...factories });
+    this.factories = Object.freeze(
+      Object.fromEntries(recordEntries(factories, "Extension namespaces")),
+    ) as R & NoSymbolKeys<R>;
     this.extensions = apis ?? instantiate(session, this.factories);
   }
 
-  from<const S extends Sources>(sources: S): Query<BoundSources<S>, never, ExtensionApis<R>> {
+  from<const S extends Sources>(
+    sources: S & NoSymbolKeys<S>,
+  ): Query<BoundSources<S>, never, ExtensionApis<R>> {
     return Query.from(sources, this.session, this.extensions);
   }
 
@@ -61,7 +69,9 @@ export class Database<R extends ExtensionFactories = Record<never, never>> {
     return this.session.raw(compiled.sql, compiled.parameters);
   }
 
-  withExtensions<const X extends ExtensionFactories>(factories: X): Database<R & X> {
+  withExtensions<const X extends ExtensionFactories>(
+    factories: X & NoSymbolKeys<X>,
+  ): Database<R & X> {
     for (const key of Object.keys(factories))
       if (Object.hasOwn(this.factories, key))
         throw new TypeError("Duplicate extension namespace: " + key);
@@ -69,9 +79,9 @@ export class Database<R extends ExtensionFactories = Record<never, never>> {
       ...this.extensions,
       ...instantiate(this.session, factories),
     }) as ExtensionApis<R & X>;
-    return new Database(
+    return new Database<R & X>(
       this.session,
-      Object.freeze({ ...this.factories, ...factories }) as R & X,
+      Object.freeze({ ...this.factories, ...factories }) as R & X & NoSymbolKeys<R & X>,
       apis,
     );
   }
@@ -123,10 +133,10 @@ export class Database<R extends ExtensionFactories = Record<never, never>> {
 export function createDatabase<const R extends ExtensionFactories = Record<never, never>>(options: {
   dialect: Dialect;
   driver?: Driver;
-  extensions?: R;
+  extensions?: R & NoSymbolKeys<R>;
 }): Database<R> {
   return new Database(
     new Session(options.dialect, Symbol("database"), options.driver),
-    options.extensions ?? ({} as R),
+    options.extensions ?? ({} as R & NoSymbolKeys<R>),
   );
 }
