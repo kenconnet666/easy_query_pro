@@ -26,6 +26,7 @@ class PostgresConnectionIT {
                 DecimalDslContract.verify(dataSource, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
                 NullSafeDslContract.verify(dataSource, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
                 NullIfDslContract.verify(dataSource, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+                TemporalTruncationDslContract.verify(dataSource, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
             } finally {
                 statement.execute("DROP SCHEMA " + schema + " CASCADE");
             }

@@ -44,12 +44,20 @@ class DslCompilationTest {
         compile(false, "d.nullIfValue(e.eventDate(), \"wrong type\");");
     }
 
+    @Test
+    void calendarTruncationDoesNotAcceptAnInstantOrChangeTheDateType() throws IOException {
+        compile(true, "DateTimeTypeExpression<java.time.LocalDate> day = d.truncateDate(e.eventDate(), TruncationUnit.MONTH); DateTimeTypeExpression<java.time.LocalDateTime> time = d.truncateDateTime(e.occurred(), TruncationUnit.HOUR); time.year();");
+        compile(false, "d.truncateDateTime(e.eventDate(), TruncationUnit.DAY);");
+        compile(false, "d.truncateDateTime(e.occurred().asAnyType(java.time.Instant.class), TruncationUnit.DAY);");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
                 import java.math.BigDecimal;
                 import com.easy.query.core.proxy.extension.functions.type.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
+                import org.dpdns.zerodep.easyquery.pro.dsl.TruncationUnit;
                 import org.dpdns.zerodep.easyquery.pro.dsl.type.*;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;

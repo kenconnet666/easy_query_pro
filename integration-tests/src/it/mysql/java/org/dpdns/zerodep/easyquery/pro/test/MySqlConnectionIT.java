@@ -20,5 +20,6 @@ class MySqlConnectionIT {
         DecimalDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
         NullSafeDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
         NullIfDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+        TemporalTruncationDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
     }
 }

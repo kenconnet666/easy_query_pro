@@ -5,6 +5,7 @@ import com.easy.query.mysql.config.MySQLSQLKeyword;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExtensionInstaller;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
 
 public final class MySqlExtensions {
     private MySqlExtensions() {
@@ -13,5 +14,6 @@ public final class MySqlExtensions {
     public static void configure(ServiceCollection services) {
         ExtensionInstaller.install(services, SqlDialect.MYSQL, MySQLSQLKeyword.class,
                 new NullSafeComparison("({0} <=> {1})", "(NOT ({0} <=> {1}))"));
+        services.addService(TemporalTruncation.class, new MySqlTemporalTruncation());
     }
 }

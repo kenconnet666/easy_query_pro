@@ -4,6 +4,7 @@ import com.easy.query.core.inject.ServiceCollection;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExtensionInstaller;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaSQLKeyword;
 
 public final class HanaExtensions {
@@ -15,5 +16,6 @@ public final class HanaExtensions {
         ExtensionInstaller.install(services, SqlDialect.HANA, HanaSQLKeyword.class,
                 new NullSafeComparison("(CASE MAP({0},{1},1,0) WHEN 1 THEN TRUE ELSE FALSE END)",
                         "(CASE MAP({0},{1},1,0) WHEN 1 THEN FALSE ELSE TRUE END)"));
+        services.addService(TemporalTruncation.class, new HanaTemporalTruncation());
     }
 }

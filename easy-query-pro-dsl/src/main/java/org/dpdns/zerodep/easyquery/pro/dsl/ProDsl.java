@@ -8,6 +8,7 @@ import com.easy.query.core.expression.parser.core.base.scec.core.SQLNativeChainE
 import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.func.SQLFunc;
 import com.easy.query.core.func.SQLFunctionTranslateImpl;
+import com.easy.query.core.func.column.impl.ColumnFunctionExpressionImpl;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.ProxyEntity;
 import com.easy.query.core.proxy.core.EntitySQLContext;
@@ -30,9 +31,12 @@ import com.easy.query.core.util.EasyColumnSegmentUtil;
 import com.easy.query.core.util.EasyClassUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
 
 import java.util.Objects;
 import java.util.function.Function;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * Portable additions that compose with EasyQuery's existing query and expression types.
@@ -90,6 +94,25 @@ public final class ProDsl {
 
     public <N extends Number> NumberTypeExpression<N> nullValue(NumericType<N> type) {
         return value(null, type);
+    }
+
+    public DateTimeTypeExpression<LocalDate> truncateDate(PropTypeColumn<LocalDate> source, TruncationUnit unit) {
+        Objects.requireNonNull(unit, "unit");
+        if (!unit.isDateUnit())
+            throw new IllegalArgumentException("LocalDate does not support " + unit + " truncation");
+        return new DateTimeTypeExpressionImpl<>(context, anchor, null, truncation(source, unit, true), LocalDate.class);
+    }
+
+    public DateTimeTypeExpression<LocalDateTime> truncateDateTime(PropTypeColumn<LocalDateTime> source, TruncationUnit unit) {
+        return new DateTimeTypeExpressionImpl<>(context, anchor, null, truncation(source, unit, false), LocalDateTime.class);
+    }
+
+    private Function<SQLFunc, SQLFunction> truncation(PropTypeColumn<?> source, TruncationUnit unit, boolean dateOnly) {
+        requireSource(source);
+        Objects.requireNonNull(unit, "unit");
+        var translation = runtime.getService(TemporalTruncation.class);
+        return factory -> new ScopedFunction(translation.truncate(new ColumnFunctionExpressionImpl(source.getTable(), operand(source, factory)), unit, dateOnly),
+                AggregationType.UNKNOWN, true, source.getTable());
     }
 
     /**

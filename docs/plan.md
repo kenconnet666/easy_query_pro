@@ -37,7 +37,7 @@
 | G3.3 | 专用测试 schema 与非 SYSTEM 应用用户验证 | G3.2 | 独立 schema 和非管理员迁移/权限检查通过，完整类型与业务集成继续覆盖 |
 | G4.1 | 用三库真实消费示例定型通用/专属类型、CAST 与列视图 API | G0.4、G2.5 | DECIMAL 原型已通过三库真实消费，原生差异显式标注；其余类型/列视图继续收敛 |
 | G4.2 | 通用类型参数、三库 DDL/CAST 分离、类型族重载、返回表达式静态类型 | G4.1 | DECIMAL 描述、typed value/NULL 和编译负例已落地；完整目录继续实施 |
-| G4.3 | NULL-safe/NULLIF/数据库日期截断，以及 JSON path/布尔结果组合桥接 | G4.2 | NULL-safe 比较、四族 NULLIF 和布尔组合已实现，日期截断/JSON path 继续实施 |
+| G4.3 | NULL-safe/NULLIF/数据库日期截断，以及 JSON path/布尔结果组合桥接 | G4.2 | NULL-safe、四族 NULLIF、日期截断常规公历路径已实现；历史历法边界和 JSON path 继续实施 |
 | G4.4 | 三库原生类型目录：unsigned、MySQL 时长、PG interval、HANA 受限文本等 | G4.2 | 待实施 |
 | G4.5 | MySQL JSON、PG JSONB 与 PG SQL 数组的完整选定操作 | G4.2、G4.4 | 待实施 |
 | G4.6 | 编译负例、跨 client/错库负例、组合、类型传播与资源释放 | G4.3–G4.5 | 待实施 |
