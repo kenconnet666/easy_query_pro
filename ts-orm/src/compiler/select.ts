@@ -130,7 +130,8 @@ function renderSelect(query: SelectNode, state: State, declared: CteSet, ancesto
     });
   const scope = relationScope(query, ancestors);
   if (query.groupingMode === "rollup") state.groupingScopes.set(scope, query.grouping);
-  const quote = state.dialect.quote;
+  // 自定义 Dialect 可以是有状态类，提取方法时仍须保留接收者。
+  const quote = state.dialect.quote.bind(state.dialect);
   for (const slot of query.projection) {
     requireNativeSupport(slot.type.storage, state.dialect.name);
     if (query.distinct) requireNativeOperation(slot.type.storage, state.dialect.name, "equality");

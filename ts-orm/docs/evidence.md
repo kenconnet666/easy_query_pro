@@ -217,3 +217,11 @@ rollupBy 共用现有分组计划，scope/groupKeys 保留 codec 并可空化，
 审查复现两个遗漏：nullable零参数call/CAST与旧非空键的coalesce掩盖NULL，以及renderer临时生成GROUPING绕过WHERE阶段检查。新增负例先在旧候选失败，再尊重node输出nullable信息、约束renderer局部GROUPING依赖边后通过。原非空列/UPPER捕获、不可见键、错误位置、SQL模式残留也有负例。随机表与自有池正常清理。
 
 最终 131 单元用例、类型与格式检查通过，真实 tarball 增加可空小计键声明负例和NULL解码；消费者观测84文件、17,625类型实例化、约18MiB内存，临时目录清理。提交前核实 R01 的 1471d05df428eea1a4f97cf80cd88aea7d25cc9f [Java CI 39515321177](https://github.com/kenconnet666/easy_query_pro/actions/runs/39515321177) 已成功；当前ROLLUP候选仍由自己的矩阵验收。
+
+## 2026-10-21：有状态自定义方言
+
+扩展审查确认 SELECT 编译器把 dialect.quote 提取成裸函数，标准工厂因闭包而未暴露问题，但合法的有状态 Dialect 类会丢失 this。新增类实现的 CTE＋ROLLUP 定向红测，实际报读取 undefined.visited；保留接收者后通过。其余 parameter/cast/pagination 和 driver 方法接收者已核对，未发现同类提取。只改共同引用位置，不冻结或复制应用的方言实例；定向编译证明四个方法都经过原实例调用。
+
+同类审查随后发现函数定义的对象展开会丢失 class getter 与 renderer 原型方法。类定义红测实际报 Function undefined does not support postgres；改为明确读取 name/phase/syntax，并按三库键获取、绑定原 renderer 对象后冻结函数映射。带私有字段的类方法、own method、单次 getter 读取和 aggregate phase 保留均有回归；DataType codec 与其他普通回调不作无关改动。
+
+133 单元用例、类型与格式检查通过。此次不改变标准方言生成的 SQL，新增的是有状态扩展回归，本地未重复无关实库测试。前一 ROLLUP 提交 3b86152cd9c10abf875c6e94697d1c6682cf9f47 的 [TS CI 39516299169](https://github.com/kenconnet666/easy_query_pro/actions/runs/39516299169) 已成功，Java/HANA CI 提交前仍在进行。

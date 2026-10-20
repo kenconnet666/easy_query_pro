@@ -203,10 +203,34 @@ export function call<T, K extends SqlKind>(
   type: DataType<T, K>,
   arguments_: readonly AnyExpression[],
 ): Expression<T, K> {
+  // 元信息和实现可来自 class getter/原型方法；展开对象会遗漏它们，裸调用又会丢掉私有字段的接收者。
+  const { name, phase, syntax, render: supplied } = definition;
+  if (typeof name !== "string" || !name.trim() || !["row", "aggregate", "window"].includes(phase))
+    throw new TypeError("A SQL function requires a name and a valid evaluation phase");
+  if (syntax !== undefined && syntax !== "value" && syntax !== "predicate")
+    throw new TypeError("Function syntax must be value or predicate");
+  if (!supplied || (typeof supplied !== "object" && typeof supplied !== "function"))
+    throw new TypeError("A SQL function requires its dialect renderers");
+  const render: Partial<
+    Record<keyof FunctionDefinition["render"], (arguments_: readonly Node[]) => Node>
+  > = {};
+  for (const dialect of ["postgres", "mysql", "hana"] as const) {
+    const renderer = supplied[dialect];
+    if (renderer !== undefined) {
+      if (typeof renderer !== "function")
+        throw new TypeError("A dialect renderer must be a function");
+      render[dialect] = renderer.bind(supplied);
+    }
+  }
   return new Expression({
     node: freezeNode({
       kind: "call",
-      definition: Object.freeze({ ...definition, render: Object.freeze({ ...definition.render }) }),
+      definition: Object.freeze({
+        name,
+        phase,
+        ...(syntax === undefined ? {} : { syntax }),
+        render: Object.freeze(render),
+      }),
       arguments: Object.freeze(arguments_.map((argument) => argument.node)),
       type,
     }),
