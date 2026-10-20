@@ -62,6 +62,8 @@ POM 使用 `release=17`，不启用 preview；Maven 堆上限 1 GiB，测试 JVM
 
 当前测试驱动固定为 MySQL Connector/J 9.7.0、PostgreSQL JDBC 42.7.14、SAP ngdbc 2.30.11；生产模块不传递这些驱动。
 
+长结果流的提前退出、reader 中途异常、共享 client 的独立查询并发和额外 SQL/资源计数，见 [查询资源验收](query-resources.md)。这些用例沿原数据库 profile 自动执行，使用自有随机表或 schema，不新建数据库容器。
+
 ## HANA Docker 开发实例
 
 HANA 是核心目标数据库。`infra/hana.compose.yaml` 固定 SAP 官方 `saplabs/hanaexpress:2.00.088.00.20251110.1` 的 digest，使用独立 `eqp-hana` Compose project 和持久卷。容器限制 12 GiB 内存、无额外 swap、4 CPU，采用数据库服务版，不安装 XS 应用服务。

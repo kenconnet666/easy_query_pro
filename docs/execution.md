@@ -771,3 +771,15 @@ IDEA 格式与现有工程构建通过；独立示例以 Invoker 的实际编译
 指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana,mysql,postgres -Dtest=WindowDslTest,DslCompilationTest#rankingWindowsKeepLongResultsAndCustomSpecificationTypes -Dsurefire.failIfNoSpecifiedTests=false`，failsafe 选择三库 ReportingIT 的 globalRankingPreservesPeersAndGroupedReportBoundaries 与 conditionalOrderMetricsAndTopRanks，29 个离线/消费者检查及 6 个实库用例通过。IDEA 格式与构建通过；小型常量来源没有创建数据库对象，单份本轮根日志记录后清理。
 
 前一共同修复 `00fe3433f63b4656f4fbfebbdd967e450e39eaa5` 的 [CI 39508054652](https://github.com/kenconnet666/easy_query_pro/actions/runs/39508054652) 检查时仍 in_progress，没有阻塞等待。调用与边界见 [窗口规格](dsl-windows.md) 和 [订单报表](reporting-orders.md)，后续继续 G6 资源与权限验收。
+
+## 长结果读取失败、资源计数与并发 reader 隔离
+
+先将 G6.2/3 的取舍写入计划，复用已有 LOB/identity 并发验收，不重复相同场景。新增 QueryResourceContract 与仅测试使用的 JdbcResourceProbe，三库各自创建随机物理表/schema，2,049 行包含名称和金额 NULL；不新增生产执行器。Context7 resolve/query 核对 pgJDBC 与 Connector/J 的 cursor 条件后，PG 流查询使用显式事务、fetch 64 和 forward-only，MySQL 专用源开启 cursor/server prepare 并禁止静默降级。
+
+首轮 2 个基础离线及 3 个实库用例通过。只读复审指出仅在归还连接后检查关闭会被 Hikari 的 closeStatements 兜底掩盖；据此将 stream 完整读取、提前 65 行退出和第 129 行 reader 异常的检查提前到 rollback 之前，此时活动连接必须仍为 1，所有已取得 JDBC 句柄已经关闭。原回滚后 active=0、count=2049、autoCommit/readOnly 复用检查继续保留。
+
+最终以指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana,mysql,postgres -Dtest=HanaConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=HanaQueryResourceIT,MySqlQueryResourceIT,PostgresQueryResourceIT` 再次全部通过。共同 client 的四 worker 使用各自 fresh query/reader/CTE，24 轮正确隔离标签与 NULL，额外一次 reader 失败不污染后续查询。预热后每库 34 条业务 SQL 与 34 次 JDBC execute 一致；完整流 id 校验和为 2100225。
+
+HANA 观察到 68 个 ResultSet 门面，MySQL/PG 为 34。核对本机 Hikari 7.0.2 sources 与 HanaJdbcSQLExecutor 的 executeQuery/getResultSet 路径，确认这是同一底层结果的两种包装入口；所有门面均关闭，不把它解释为双倍 SQL。最终测量段 HANA/MySQL/PG 分别为 668/1231/157 ms，仅作本机样本，详细环境与边界见 [查询资源验收](query-resources.md)。
+
+IDEA 格式与构建通过，MCP 确认本轮三库自有表/schema 遗留为零，两份根诊断日志记录后清理。前一排名提交 `72e46b1cdfc780d808aadf2ec3cded56b836ce78` 的 [CI 39508644916](https://github.com/kenconnet666/easy_query_pro/actions/runs/39508644916) 为 cancelled；主线程随后确认包含排名与共同分片修复的后续提交 `1755a6d59484849285e72eae69a3552780ffd5d2` [Java CI 39508698033](https://github.com/kenconnet666/easy_query_pro/actions/runs/39508698033) 成功。该基线不包含当前资源批，当前候选仍交自己的完整 CI。
