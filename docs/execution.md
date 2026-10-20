@@ -390,6 +390,12 @@ JsonPathAccess 的导航前置检查从 HANA 构造函数分离，保留 ProDsl 
 
 本地 26 个离线/消费者编译检查、4 个 HANA 实库用例通过，包含共同路径回归、6004 单元 Unicode 值、完整文档、NVARCHAR 容量、业务 record、Draft/单列/克隆、JSON null/SQL NULL 和坏文本导航。消费者检查现在为 19 个正例、46 个负例。IDEA 构建与关键文件错误检查通过，MCP 确认 EQP_JSON_TEXT_* schema 遗留为 0；本轮编译/原生日志记录后清理。说明见 [HANA JSON 文本](hana-json-text.md)，更多类型目录与 G4.6/G6 组合继续实施。
 
+## 默认行语法补充调查
+
+以三个独立 schema 检查了当前 HANA revision 的 DEFAULT VALUES、DEFAULT 表达式、空 VALUES 元组、空列列表及 NULL identity 行为，均未找到可用替代路径，未重放已知导致崩溃的语句。SAP 官方 SQLAlchemy 方言的能力声明与此限制一致；Docker Hub 的官方 Express 标签也没有更新到比当前 88 更高的版本。
+
+MCP 确认 EQP_DEFAULT_VALUES/EQP_EMPTY_TUPLE/EQP_NULL_ID 本轮 schema 遗留为 0；三份探测源文件清理。未更改生产翻译、数据库表结构或必交付范围。该项仍记录于 [HANA 写入说明](hana-writes.md)，继续执行独立的类型目录与组合任务。
+
 ## 下一步
 
 1. 检查 HANA JSON 文本提交的 CI，继续原生数值/字符目录，并关闭 HANA 核心写入未决项。

@@ -76,4 +76,8 @@ READ_UNCOMMITTED 和其他未支持数值在借用连接前明确拒绝。发现
 
 因此该翻译不会进入生产实现或默认 CI，也不应在共享开发实例重复执行。探测会话已终止、测试表已删除，租户自动恢复后的稳定状态已核对；相关 dump 仅提取了上述脱敏证据，没有把原始环境信息纳入仓库。该问题保持未关闭，后续需要独立实例验证可靠替代方案或已修复的 HANA revision，不能把当前拒绝当作完成。
 
+2026-10-20 补充普通语法调查，未执行上述 override 语句：DEFAULT VALUES、VALUES(DEFAULT)、VALUES()、() VALUES() 均被目标引擎拒绝；BY DEFAULT identity 显式 NULL 报 287，ALWAYS identity 显式赋值报 406。所有独立测试 schema 已清理。SAP 维护的 [SQLAlchemy HANA 方言](https://github.com/SAP/sqlalchemy-hana/blob/main/sqlalchemy_hana/dialect.py) 也声明 supports_default_values=False 与 supports_empty_insert=False。当天公开 saplabs/hanaexpress 标签列表中最新可用版本仍为 2.00.088.00.20251110.1，没有可立即验证的更新修复版本。
+
+没有通过读取并重放目录 default 表达式、增加虚假列、自动更改表结构或显式覆盖 identity 来模拟默认行；这些方案会改变默认值、权限、并发 DDL 或生成键语义。普通省略部分列的服务器默认值仍是独立的已支持路径。零显式列问题保持开放，其他工作单元继续推进。
+
 原生语法依据：[SAP HANA Platform SQL Reference，INSERT 与 MERGE INTO](https://help.sap.com/doc/9b40bf74f8644b898fb07dabdd2a36ad/2.0.08/en-US/SAP_HANA_SQL_Reference_Guide_en.pdf)。上游 API 和选择列行为参照仓库的 3.2.17 实现及 [EasyQuery 冲突写入文档](https://github.com/xuejmnet/easy-query-doc/blob/main/src/en/ability/insertOrUpdate.md)。
