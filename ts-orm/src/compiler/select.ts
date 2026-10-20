@@ -1,6 +1,6 @@
 import type { Dialect } from "../dialects/dialect.js";
 import type { Node } from "../expression/node.js";
-import { renderNode, requireRowExpression, type State } from "./expression.js";
+import { renderNode, renderOrders, requireRowExpression, type State } from "./expression.js";
 import { type QueryNode, type SelectNode } from "../query/model.js";
 import { projectionDecoder } from "./projection.js";
 import { collectCtes } from "./cte.js";
@@ -107,11 +107,6 @@ function renderSelect(query: SelectNode, state: State): string {
   if (query.grouping.length)
     sql += " GROUP BY " + query.grouping.map((key) => renderNode(key, scope, state)).join(", ");
   if (query.having) sql += " HAVING " + renderNode(query.having, scope, state, "predicate");
-  if (query.ordering.length)
-    sql +=
-      " ORDER BY " +
-      query.ordering
-        .map((order) => `${renderNode(order.expression, scope, state)} ${order.direction}`)
-        .join(", ");
+  if (query.ordering.length) sql += " ORDER BY " + renderOrders(query.ordering, scope, state);
   return sql + state.dialect.pagination(query.limit, query.offset);
 }

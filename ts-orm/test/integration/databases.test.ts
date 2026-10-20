@@ -27,6 +27,7 @@ import { mysqlDriver } from "../../src/drivers/mysql.js";
 import { hanaDriver } from "../../src/drivers/hana.js";
 import { verifyWrites } from "./write-contract.js";
 import { verifyReports } from "./report-contract.js";
+import { verifyWindows } from "./window-contract.js";
 
 interface Harness {
   driver: Driver;
@@ -338,6 +339,7 @@ async function verify(harness: Harness): Promise<void> {
     );
     await verifyWrites(db, dialect);
     await verifyReports(db, dialect);
+    await verifyWindows(db, dialect);
   } finally {
     try {
       if (created) await db.command(sql`DROP TABLE ${identifier(name)}`);
@@ -348,7 +350,7 @@ async function verify(harness: Harness): Promise<void> {
 }
 
 test(
-  "PostgreSQL typed query, codec, self join and transaction contract",
+  "PostgreSQL query, writes, reports and window contracts",
   { skip: process.env.EQTS_PG_TEST !== "1" },
   async () => {
     const pool = new PgPool({
@@ -369,7 +371,7 @@ test(
 );
 
 test(
-  "HANA typed query and pooled transaction contract",
+  "HANA query, writes, reports and pooled transaction contracts",
   { skip: process.env.EQTS_HANA_TEST !== "1" },
   async () => {
     const pool = hana.createPool(
@@ -398,7 +400,7 @@ test(
 );
 
 test(
-  "MySQL prepared query preserves exact results despite pool conversion options",
+  "MySQL prepared queries, writes, reports and windows",
   { skip: process.env.EQTS_MYSQL_TEST !== "1" },
   async () => {
     const pool = createPool({

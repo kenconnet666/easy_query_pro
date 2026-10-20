@@ -1,8 +1,12 @@
 import { Expression, and, type AnyExpression, type Predicate } from "./expression.js";
 import { freezeNode, numericOrigin, type AggregateNode } from "./node.js";
 import { types, type DataType, type SqlKind } from "../schema/data-type.js";
+import { windowExpression, type WindowSpec } from "./window.js";
 
 export class AggregateExpression<T, K extends SqlKind> extends Expression<T, K> {
+  over(spec: WindowSpec): Expression<T, K> {
+    return windowExpression(this.aggregateNode, this.type, spec);
+  }
   constructor(
     private readonly aggregateNode: AggregateNode,
     type: DataType<T, K>,

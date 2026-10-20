@@ -75,3 +75,17 @@ b39ffbb8a0c4fed9073432ad933a21c7b4f9290d 的 [TS CI 39476884005](https://github.
 SUM 在累加前提升普通输入，累计来源在下一层直接保持宽中间值；computed 来源要求显式 nativeCast，信息穿过 CTE/UNION 后仍有效。DECIMAL 共同 scale 上限修正为 30，参数及读取都核对有效数值范围，未转为 JS number。类型推导为 COUNT bigint 非空、SUM decimal 字符串可空、MIN/MAX 原 codec 可空。
 
 三库真实表验证 6 条事实的全局/分组/条件聚合、LEFT JOIN 的 COUNT(*) 与 COUNT(right.id)、空输入报告行数、HAVING 后 count、两层 SUM、CTE/UNION 组合、CASE 的 UNKNOWN 分支以及 NULLIF。INTEGER 求和 4294967295、BIGINT 求和 18014398509481987、源 DECIMAL(19,4) 扩大到 1999999999999999.9998 都保持精确。合法 38 位值可读；39 位累计在 HANA 报明确 overflow，在 PG/MySQL 由 RangeError 导致 projection decode 失败，均未返回夹值。57 个单元用例与类型正负例通过，完整矩阵交对应提交的 CI。
+
+## 2026-10-21：ROWS 窗口与多层报表
+
+142bf953fc070a5bf9271ec1e3a1577f286ad1dc 的 [TS CI 39481817382](https://github.com/kenconnet666/easy_query_pro/actions/runs/39481817382) 六任务成功；Java CI 后被新提交取消。继承其 TS 报表代码的 MySQL 全文提交 11a4700953b2a525a283e897c7ba24de3cb39b1b 的 [Java/三库 CI 39483300377](https://github.com/kenconnet666/easy_query_pro/actions/runs/39483300377) 成功。
+
+窗口是结构化 Node，裸聚合 over 与独立的排名/值窗口共用 WindowSpec。窗口内的聚合不把外层错误变成全局聚合；普通分组后使用派生来源明确进入下一层。数值来源与业务 codec 继续穿过窗口输出，NULLS 排序在普通/窗口上下文复用一个渲染路径。
+
+真实三行 [10,NULL,30] 验证 lag1/default999 得 [999,10,NULL]、lead1 得 [NULL,30,999]、lag0 保留原值；following1 单行 frame 的 count(*) 为 [1,1,0]、count(value) 为 [0,1,0]、sum 为 [NULL,30,NULL]。FIRST/LAST/NTH/MIN/MAX 的尾部空 frame 均为 NULL。额外非空权重 [10,20,30] 证明默认 peer 累计 [30,30,60] 与显式 ROWS [10,30,60] 的区别；排名、无 ORDER 的 ROW_NUMBER、全局/分区窗口及四种 NULLS 方向均通过三库。
+
+分组日汇总 → CTE → 累计/全局值/LAG → 外层筛选已验证，显示第二个桶仍保留累计 60、全局 60、前桶 30。DISTINCT 窗口输出的 Query.count() 正确为 2，未删掉窗口投影。
+
+反向 ROWS 原型确认 PG/MySQL 原生返回空 frame，HANA88 报 Invalid window frame specification；移除诊断输出后保留明确的跨库负例，共同 API 拒绝反向范围。65 个单元用例、类型负例和三库实测通过。偏移值采用项目 int32 范围的受控字面量，不把这个共同上限冒充各引擎最大值。
+
+另以纯内存 format(format(source)) 复现 Prettier 3.9.10 对部分 TS 链式表达式首遍不稳定；独立工具提交 cb45469 增加有限收敛检查，只重写仍有差异的文件，CI 原格式检查保持开启。

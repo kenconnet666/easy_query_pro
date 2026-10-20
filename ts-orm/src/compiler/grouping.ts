@@ -8,10 +8,15 @@ function isAggregate(node: Node): boolean {
   );
 }
 function isWindow(node: Node): boolean {
-  return node.kind === "call" && node.definition.phase === "window";
+  return node.kind === "window" || (node.kind === "call" && node.definition.phase === "window");
 }
 
 export function validateGrouping(query: SelectNode): void {
+  if (query.having)
+    visitNode(query.having, (node) => {
+      if (isWindow(node))
+        throw new TypeError("HAVING cannot contain a same-level window; use a derived query");
+    });
   for (const key of query.grouping) {
     requireRowExpression(key, "GROUP BY");
     visitNode(key, (node) => {
@@ -44,16 +49,13 @@ export function validateGrouping(query: SelectNode): void {
     );
   for (const expression of expressions)
     visitNode(expression, (node) => {
+      if (grouped && isWindow(node))
+        throw new TypeError("Apply windows to grouped results through a derived source or CTE");
       if (matchesKey(node)) return false;
       if (isAggregate(node)) return false;
       if (grouped && node.kind === "column")
         throw new TypeError(
           "An ungrouped column appears outside an aggregate; reuse the named group key or add a derived query",
         );
-    });
-  if (query.having)
-    visitNode(query.having, (node) => {
-      if (isWindow(node))
-        throw new TypeError("HAVING cannot contain a same-level window; use a derived query");
     });
 }

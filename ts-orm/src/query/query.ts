@@ -10,6 +10,7 @@ import { validateName } from "../schema/table.js";
 import type { SqlKind } from "../schema/data-type.js";
 import {
   DerivedSource,
+  snapshotOrders,
   type Order,
   type Relation,
   type ResultOf,
@@ -241,14 +242,7 @@ export class Query<
     const ordering = Array.isArray(selected) ? selected : [selected as Order];
     return this.change({
       ...this.state,
-      ordering: Object.freeze([
-        ...this.state.ordering,
-        ...ordering.map((item) => {
-          if (item.direction !== "ASC" && item.direction !== "DESC")
-            throw new TypeError("Order direction must be ASC or DESC");
-          return Object.freeze({ ...item });
-        }),
-      ]),
+      ordering: Object.freeze([...this.state.ordering, ...snapshotOrders(ordering)]),
     });
   }
 

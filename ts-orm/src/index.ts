@@ -57,3 +57,13 @@ export {
 export type { CompiledWrite } from "./compiler/write.js";
 export { aggregate, AggregateExpression } from "./expression/aggregate.js";
 export { caseWhen, coalesce, nullIf, nativeCast } from "./expression/control.js";
+export {
+  windowSpec,
+  windowFunctions,
+  frame,
+  WindowSpec,
+  type WindowFunction,
+  type FrameStart,
+  type FrameEnd,
+  type RowBoundary,
+} from "./expression/window.js";

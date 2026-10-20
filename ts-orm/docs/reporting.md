@@ -5,9 +5,20 @@
 ## 命名分组键
 
 ```ts
-import { aggregate, column, coalesce, table, types, valueOf } from "@easy-query-pro/orm";
+import {
+  aggregate,
+  column,
+  coalesce,
+  table,
+  types,
+  valueOf,
+  frame,
+  windowFunctions,
+  windowSpec,
+} from "@easy-query-pro/orm";
 
 const sales = table("sale", {
+  id: column(types.integer()).primaryKey(),
   team: column(types.text(100)),
   amount: column(types.decimal(19, 4)).nullable(),
   enabled: column(types.boolean()),
@@ -55,4 +66,46 @@ SELECT、HAVING 和 ORDER BY 中，聚合之外的列必须由分组键覆盖。
 
 这类表达式需要显式 `nativeCast(expression, type)` 选择转换边界。nativeCast 采用数据库自己的舍入、截断和溢出规则，不保证原数学表达式无损；它在 API 上保持可见。SUM 的结果范围检查也不代表每个数据库中间计算步骤都按同一种 38 位算法执行。
 
-AVG、窗口、分组集和更完整的统计函数继续按执行计划推进；当前没有用不受验证的 number 泛型冒充相同的精度与舍入结果。
+AVG、RANGE、分组集和更完整的统计函数继续按执行计划推进；当前没有用不受验证的 number 泛型冒充相同的精度与舍入结果。
+
+## 窗口、排名与前后行
+
+```ts
+const source = db.from({ sale: sales });
+const order = windowSpec().partitionBy(source.scope.sale.team).orderBy(source.scope.sale.id.asc());
+const computed = source.select(({ sale }) => ({
+  id: sale.id,
+  team: sale.team,
+  running: aggregate
+    .sum(sale.amount)
+    .over(order.rowsBetween(frame.unboundedPreceding, frame.currentRow)),
+  previous: windowFunctions.lag(sale.amount).over(order),
+  sequence: windowFunctions.rowNumber().over(order),
+}));
+const shown = db
+  .from({ result: computed.asCte("calculated_sales") })
+  .where(({ result }) => result.id.gt(100))
+  .select(({ result }) => ({ id: result.id, running: result.running }));
+```
+
+WindowSpec 不可变，partitionBy/orderBy 追加，rowsBetween 设置新的 frame。来源字段必须来自当前 query.scope 或回调参数；不同 from 调用即使别名相同也不能混用。窗口内部排序决定计算顺序，最终展示顺序仍由普通 orderBy 指定。
+
+| 函数                                   | ORDER BY                 | ROWS frame | 结果            |
+| -------------------------------------- | ------------------------ | ---------- | --------------- |
+| 裸 aggregate.count/sum/min/max 的 over | 有 frame 时必需          | 支持       | 沿聚合结果类型  |
+| rowNumber                              | 可省略，省略后编号不稳定 | 拒绝       | bigint          |
+| rank/denseRank                         | 必需                     | 拒绝       | bigint          |
+| lag/lead                               | 必需                     | 拒绝       | 原值类型与 null |
+| firstValue/lastValue/nthValue          | 必需                     | 支持       | 原值类型与 null |
+
+COUNT 的空 frame 返回 0，SUM/MIN/MAX/FIRST/LAST/NTH 的空 frame 返回 NULL。LAG/LEAD 的第三个默认值只处理缺少目标行；目标行已有 SQL NULL 时仍返回 NULL，不能用 COALESCE 替代它。默认值可以是业务值或匹配 storage/codec 的表达式，继续经过参数绑定。
+
+没有声明 frame 时保留数据库默认 peer 范围，不自动补 ROWS，也不自动附加主键改变 RANK 的相等组。LAST_VALUE 的默认窗口通常只到当前行及 peers，需要整个分区的最后值时显式使用 unboundedPreceding 到 unboundedFollowing。
+
+ROWS 偏移统一限定在本项目范围 0–2147483647；NTH 的位置从 1 开始。零偏移正规化为 CURRENT ROW，起点不能是 UNBOUNDED FOLLOWING，终点不能是 UNBOUNDED PRECEDING，共同入口不接受反向范围。原生实测中 PG/MySQL 将 1 PRECEDING 到 2 PRECEDING 视为空 frame，而 HANA 2.00.088 拒绝。因此这里是已验证的共同范围，不是把 PostgreSQL 的合法语法统称为非法。[PG frame 规则](https://www.postgresql.org/docs/17/sql-expressions.html#SYNTAX-WINDOW-FUNCTIONS)
+
+偏移校验后生成受控整数字面量，避免 MySQL LAG/LEAD 位置不接受 CAST(?) 的语法差异；业务默认值仍用参数。排名、LAG/LEAD 拒绝会被某些数据库忽略的 frame，DISTINCT OVER 也不作为共同能力开放。[MySQL frame 行为](https://dev.mysql.com/doc/refman/8.4/en/window-functions-frames.html)
+
+普通和窗口排序都可写 `.asc("first")`、`.desc("last")`。PG/HANA 使用原生 NULLS，MySQL 使用 NULL 标记排序键加原表达式；每次 SQL 出现位置独立绑定。未来 RANGE 的单排序键限制会继续按实际物理键计算。
+
+已有 GROUP BY/HAVING/普通聚合的查询先通过 as()/CTE 形成新的行来源，再施加窗口。同层窗口不允许嵌套，WHERE/HAVING 中也不能隐藏窗口。展示过滤放在窗口结果的外层，才能保留已经计算的累计值、全局总额和上一行；上例明确展示了这个层级。Query.count() 保留窗口和 DISTINCT 的实际输出语义。

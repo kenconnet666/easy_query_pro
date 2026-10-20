@@ -1,5 +1,6 @@
 import type { AnyDataType } from "../schema/data-type.js";
 import { validateName } from "../schema/table.js";
+import type { WindowDefinition, WindowFunctionNode } from "./window.js";
 
 export type DialectName = "postgres" | "mysql" | "hana";
 export type Phase = "row" | "aggregate" | "window";
@@ -45,6 +46,7 @@ export type Node =
   | Readonly<{ kind: "case"; condition: Node; whenTrue: Node; whenFalse: Node }>
   | Readonly<{ kind: "coalesce" | "nullif"; left: Node; right: Node }>
   | AggregateNode
+  | Readonly<{ kind: "window"; input: AggregateNode | WindowFunctionNode; spec: WindowDefinition }>
   | Readonly<{ kind: "fragment"; parts: readonly (string | Node)[] }>
   | Readonly<{ kind: "identifier"; names: readonly string[] }>;
 
@@ -95,6 +97,15 @@ export function visitNode(node: Node, visit: (node: Node) => void | boolean): vo
       if (node.operand) visitNode(node.operand, visit);
       if (node.filter) visitNode(node.filter, visit);
       break;
+    case "window":
+      if (node.input.kind === "aggregate") visitNode(node.input, visit);
+      else {
+        if (node.input.operand) visitNode(node.input.operand, visit);
+        if (node.input.fallback) visitNode(node.input.fallback, visit);
+      }
+      for (const partition of node.spec.partitions) visitNode(partition, visit);
+      for (const order of node.spec.ordering) visitNode(order.expression, visit);
+      break;
     case "in":
       visitNode(node.operand, visit);
       for (const value of node.values) visitNode(value, visit);
@@ -114,6 +125,15 @@ export function combineNumericOrigin(...origins: readonly NumericOrigin[]): Nume
 }
 export function numericOrigin(node: Node): NumericOrigin {
   switch (node.kind) {
+    case "window": {
+      const input = node.input;
+      if (input.kind === "aggregate") return numericOrigin(input);
+      if (!input.operand) return "declared";
+      return combineNumericOrigin(
+        numericOrigin(input.operand),
+        ...(input.fallback ? [numericOrigin(input.fallback)] : []),
+      );
+    }
     case "column":
       return node.numericOrigin ?? "computed";
     case "parameter":

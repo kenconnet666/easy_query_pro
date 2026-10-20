@@ -38,11 +38,22 @@ export class Expression<T, K extends SqlKind = SqlKind> {
     return new Expression({ node: this.node, type: this.type.nullable() });
   }
 
-  asc(): Order {
-    return Object.freeze({ expression: this.node, direction: "ASC" });
+  asc(nulls?: "first" | "last"): Order {
+    return this.order("ASC", nulls);
   }
-  desc(): Order {
-    return Object.freeze({ expression: this.node, direction: "DESC" });
+  desc(nulls?: "first" | "last"): Order {
+    return this.order("DESC", nulls);
+  }
+  private order(direction: Order["direction"], nulls?: "first" | "last"): Order {
+    if (nulls !== undefined && nulls !== "first" && nulls !== "last")
+      throw new TypeError("NULL placement must be first or last");
+    return Object.freeze({
+      expression: this.node,
+      direction,
+      ...(nulls === undefined
+        ? {}
+        : { nulls: nulls === "first" ? ("FIRST" as const) : ("LAST" as const) }),
+    });
   }
 
   eq(value: Exclude<T, null> | Expression<T, K>): Predicate {

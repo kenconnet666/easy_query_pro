@@ -16,6 +16,20 @@ export interface ProjectionSlot {
 export interface Order {
   readonly expression: Node;
   readonly direction: "ASC" | "DESC";
+  readonly nulls?: "FIRST" | "LAST";
+}
+
+/** 普通排序和窗口排序都持有自己的快照，外部 Order 对象不能反向修改查询。 */
+export function snapshotOrders(orders: readonly Order[]): readonly Order[] {
+  return Object.freeze(
+    orders.map((order) => {
+      if (order.direction !== "ASC" && order.direction !== "DESC")
+        throw new TypeError("Order direction must be ASC or DESC");
+      if (order.nulls !== undefined && order.nulls !== "FIRST" && order.nulls !== "LAST")
+        throw new TypeError("NULL placement must be FIRST or LAST");
+      return Object.freeze({ ...order });
+    }),
+  );
 }
 export interface SourceDefinition {
   readonly fields: Readonly<
