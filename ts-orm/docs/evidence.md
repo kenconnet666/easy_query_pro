@@ -151,3 +151,17 @@ ca8e50c7a1759a4e974dc93c853c8a1b4fc8c39c 的 [TS CI 39497347207](https://github.
 94 个单元用例与类型正负例通过，覆盖 NULL、空洞、维度、业务映射、错误方言、参数顺序和整体数组 map 拒绝挂载。PG 实库覆盖 BIGINT 9007199254740993、精确金额、微秒、UUID 对象、特殊文本、SQL NULL 与元素 NULL、CTE/UNION、array_nulls off 拒绝后切回 on、65,536 元素仅一个绑定。状态检查与目标 SQL 同队列执行，定向并发单元证明 SET 不会插进检查与使用之间，release 等待已提交操作。
 
 新依赖加入后，真实 tarball 离线消费者再次通过，未自动安装任何数据库 peer；观测 82 文件、16,127 类型实例化、约 17 MiB 编译器内存。当前改动只涉及 PG，MySQL/HANA 的全面运行交并行 CI，不以无关重复本地运行占用时间。随机 PG 测试表和打包临时目录按 finally 清理，持久数据库和共享缓存保留。
+
+## 2026-10-21：JSON 空值与原始数值文本
+
+先以旧实现完成三个红测：JSON null 与 SQL NULL 相等、stringify 静默丢弃/改变值、接受已预解析的 driver 对象。修复位于 schema codec，三库驱动仍使用既有局部文本读取。jsonNull 只表示顶层 JSON null，nested null 不变，validator 不会被绕过；原文 jsonText 语法校验后返回原字符串，不使用校验时的 JS number 重序列化。
+
+只读审查补到 NonNullable<T>：Exclude<unknown,null> 无法排除 null，原未知验证器会出现静态允许而运行时拒绝。新增 unknown 的 null/undefined 类型负例，声明文件消费者也覆盖此边界。文档明确普通 JSON 小数仍按 JS number 舍入，原文 codec 也不承诺改变服务器本身的存储精度。
+
+103 个单元测试、类型正负例和三库实库通过。真实 JSONB/JSON/NCLOB 列验证 jsonNull/null/字符串null 的分离、嵌套中文与引号、9007199254740993 原始文本、错误读取为 JS 文档时拒绝、LEFT JOIN、CTE分页、JSON null 与 SQL NULL 的更新。MySQL2 在一个已显式指定 utf8 的 JSON 元数据路径输出编码建议，但中文/emoji与完整结果断言通过；未修改依赖源码或掩盖日志。
+
+数组提交 2e7d66b6bacb877ede05d443d8c68766a661df79 的 [TS CI 39506917747](https://github.com/kenconnet666/easy_query_pro/actions/runs/39506917747) 中 Linux 与数据库通过，Windows 离线消费者因不同磁盘选择不同 store 失败。独立修复 3258a31b235cfeae7738ea5e11ec59946fc2e523 显式选择并核对工作区缓存，保持 offline；本地真实 tarball 消费通过，新矩阵异步验证。此失败不被上一批绿色状态替代。
+
+本批随机 JSON 表与自有池按 finally 释放，包验证临时目录核对后清理，既有持久实例保留。
+
+提交前复查，3258a31b235cfeae7738ea5e11ec59946fc2e523 的 [TS CI 39507936184](https://github.com/kenconnet666/easy_query_pro/actions/runs/39507936184) 六任务全部成功，Windows 跨盘修复获得对应 SHA 的验证。本批新增 sentinel 声明和运行时断言后，清洁消费者再次通过（83 文件、15,586 类型实例化、约 17 MiB）；JSON 候选仍需自己的完整矩阵。

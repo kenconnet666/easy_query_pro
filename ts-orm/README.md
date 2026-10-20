@@ -127,6 +127,8 @@ INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字�
 
 `types.date()` 与 `types.localDateTime()` 使用 ISO 字符串保留业务日期／本地钟表字段及微秒，不经过 JS Date 或时区转换。PG ISO DateStyle、HANA EMPTY 与额外小数位的约束见 [日期与本地时间](docs/temporal.md)。
 
+`types.json(validate)` 保留运行时校验，顶层 JSON null 使用 `jsonNull`，SQL NULL 仍由 `.nullable()` 和 JS null 表示。`types.jsonText()` 读取原始 JSON 文本，避免 ORM 再经过 JS number 丢掉数值精度。序列化拒绝及数据库自身的规范化边界见 [JSON 值合同](docs/json.md)。
+
 扩展通过 createDatabase 的 extensions 或 withExtensions 安装，namespace 具体类型在查询和事务中保留。mount(factory) 返回工厂的具体表达式类型。函数 renderer 返回 sqlFragment 结构节点，编译器按最终顺序绑定值；普通值先通过 valueOf(value, type)，标识符使用 identifier，不能把用户值放进静态 SQL 文本。
 
 `postgresTypes.uuid()` 与应用的 namespaced SQL kind 共用 DataType/codec，不要求生成器或全局注册。原生字段经过外连接、CTE、UNION 和窗口后保留类型；方言和比较能力在编译时检查。定义方式和 CAST 的可空边界见 [原生类型](docs/native-types.md)。

@@ -2,6 +2,7 @@ import {
   column,
   createDatabase,
   Expression,
+  jsonNull,
   postgresDialect,
   postgresTypes,
   table,
@@ -83,6 +84,8 @@ function declarationsRemainSpecific(row: Row) {
   valueOf("00000000-0000-0000-0000-000000000001", postgresTypes.uuid()).upper();
   // @ts-expect-error The namespace is local and exact, never a global any.
   db.extensions.missing;
+  // @ts-expect-error An unknown JSON validator cannot erase the SQL NULL write boundary.
+  types.json((value) => value).encode(null);
   // @ts-expect-error Package export maps keep internal source paths private.
   void import("@easy-query-pro/orm/src/query/query.js");
   void [id, name, ancestor, amount, wrong, wrongId, wrongAmount];
@@ -106,3 +109,13 @@ if (
   result.balance.decimal !== "123456789012345.1234"
 )
   throw new Error("The packed consumer lost its decoder or NULL contract");
+
+const json = types.json((value) => value).nullable();
+if (
+  json.decode("null") !== jsonNull ||
+  json.encode(jsonNull) !== "null" ||
+  json.decode(null) !== null
+)
+  throw new Error("The packed consumer lost the JSON null boundary");
+if (types.jsonText().decode('{"n":9007199254740993}') !== '{"n":9007199254740993}')
+  throw new Error("The packed consumer changed raw JSON numeric text");

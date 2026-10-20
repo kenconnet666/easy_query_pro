@@ -33,6 +33,7 @@ import { verifyNativeTypes } from "./native-contract.js";
 import { verifyTemporal } from "./temporal-contract.js";
 import { verifyBatchBudget } from "./batch-contract.js";
 import { verifyPgArrays } from "./postgres-array-contract.js";
+import { verifyJson } from "./json-contract.js";
 
 interface Harness {
   driver: Driver;
@@ -350,6 +351,7 @@ async function verify(harness: Harness): Promise<void> {
     await verifyNativeTypes(db, dialect);
     await verifyTemporal(db, dialect, createDatabase({ dialect, driver: harness.observer }));
     await verifyBatchBudget(driver, dialect);
+    await verifyJson(db, dialect);
     if (dialect.name === "postgres") await verifyPgArrays(db);
   } finally {
     try {

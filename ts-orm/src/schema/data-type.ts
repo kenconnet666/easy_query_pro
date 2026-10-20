@@ -1,5 +1,6 @@
 import { sameNativeStorage, snapshotNativeStorage, type NativeStorage } from "./native-type.js";
 import { date, encodeLocalDateTime, decodeLocalDateTime } from "./temporal.js";
+import { jsonCodec, jsonTextCodec, type JsonDocument } from "./json.js";
 
 /** SQL 类型族与 JavaScript 值类型分别保存，decimal/UUID 的 string 载体不会获得文本列 API。 */
 export type CommonSqlKind =
@@ -284,16 +285,12 @@ export const types = {
       },
     );
   },
-  json<T>(validate: (value: unknown) => T): DataType<T, "json"> {
-    return new DataType(
-      { kind: "json" },
-      {
-        identity: Symbol("json"),
-        encode: (value) => JSON.stringify(validate(value)),
-        decode: (value) =>
-          validate(typeof value === "string" ? (JSON.parse(value) as unknown) : value),
-      },
-    );
+  json<T>(validate: (value: unknown) => T): DataType<JsonDocument<T>, "json"> {
+    return new DataType({ kind: "json" }, jsonCodec(validate));
+  },
+  /** 不经过 JS number 返回 JSON 数字；服务器自身的 JSON 规范化仍由实际存储类型决定。 */
+  jsonText(): DataType<string, "json"> {
+    return new DataType({ kind: "json" }, jsonTextCodec);
   },
 };
 export type AnyDataType = DataType<unknown, SqlKind>;
