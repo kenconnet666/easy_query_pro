@@ -76,7 +76,7 @@ public abstract class AbstractJsonExpression<T> extends AnyTypeExpressionImpl<T>
 
     public static void requireView(ExpressionScope scope, PropTypeColumn<?> source, NativeJsonType target) {
         scope.requireSource(source);
-        target.ddlType(scope.dialect());
+        target.requireDialect(scope.dialect());
         if (source instanceof JsonExpression<?> known && known.sqlType() != target) {
             throw new IllegalArgumentException("Use an explicit CAST from " + known.sqlType().sqlName() + " to " + target.sqlName());
         }
@@ -91,6 +91,7 @@ public abstract class AbstractJsonExpression<T> extends AnyTypeExpressionImpl<T>
         var annotation = field == null ? null : field.getAnnotation(Column.class);
         if (annotation == null || annotation.dbType().isBlank()) return;
         String declared = annotation.dbType().trim().toUpperCase(Locale.ROOT).split("[\\s(]", 2)[0];
+        // 已知内置声明才做冲突判断；未知 domain 或自定义类型仍是调用者的类型声明。
         boolean known = KNOWN_TYPES.contains(declared);
         try {
             JDBCType.valueOf(declared);

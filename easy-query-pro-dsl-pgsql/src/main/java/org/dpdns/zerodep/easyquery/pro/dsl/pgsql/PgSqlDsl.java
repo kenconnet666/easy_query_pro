@@ -28,7 +28,7 @@ public final class PgSqlDsl {
 
     private PgSqlDsl(ProxyEntity<?, ?> entity) {
         scope = new ExpressionScope(entity);
-        PgSqlTypes.json().ddlType(scope.dialect());
+        PgSqlTypes.json().requireDialect(scope.dialect());
         portable = ProDsl.of(entity);
     }
 

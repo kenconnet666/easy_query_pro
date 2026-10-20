@@ -3,6 +3,8 @@ package org.dpdns.zerodep.easyquery.pro.dsl.type;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.UnicodeStrings;
 
+import java.util.Objects;
+
 /**
  * Native SQL JSON storage; separate concrete descriptor classes select different expression APIs.
  */
@@ -11,8 +13,8 @@ public abstract class NativeJsonType implements StorageType<String>, CastTarget<
     private final String name;
 
     protected NativeJsonType(SqlDialect dialect, String name) {
-        this.dialect = dialect;
-        this.name = name;
+        this.dialect = Objects.requireNonNull(dialect, "dialect");
+        this.name = Objects.requireNonNull(name, "name");
     }
 
     public final SqlDialect dialect() {
@@ -30,8 +32,12 @@ public abstract class NativeJsonType implements StorageType<String>, CastTarget<
 
     @Override
     public final String ddlType(SqlDialect actual) {
-        if (actual != dialect) throw new IllegalArgumentException(name + " requires " + dialect + "; found " + actual);
+        requireDialect(actual);
         return name;
+    }
+
+    public final void requireDialect(SqlDialect actual) {
+        if (actual != dialect) throw new IllegalArgumentException(name + " requires " + dialect + "; found " + actual);
     }
 
     @Override
