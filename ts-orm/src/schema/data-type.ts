@@ -4,7 +4,15 @@ import { jsonCodec, jsonTextCodec, type JsonDocument } from "./json.js";
 
 /** SQL 类型族与 JavaScript 值类型分别保存，decimal/UUID 的 string 载体不会获得文本列 API。 */
 export type CommonSqlKind =
-  "integer" | "bigint" | "decimal" | "text" | "boolean" | "json" | "date" | "localDateTime";
+  | "integer"
+  | "bigint"
+  | "decimal"
+  | "float64"
+  | "text"
+  | "boolean"
+  | "json"
+  | "date"
+  | "localDateTime";
 export type NativeSqlKind = `${string}:${string}`;
 export type SqlKind = CommonSqlKind | NativeSqlKind;
 export type CodecIdentity = string | symbol | readonly (string | symbol)[];
@@ -144,6 +152,7 @@ function validateStorage(type: StorageType): void {
       return;
     case "integer":
     case "bigint":
+    case "float64":
     case "boolean":
     case "json":
     case "date":
@@ -188,8 +197,39 @@ function boolean(value: unknown): boolean {
   throw new TypeError("Expected a boolean driver value");
 }
 
+/** 浮点是显式近似值域；拒绝驱动特殊值和 JS 的空字符串/十六进制等隐式数值转换。 */
+function float64(value: unknown): number {
+  if (typeof value === "string") {
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value))
+      throw new TypeError("FLOAT64 requires a finite decimal or scientific numeric value");
+    const result = Number(value);
+    if (result === 0 && /[1-9]/.test(value.split(/[eE]/, 1)[0]!))
+      throw new RangeError("FLOAT64 driver text is below the representable nonzero range");
+    value = result;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value))
+    throw new TypeError("FLOAT64 requires a finite number");
+  // 数据库对负零的保存/输出不一致，共同业务域将两种零统一。
+  return value === 0 ? 0 : value;
+}
+
 /** 共同类型先保持三库可验证的值域；原生大数/特殊类型通过显式扩展挂载。 */
 export const types = {
+  /** 测量/统计使用有限 binary64 number；精确金额和大整数继续使用 decimal/bigint。 */
+  float64(): DataType<number, "float64"> {
+    return new DataType(
+      { kind: "float64" },
+      {
+        identity: "finite-float64",
+        encode(value) {
+          if (typeof value !== "number")
+            throw new TypeError("FLOAT64 parameters require number values");
+          return float64(value);
+        },
+        decode: float64,
+      },
+    );
+  },
   /** 业务日期没有时区；保留 ISO 字段，避免午夜经 Date 转换后变成前一天。 */
   date(): DataType<string, "date"> {
     return new DataType<string, "date">(

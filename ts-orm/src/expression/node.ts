@@ -9,7 +9,7 @@ export type Phase = "row" | "aggregate" | "window";
 export type NumericOrigin = "declared" | "accumulator" | "computed";
 export interface AggregateNode {
   readonly kind: "aggregate";
-  readonly operator: "COUNT" | "SUM" | "MIN" | "MAX";
+  readonly operator: "COUNT" | "SUM" | "MIN" | "MAX" | "AVG";
   readonly operand?: Node;
   readonly operandType?: AnyDataType;
   readonly distinct: boolean;
@@ -192,6 +192,7 @@ export function numericOrigin(node: Node): NumericOrigin {
     case "nullif":
       return numericOrigin(node.left);
     case "aggregate":
+      if (node.operator === "AVG") return "computed";
       return node.operator === "SUM"
         ? "accumulator"
         : node.operator === "COUNT"

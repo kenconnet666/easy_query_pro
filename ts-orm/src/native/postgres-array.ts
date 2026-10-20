@@ -14,7 +14,7 @@ import {
   type SqlTypeWrapper,
 } from "../schema/native-type.js";
 
-export type PgArrayElementKind = Exclude<CommonSqlKind, "json"> | "pg:uuid";
+export type PgArrayElementKind = Exclude<CommonSqlKind, "json" | "float64"> | "pg:uuid";
 export type PgArrayKind<K extends PgArrayElementKind = PgArrayElementKind> = K extends "pg:uuid"
   ? "pg:array.uuid"
   : `pg:array.${K}`;

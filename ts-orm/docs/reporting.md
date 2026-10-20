@@ -66,7 +66,7 @@ SELECT、HAVING 和 ORDER BY 中，聚合之外的列必须由分组键覆盖。
 
 这类表达式需要显式 `nativeCast(expression, type)` 选择转换边界。nativeCast 采用数据库自己的舍入、截断和溢出规则，不保证原数学表达式无损；它在 API 上保持可见。SUM 的结果范围检查也不代表每个数据库中间计算步骤都按同一种 38 位算法执行。
 
-AVG、RANGE、分组集和更完整的统计函数继续按执行计划推进；当前没有用不受验证的 number 泛型冒充相同的精度与舍入结果。
+`aggregate.avgApprox` 已沿共同 float64 类型提供显式近似平均值，支持条件、DISTINCT 与窗口；精确 SUM 的范围保持不变。转换次序、PG 输出设置与三库验证见 [统计值与精度](statistics.md)。统一精确 AVG、RANGE、分组集和更多统计函数仍按计划推进。
 
 ## 窗口、排名与前后行
 

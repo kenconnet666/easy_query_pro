@@ -34,13 +34,37 @@ export class AggregateExpression<T, K extends SqlKind> extends Expression<T, K> 
 }
 
 type Numeric = "integer" | "bigint" | "decimal";
-type Ordered = Numeric | "text" | "date" | "localDateTime";
+type Ordered = Numeric | "float64" | "text" | "date" | "localDateTime";
 function requireOperand(value: AnyExpression, allowed: readonly SqlKind[]): void {
   if (!(value instanceof Expression) || !allowed.includes(value.type.storage.kind))
     throw new TypeError("Aggregate operand has an unsupported SQL type");
 }
 
 export const aggregate = {
+  /**
+   * 在 AVG 之前显式选择 DOUBLE 运算域，而非结果返回后才 CAST。
+   * 名称说明近似计算：DECIMAL/BIGINT 输入转换会损失精度，不伪装成三库统一的精确平均值。
+   */
+  avgApprox<T, K extends Numeric | "float64">(
+    value: Expression<T, K>,
+  ): AggregateExpression<number | null, "float64"> {
+    requireOperand(value, ["integer", "bigint", "decimal", "float64"]);
+    const type = types.float64();
+    const operand =
+      value.type.storage.kind === "float64"
+        ? value.node
+        : freezeNode({ kind: "cast" as const, operand: value.node, type });
+    return new AggregateExpression(
+      freezeNode({
+        kind: "aggregate",
+        operator: "AVG",
+        operand,
+        operandType: type,
+        distinct: false,
+      }),
+      type.nullable(),
+    );
+  },
   count(value?: AnyExpression): AggregateExpression<bigint, "bigint"> {
     if (value !== undefined && !(value instanceof Expression))
       throw new TypeError("COUNT expects a typed expression; use valueOf for SQL NULL");
@@ -85,7 +109,15 @@ export const aggregate = {
     );
   },
   min<T, K extends Ordered>(value: Expression<T, K>): AggregateExpression<T | null, K> {
-    requireOperand(value, ["integer", "bigint", "decimal", "text", "date", "localDateTime"]);
+    requireOperand(value, [
+      "integer",
+      "bigint",
+      "decimal",
+      "float64",
+      "text",
+      "date",
+      "localDateTime",
+    ]);
     return new AggregateExpression(
       freezeNode({
         kind: "aggregate",
@@ -98,7 +130,15 @@ export const aggregate = {
     );
   },
   max<T, K extends Ordered>(value: Expression<T, K>): AggregateExpression<T | null, K> {
-    requireOperand(value, ["integer", "bigint", "decimal", "text", "date", "localDateTime"]);
+    requireOperand(value, [
+      "integer",
+      "bigint",
+      "decimal",
+      "float64",
+      "text",
+      "date",
+      "localDateTime",
+    ]);
     return new AggregateExpression(
       freezeNode({
         kind: "aggregate",

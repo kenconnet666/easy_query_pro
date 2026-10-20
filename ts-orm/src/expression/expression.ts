@@ -9,7 +9,7 @@ import {
 } from "./node.js";
 import type { Order } from "../query/model.js";
 
-type Numeric = "integer" | "bigint" | "decimal";
+type Numeric = "integer" | "bigint" | "decimal" | "float64";
 export type AnyExpression = Expression<unknown, SqlKind>;
 export type Predicate = Expression<boolean | null, "boolean">;
 export interface ExpressionBinding<T, K extends SqlKind = SqlKind> {

@@ -127,6 +127,8 @@ PostgreSQL 支持 `.returning(entry => ({ id: entry.id, name: entry.name }))`，
 
 INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字符串，precision 为 1–38，scale 为 0–min(precision,30)。参数和结果都校验该范围；有效数字之外的尾随零不改变值域。NULL 在业务 codec 之前处理；nullable().map() 的静态结果仍包含 null。undefined 不等于 SQL NULL。
 
+`types.float64()` 用于有限双精度测量值，`aggregate.avgApprox()` 明确在近似域计算平均值，复用条件/窗口/CTE。精确 SUM 不隐式接收浮点值；数值转换、DISTINCT 次序和 PG 输出精度前置条件见 [近似统计](docs/statistics.md)。
+
 `types.date()` 与 `types.localDateTime()` 使用 ISO 字符串保留业务日期／本地钟表字段及微秒，不经过 JS Date 或时区转换。PG ISO DateStyle、HANA EMPTY 与额外小数位的约束见 [日期与本地时间](docs/temporal.md)。
 
 `types.json(validate)` 保留运行时校验，顶层 JSON null 使用 `jsonNull`，SQL NULL 仍由 `.nullable()` 和 JS null 表示。`types.jsonText()` 读取原始 JSON 文本，避免 ORM 再经过 JS number 丢掉数值精度。序列化拒绝及数据库自身的规范化边界见 [JSON 值合同](docs/json.md)。

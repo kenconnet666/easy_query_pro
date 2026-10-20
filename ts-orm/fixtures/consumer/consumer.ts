@@ -1,4 +1,5 @@
 import {
+  aggregate,
   column,
   createDatabase,
   Expression,
@@ -138,3 +139,13 @@ if (
   scalarQuery.decode({ _eq_0: "12.3400" }).scalar?.decimal !== "12.3400"
 )
   throw new Error("The packed consumer lost its scalar subquery decoder");
+
+const average = db
+  .from({ a: accounts })
+  .select(({ a }) => ({ mean: aggregate.avgApprox(a.balance) }))
+  .compile();
+if (
+  average.decode({ _eq_0: "1.25" }).mean !== 1.25 ||
+  average.decode({ _eq_0: null }).mean !== null
+)
+  throw new Error("The packed consumer lost its approximate average domain");

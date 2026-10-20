@@ -181,3 +181,15 @@ MySQL 原生 EXISTS 的 DISTINCT＋OFFSET 实测红测：去重后已经越界�
 定向子查询单元与类型负例通过；三库完整本地契约通过，增加 PG 数组 scalar 后仅再次定向 PG。消费者从真实 tarball 读取公开 scalar 声明与业务 Money decoder。随机表/自有池和临时消费者按正常生命周期清理，完整新矩阵交候选提交异步执行。
 
 整理后 117 个单元测试、类型正负例和格式检查全部通过；最终清洁消费者为 83 文件、16,150 次类型实例化、约 17 MiB 编译器内存。没有把新候选的本地结果附会到前一提交的 CI。
+
+## 2026-10-21：有限浮点与近似 AVG
+
+子查询提交 c6100fc9f8dc90977dfb70162be9a4622f55682b 的 [TS CI 39510571544](https://github.com/kenconnet666/easy_query_pro/actions/runs/39510571544) 六任务成功。新增 float64 为显式近似 number 值域，avgApprox 在精确输入进入 AVG 前选择 DOUBLE，不用返回后的 CAST 冒充统一精确舍入。SUM 精确名单不变，MIN/MAX 继续保留业务映射，AVG 数值来源明确 computed。
+
+三库实测通过普通/精确输入、NULL/空集/条件/去重、移动平均与空 frame、CTE/HAVING/page。BIGINT 2^53、2^53+1、0 的样例明确区分先精确去重与先转 DOUBLE 再 DISTINCT 的结果。原精确字段的 codec 不变；driver 原始 DOUBLE 结果类型实测为 PG string、MySQL/HANA number。
+
+float64 字段在三库严格往返 1.2345678901234567、Number.MAX_VALUE、最小正常数、Number.MIN_VALUE、1e100、1e-100；负零统一为正零。MySQL 把会话 div_precision_increment 改为 0/30 后近似均值保持，finally 恢复原值。PG 事务内 extra_float_digits=0 时确实损失末尾数字，结束事务后恢复精确往返，因此文档保留 >0 的前置条件，没有隐式改共享池设置。
+
+有限输入不保证数据库所有中间运算都不溢出，codec 拒绝非有限输出，原数据库错误保持。PG float 数组与 JSON 值域未随 CommonSqlKind 自动放开，类型负例和运行时白名单一致。随机统计表和自有池按 finally 清理。
+
+最终 122 个单元用例、类型正负例、格式检查和真实 tarball 消费者通过；消费者新增近似 AVG 的 number/NULL 断言，观测 83 文件、16,767 类型实例化、约 18 MiB 内存。提交前 d6fc08f4dc273ed592be596012820181ac1159f4 的 Java CI 仍进行，c6100fc 的 Java CI 已被新提交取消，均未记为通过。

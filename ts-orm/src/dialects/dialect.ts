@@ -27,6 +27,8 @@ export function commonCastType(name: DialectName, type: StorageType): string {
       return name === "mysql" ? "SIGNED" : "BIGINT";
     case "decimal":
       return `DECIMAL(${type.precision},${type.scale})`;
+    case "float64":
+      return name === "postgres" ? "DOUBLE PRECISION" : "DOUBLE";
     case "text":
       return name === "hana"
         ? `NVARCHAR(${type.length})`
