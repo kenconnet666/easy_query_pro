@@ -115,6 +115,8 @@ UPDATE/DELETE 需要 where，整表操作使用显式 allRows。SET 可以引用
 
 所有批次在获取连接之前完成计划校验。PG/MySQL 把连续相同列形状合为多行 VALUES，HANA 按单行语句顺序执行，每批借用同一连接。整批原子性由上例的 transaction 提供；自动提交模式可能保留失败前已完成的语句。WriteExecutionError 包含失败语句下标、已完成语句数及已经确认的影响行数，保留原始 cause。空输入数组返回 0 且不借连接。HANA 零显式列的 INSERT 在编译时拒绝。
 
+每条语句默认最多 65,535 个实际绑定，可用 `dialect(name, { maxParameters })` 下调。超限 INSERT 保持输入顺序拆分，单行仍超限则整份计划在借连接前拒绝；SELECT/UPDATE/DELETE 不自动拆查询。参数与报文字节是不同限制，详见 [参数预算](docs/batch-limits.md)。
+
 PostgreSQL 支持 `.returning(entry => ({ id: entry.id, name: entry.name }))`，结果为 `{ affectedRows, rows }`，沿用 SELECT 的精确 codec；MySQL/HANA 编译时拒绝此原生能力。返回行顺序没有与输入逐行配对的承诺。自动提交下，结果解码可能在写入完成后失败；需要一起成功时在事务回调内执行。
 
 ## 类型与扩展边界

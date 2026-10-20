@@ -6,10 +6,18 @@ import { requireNativeSupport } from "../schema/native-type.js";
 /** 方言仅负责 SQL 能力和语法，连接与结果读取属于 driver/codec。 */
 export interface Dialect {
   readonly name: DialectName;
+  /** 实际绑定参数的项目预算；缺省 65535，现阶段只允许下调，不等同所有数据库的引擎极限。 */
+  readonly maxParameters?: number;
   quote(identifier: string): string;
   parameter(index: number, type: StorageType): string;
   cast(expression: string, type: StorageType): string;
   pagination(limit: number | undefined, offset: number): string;
+}
+export function parameterBudget(value: number | undefined): number {
+  const maximum = value === undefined ? 65_535 : value;
+  if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 65_535)
+    throw new RangeError("maxParameters must be an integer between 1 and 65535");
+  return maximum;
 }
 function castType(name: DialectName, type: StorageType): string {
   switch (type.kind) {
@@ -37,9 +45,13 @@ function castType(name: DialectName, type: StorageType): string {
       throw new TypeError("A native type must use its declared SQL rendering");
   }
 }
-export function dialect(name: DialectName): Dialect {
+export function dialect(
+  name: DialectName,
+  options: { readonly maxParameters?: number } = {},
+): Dialect {
   return Object.freeze({
     name,
+    maxParameters: parameterBudget(options.maxParameters),
     quote(identifier: string) {
       validateName(identifier);
       const mark = name === "mysql" ? "`" : '"';

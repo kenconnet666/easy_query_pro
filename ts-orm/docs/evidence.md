@@ -123,3 +123,11 @@ PostgreSQL 真实 UUID 验证业务 ID 映射、大小写规范化、INSERT RETU
 HANA 首次实测返回 9 位小数秒，旧 7 位 parser 红测失败；读取改为接受额外零位后通过，非零第七位仍通过真实表回读明确拒绝。第二个独立池启用 isoTimestampOutput:true，确认 T 分隔同样无损。两个池均设置 emptyTimestampIsNull:false；服务器常量 CAST('' AS DATE/TIMESTAMP) 证明 EMPTY 非 SQL NULL，驱动保留非 NULL 值，nullable codec 仍拒绝域外值，未与真正 SQL NULL 混淆。
 
 82 个单元用例、类型正负例、构建、格式检查和三库契约通过。测试表和自有池在 finally 清理，持久数据库未修改配置。共同年份、ISO DateStyle、HANA EMPTY 和超微秒边界均记录在 temporal.md；更宽原生时间类型继续留在 T08，不以隐式转换冒充共同支持。
+
+## 2026-10-21：实际绑定参数预算
+
+三库共同默认 65,535，只允许下调。PG/MySQL 硬限制有官方协议与源码依据；HANA 明确是当前项目策略，没有把未验证的 Node 总参数极限写成数据库事实。
+
+在 renderer 的实际 append 入口检查，覆盖 CTE、HANA 布尔投影、MySQL NULLS 排序和重复参数扩展。INSERT 原组超限才沿连续区间二分，固定 RETURNING 参数也参与每条预算；单行超限让整份计划在 acquire 前失败。其他查询不自动拆分。
+
+88 个单元与类型用例通过，含真实构造 65,535 绑定成功／65,536 绑定提前拒绝，后部大行失败时 acquire=0、变量绑定次数、编号复位、固定RETURNING开销及不泄露参数值。三库低预算真实写入验证五行按序落库与事务提交，PG每条RETURNING额外参数、MySQL多行拆分和HANA单行路径均通过；测试表finally删除。报文字节限制仍由驱动/服务器和业务codec处理，未做不可靠大小估算。

@@ -2,6 +2,7 @@ import type { Dialect } from "../dialects/dialect.js";
 import type { Node } from "../expression/node.js";
 import {
   renderNode,
+  createState,
   renderOrders,
   requireRowExpression,
   requireNodeOperation,
@@ -25,7 +26,7 @@ export function compileCommand(
   dialect: Dialect,
   owner: symbol,
 ): { sql: string; parameters: readonly unknown[] } {
-  const state: State = { dialect, owner, parameters: [] };
+  const state = createState(dialect, owner);
   const sql = renderNode(node, new Map(), state);
   return Object.freeze({ sql, parameters: Object.freeze(state.parameters) });
 }
@@ -36,7 +37,7 @@ export function compileSelect<T>(
   dialect: Dialect,
   count = false,
 ): CompiledQuery<T> {
-  const state: State = { dialect, owner: query.owner, parameters: [] };
+  const state = createState(dialect, query.owner);
   const definitions = collectCtes(query);
   const withSql = definitions.length
     ? "WITH " +

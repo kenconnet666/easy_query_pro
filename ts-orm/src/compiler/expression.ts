@@ -1,4 +1,4 @@
-import type { Dialect } from "../dialects/dialect.js";
+import { parameterBudget, type Dialect } from "../dialects/dialect.js";
 import { visitNode, nodeOutputType, type Node } from "../expression/node.js";
 import { validateWindow, type RowBoundary } from "../expression/window.js";
 import type { Order } from "../query/model.js";
@@ -18,6 +18,24 @@ export interface State {
   dialect: Dialect;
   owner: symbol;
   parameters: unknown[];
+  parameterLimit: number;
+}
+
+/** 不附参数值，避免错误日志暴露业务数据；attempted 是触发失败的位置，不伪装完整计划总数。 */
+export class ParameterLimitError extends RangeError {
+  constructor(
+    readonly dialect: Dialect["name"],
+    readonly limit: number,
+    readonly attempted: number,
+  ) {
+    super(`${dialect} statement exceeded its parameter budget of ${limit} at binding ${attempted}`);
+    this.name = "ParameterLimitError";
+  }
+}
+
+/** 手写 Dialect 也在编译入口校验，不能只保护标准工厂；每条语句固定预算快照。 */
+export function createState(dialect: Dialect, owner: symbol): State {
+  return { dialect, owner, parameters: [], parameterLimit: parameterBudget(dialect.maxParameters) };
 }
 
 export function requireRowExpression(node: Node, clause: string): void {
@@ -74,6 +92,12 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
       return (alias === "" ? "" : dialect.quote(alias) + ".") + dialect.quote(node.name);
     }
     case "parameter":
+      if (state.parameters.length >= state.parameterLimit)
+        throw new ParameterLimitError(
+          dialect.name,
+          state.parameterLimit,
+          state.parameters.length + 1,
+        );
       state.parameters.push(node.value);
       return dialect.parameter(state.parameters.length, node.type.storage);
     case "cast":

@@ -2,7 +2,12 @@ import type { Dialect } from "../dialects/dialect.js";
 import { visitNode } from "../expression/node.js";
 import type { Assignment, WriteState } from "../query/write.js";
 import { projectionDecoder } from "./projection.js";
-import { renderNode, requireRowExpression, type State } from "./expression.js";
+import {
+  renderNode,
+  requireRowExpression,
+  createState,
+  ParameterLimitError,
+} from "./expression.js";
 import type { CompiledQuery } from "./select.js";
 import { requireNativeSupport } from "../schema/native-type.js";
 
@@ -33,7 +38,7 @@ export function compileWrite<T>(write: WriteState, dialect: Dialect): readonly C
         last.push(row);
       else groups.push([row]);
     }
-    return Object.freeze(groups.map((rows) => compileStatement<T>(write, dialect, rows)));
+    return Object.freeze(groups.flatMap((rows) => compileInsertGroup<T>(write, dialect, rows)));
   }
   if (!write.where && !write.allRows)
     throw new TypeError("UPDATE/DELETE requires where() or explicit allRows()");
@@ -56,6 +61,24 @@ export function compileWrite<T>(write: WriteState, dialect: Dialect): readonly C
   return Object.freeze([compileStatement<T>(write, dialect)]);
 }
 
+function compileInsertGroup<T>(
+  write: WriteState,
+  dialect: Dialect,
+  rows: readonly (readonly Assignment[])[],
+): CompiledWrite<T>[] {
+  try {
+    return [compileStatement<T>(write, dialect, rows)];
+  } catch (error) {
+    if (!(error instanceof ParameterLimitError) || rows.length === 1) throw error;
+    // 仅超限慢路拆连续区间；renderer 可重复绑定，RETURNING 也有固定参数，不能只按列数估计。
+    const middle = Math.floor(rows.length / 2);
+    return [
+      ...compileInsertGroup<T>(write, dialect, rows.slice(0, middle)),
+      ...compileInsertGroup<T>(write, dialect, rows.slice(middle)),
+    ];
+  }
+}
+
 function sameColumns(left: readonly Assignment[], right: readonly Assignment[]): boolean {
   return (
     left.length === right.length &&
@@ -68,7 +91,7 @@ function compileStatement<T>(
   dialect: Dialect,
   rows?: readonly (readonly Assignment[])[],
 ): CompiledWrite<T> {
-  const state: State = { dialect, owner: write.owner, parameters: [] };
+  const state = createState(dialect, write.owner);
   const scope = new Map([[write.relation.id, ""]]);
   const name =
     (write.target.schema === undefined ? "" : dialect.quote(write.target.schema) + ".") +

@@ -31,6 +31,7 @@ import { verifyWindows } from "./window-contract.js";
 import { verifyTransactions } from "./transaction-contract.js";
 import { verifyNativeTypes } from "./native-contract.js";
 import { verifyTemporal } from "./temporal-contract.js";
+import { verifyBatchBudget } from "./batch-contract.js";
 
 interface Harness {
   driver: Driver;
@@ -347,6 +348,7 @@ async function verify(harness: Harness): Promise<void> {
     await verifyTransactions(db, driver, harness.observer, dialect);
     await verifyNativeTypes(db, dialect);
     await verifyTemporal(db, dialect, createDatabase({ dialect, driver: harness.observer }));
+    await verifyBatchBudget(driver, dialect);
   } finally {
     try {
       if (created) await db.command(sql`DROP TABLE ${identifier(name)}`);
