@@ -28,9 +28,11 @@ import { hanaDriver } from "../../src/drivers/hana.js";
 import { verifyWrites } from "./write-contract.js";
 import { verifyReports } from "./report-contract.js";
 import { verifyWindows } from "./window-contract.js";
+import { verifyTransactions } from "./transaction-contract.js";
 
 interface Harness {
   driver: Driver;
+  observer: Driver;
   dialect: Dialect;
   close(): Promise<void>;
 }
@@ -340,6 +342,7 @@ async function verify(harness: Harness): Promise<void> {
     await verifyWrites(db, dialect);
     await verifyReports(db, dialect);
     await verifyWindows(db, dialect);
+    await verifyTransactions(db, driver, harness.observer, dialect);
   } finally {
     try {
       if (created) await db.command(sql`DROP TABLE ${identifier(name)}`);
@@ -364,6 +367,7 @@ test(
     });
     await verify({
       driver: postgresDriver(pool),
+      observer: postgresDriver(pool),
       dialect: postgresDialect,
       close: () => pool.end(),
     });
@@ -374,25 +378,28 @@ test(
   "HANA query, writes, reports and pooled transaction contracts",
   { skip: process.env.EQTS_HANA_TEST !== "1" },
   async () => {
-    const pool = hana.createPool(
-      {
-        serverNode: process.env.EQTS_HANA_SERVER ?? "127.0.0.1:39041",
-        uid: process.env.EQTS_HANA_USER ?? "SYSTEM",
-        pwd: required("EQTS_HANA_PASSWORD"),
-        encrypt: false,
-      },
-      { poolCapacity: 1, maxConnectedOrPooled: 1 },
-    );
+    const connectionOptions = {
+      serverNode: process.env.EQTS_HANA_SERVER ?? "127.0.0.1:39041",
+      uid: process.env.EQTS_HANA_USER ?? "SYSTEM",
+      pwd: required("EQTS_HANA_PASSWORD"),
+      encrypt: false,
+    };
+    const poolOptions = { poolCapacity: 1, maxConnectedOrPooled: 1 };
+    const pool = hana.createPool(connectionOptions, poolOptions);
+    const observerPool = hana.createPool(connectionOptions, poolOptions);
     await verify({
       driver: hanaDriver(pool),
+      observer: hanaDriver(observerPool),
       dialect: hanaDialect,
       async close() {
-        try {
-          assert.equal(pool.getInUseCount(), 0);
-        } finally {
-          await new Promise<void>((resolve, reject) =>
-            pool.clear((error) => (error ? reject(error) : resolve())),
-          );
+        for (const owned of [pool, observerPool]) {
+          try {
+            assert.equal(owned.getInUseCount(), 0);
+          } finally {
+            await new Promise<void>((resolve, reject) =>
+              owned.clear((error) => (error ? reject(error) : resolve())),
+            );
+          }
         }
       },
     });
@@ -415,6 +422,11 @@ test(
       decimalNumbers: true,
       supportBigNumbers: false,
     });
-    await verify({ driver: mysqlDriver(pool), dialect: mysqlDialect, close: () => pool.end() });
+    await verify({
+      driver: mysqlDriver(pool),
+      observer: mysqlDriver(pool),
+      dialect: mysqlDialect,
+      close: () => pool.end(),
+    });
   },
 );

@@ -263,6 +263,13 @@ export async function verifyWindows(
     ]);
     assert.equal(await shown.count(), 1n);
     assert.equal(await shown.limit(0).count(), 0n);
+    assert.deepEqual(await shown.orderBy(({ r }) => r.bucket.asc()).page(1, 1), {
+      pageNumber: 1,
+      pageSize: 1,
+      total: 1n,
+      totalPages: 1n,
+      rows: [{ total: "30", running: "60", global: "60", previous: "30" }],
+    });
   } finally {
     if (created) await db.command(sql`DROP TABLE ${identifier(name)}`);
   }

@@ -1,6 +1,11 @@
 import type { Connection, ConnectionPool, HanaParameterType } from "@sap/hana-client";
 import { Buffer } from "node:buffer";
 import type { Driver, DriverConnection, DriverResult } from "../execution/driver.js";
+import {
+  isolationSql,
+  standardTransactionCapabilities,
+  type TransactionOptions,
+} from "../execution/transaction.js";
 
 /**
  * 适配应用拥有的显式 HANA 连接池。disconnect 将租约交回原池，池的关闭仍由应用负责。
@@ -8,6 +13,9 @@ import type { Driver, DriverConnection, DriverResult } from "../execution/driver
  */
 export function hanaDriver(pool: ConnectionPool): Driver {
   return {
+    // READ ONLY 在 HANA 跨事务保留，SDK 显式池不复原，也没有可靠的单租约 discard API。
+    // 先拒绝这项配置，不能把共享池的访问模式改变后假称事务局部设置。
+    transactionCapabilities: Object.freeze({ ...standardTransactionCapabilities, readOnly: false }),
     async acquire() {
       const connection = await new Promise<Connection>((resolve, reject) => {
         pool.getConnection((error, value) => {
@@ -60,9 +68,14 @@ class HanaConnection implements DriverConnection {
       throw new TypeError("HANA returned an unsupported result or unsafe affected row count");
     return { rows: [], affectedRows: BigInt(result) };
   }
-  async begin(): Promise<void> {
+  async begin(options: TransactionOptions = {}): Promise<void> {
     this.requireOpen();
     this.connection.setAutoCommit(false);
+    if (options.isolationLevel !== undefined)
+      await this.execute(
+        "SET TRANSACTION ISOLATION LEVEL " + isolationSql[options.isolationLevel],
+        [],
+      );
   }
   async commit(): Promise<void> {
     this.requireOpen();
@@ -79,7 +92,7 @@ class HanaConnection implements DriverConnection {
   async release(): Promise<void> {
     if (this.released) return;
     this.released = true;
-    // SDK 在返回显式池时回滚未结束事务并重置连接；不调用 setAutoCommit(true) 隐式提交失败事务。
+    // SDK 返回显式池时回滚并重置隔离级别；不调用 setAutoCommit(true) 隐式提交失败事务。
     await new Promise<void>((resolve, reject) =>
       this.connection.disconnect((error) => (error ? reject(error) : resolve())),
     );

@@ -20,6 +20,14 @@ import {
 } from "./model.js";
 
 export type Sources = Readonly<Record<string, Source>>;
+
+export interface Page<T> {
+  readonly pageNumber: number;
+  readonly pageSize: number;
+  readonly total: bigint;
+  readonly totalPages: bigint;
+  readonly rows: T[];
+}
 type SourceExpressions<S> =
   S extends Table<infer C>
     ? {
@@ -302,5 +310,55 @@ export class Query<
       compileSelect<bigint>(this.state, this.session.dialect, true),
     );
     return rows[0] ?? 0n;
+  }
+
+  /**
+   * COUNT 与当前页在同一租约中顺序读取，保留完整投影、DISTINCT 和报表查询边界。
+   * 同连接不等于同快照；需要稳定视图时，在显式 REPEATABLE READ / SERIALIZABLE 事务里调用。
+   */
+  async page(
+    this: [P] extends [never] ? never : Query<S, P, E, G>,
+    pageNumber: number,
+    pageSize: number,
+  ): Promise<Page<ResultOf<P>>> {
+    if (
+      !Number.isSafeInteger(pageNumber) ||
+      pageNumber < 1 ||
+      !Number.isSafeInteger(pageSize) ||
+      pageSize < 1
+    )
+      throw new RangeError("Page number and size must be positive safe integers");
+    const offset = (BigInt(pageNumber) - 1n) * BigInt(pageSize);
+    if (offset > BigInt(Number.MAX_SAFE_INTEGER))
+      throw new RangeError("Page offset exceeds the safe integer range");
+    if (!this.state.ordering.length)
+      throw new TypeError("Pagination requires an explicit order; include a unique tie-breaker");
+    if (this.state.limit !== undefined || this.state.offset !== 0)
+      throw new TypeError(
+        "Paginate an unlimited query; derive an already limited query explicitly",
+      );
+    // 两个计划都先编译，第二条的方言/作用域错误不能发生在 COUNT 已经访问数据库之后。
+    const count = compileSelect<bigint>(this.state, this.session.dialect, true);
+    const data = compileSelect<ResultOf<P>>(
+      { ...this.state, limit: pageSize, offset: Number(offset) },
+      this.session.dialect,
+    );
+    return this.session.withConnection(async (connection) => {
+      const counted = await connection.execute(count.sql, count.parameters);
+      if (counted.rows.length !== 1)
+        throw new Error("Pagination COUNT must return exactly one row");
+      const total = count.decode(counted.rows[0]!);
+      if (total < 0n) throw new RangeError("Pagination COUNT cannot be negative");
+      // 回调若提前结束，已经在途的 COUNT 不能让失效的 tx 再启动下一条 SQL。
+      this.session.assertActive();
+      const result = await connection.execute(data.sql, data.parameters);
+      return {
+        pageNumber,
+        pageSize,
+        total,
+        totalPages: (total + BigInt(pageSize) - 1n) / BigInt(pageSize),
+        rows: result.rows.map((row) => data.decode(row)),
+      };
+    });
   }
 }

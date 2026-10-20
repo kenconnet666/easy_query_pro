@@ -6,6 +6,7 @@ import { compileCommand } from "./compiler/select.js";
 import type { DriverResult } from "./execution/driver.js";
 import type { Driver } from "./execution/driver.js";
 import { Session } from "./execution/session.js";
+import type { TransactionOptions } from "./execution/transaction.js";
 import { Query, type Sources, type BoundSources } from "./query/query.js";
 import { recordEntries, type NoSymbolKeys } from "./internal/record.js";
 import { WriteQuery } from "./query/write.js";
@@ -99,9 +100,13 @@ export class Database<R extends ExtensionFactories = Record<never, never>> {
   }
 
   /** 业务 client 的扩展命名空间保持不变，连接和失败清理统一交给执行层。 */
-  async transaction<T>(callback: (transaction: Database<R>) => Promise<T>): Promise<T> {
-    return this.session.transaction((session) =>
-      callback(new Database(session, this.factories, this.extensions)),
+  async transaction<T>(
+    callback: (transaction: Database<R>) => Promise<T>,
+    options?: TransactionOptions,
+  ): Promise<T> {
+    return this.session.transaction(
+      (session) => callback(new Database(session, this.factories, this.extensions)),
+      options,
     );
   }
 }

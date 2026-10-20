@@ -45,7 +45,12 @@ export {
 } from "./dialects/dialect.js";
 export type { Driver, DriverConnection, DriverResult } from "./execution/driver.js";
 export type { CompiledQuery } from "./compiler/select.js";
-export type { Query } from "./query/query.js";
+export type { Query, Page } from "./query/query.js";
+export type {
+  IsolationLevel,
+  TransactionOptions,
+  TransactionCapabilities,
+} from "./execution/transaction.js";
 export type { ResultOf, DerivedSource } from "./query/model.js";
 export {
   WriteExecutionError,

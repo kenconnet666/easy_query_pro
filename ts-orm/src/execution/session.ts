@@ -1,6 +1,7 @@
 import type { CompiledQuery } from "../compiler/select.js";
 import type { Dialect } from "../dialects/dialect.js";
 import type { Driver, DriverConnection, DriverResult } from "./driver.js";
+import { transactionOptions, type TransactionOptions } from "./transaction.js";
 
 /** 事务会话固定连接并显式失效，不依赖全局变量或隐式异步上下文。 */
 export class Session {
@@ -50,17 +51,21 @@ export class Session {
     }
   }
   /** 显式借出一条连接；提交、回滚和释放各自的失败不能掩盖回调原始错误。 */
-  async transaction<T>(callback: (transaction: Session) => Promise<T>): Promise<T> {
+  async transaction<T>(
+    callback: (transaction: Session) => Promise<T>,
+    options?: TransactionOptions,
+  ): Promise<T> {
     this.assertActive();
     if (this.connection)
       throw new Error("Nested transactions require savepoints and are not enabled");
     if (!this.driver) throw new Error("A transaction requires a driver");
+    const selected = transactionOptions(options, this.driver.transactionCapabilities);
     const connection = await this.driver.acquire();
     const transactionSession = new Session(this.dialect, this.owner, this.driver, connection);
     const failures: unknown[] = [];
     let result: T | undefined;
     try {
-      await connection.begin();
+      await connection.begin(selected);
       result = await callback(transactionSession);
       // 回调结束即关闭业务入口，不能等 COMMIT 完成才阻止逃逸的 tx 再提交 SQL。
       transactionSession.active = false;

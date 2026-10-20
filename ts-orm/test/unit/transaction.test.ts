@@ -10,6 +10,7 @@ import {
   type Driver,
   type DriverConnection,
   type Database,
+  type TransactionOptions,
 } from "../../src/index.js";
 
 const rows = table("rows", { id: column(types.integer()) });
@@ -150,4 +151,67 @@ test("escaped transactions stop accepting queries before COMMIT finishes", async
     finish();
     await completed;
   }
+});
+
+test("transaction options validate before acquisition and snapshot once for custom drivers", async () => {
+  const base = fixture();
+  const options = { isolationLevel: "repeatableRead" as const, readOnly: true };
+  let received: TransactionOptions | undefined;
+  const driver: Driver = {
+    transactionCapabilities: { isolationLevels: ["repeatableRead"], readOnly: true },
+    async acquire() {
+      options.readOnly = false;
+      const connection = await base.driver.acquire();
+      connection.begin = async (selected) => {
+        received = selected;
+      };
+      return connection;
+    },
+  };
+  const db = createDatabase({ dialect: postgresDialect, driver });
+  await db.transaction(async () => {}, options);
+  assert.deepEqual(received, { isolationLevel: "repeatableRead", readOnly: true });
+  assert.ok(Object.isFrozen(received));
+  base.events.length = 0;
+  for (const invalid of [
+    { isolationLevel: "bad" },
+    { readOnly: "true" },
+    { extra: 1 },
+    { isolationLevel: "serializable" },
+  ])
+    await assert.rejects(
+      db.transaction(
+        async () => assert.fail("callback must not run"),
+        invalid as TransactionOptions,
+      ),
+      TypeError,
+    );
+  await assert.rejects(
+    createDatabase({ dialect: postgresDialect, driver: base.driver }).transaction(async () => {}, {
+      readOnly: true,
+    }),
+    /does not support/,
+  );
+  assert.deepEqual(base.events, []);
+});
+
+test("failed transaction setup never invokes the callback and still cleans the lease", async () => {
+  const base = fixture();
+  const driver: Driver = {
+    async acquire() {
+      const connection = await base.driver.acquire();
+      connection.begin = async () => {
+        base.events.push("begin");
+        throw new Error("setup failed");
+      };
+      return connection;
+    },
+  };
+  await assert.rejects(
+    createDatabase({ dialect: postgresDialect, driver }).transaction(async () =>
+      assert.fail("callback must not run"),
+    ),
+    /setup failed/,
+  );
+  assert.deepEqual(base.events, ["acquire", "begin", "rollback", "release"]);
 });

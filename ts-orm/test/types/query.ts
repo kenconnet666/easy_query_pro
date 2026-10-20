@@ -47,6 +47,15 @@ base.scope.u.name.add("bad");
 base.scope.u.departmentId.eq(null);
 // @ts-expect-error A query without an explicit projection is not executable.
 base.execute();
+// @ts-expect-error Page results also require an explicit typed projection.
+base.page(1, 10);
+declare const pageResult: Awaited<ReturnType<typeof selected.page>>;
+const pageRows: { id: number; name: string; department: string | null }[] = pageResult.rows;
+const pageTotal: bigint = pageResult.total;
+// @ts-expect-error Only the declared common isolation levels are supported.
+db.transaction(async () => 1, { isolationLevel: "snapshot" });
+// @ts-expect-error Transaction options never take truthy strings.
+db.transaction(async () => 1, { readOnly: "true" });
 // @ts-expect-error Relation aliases must be unique.
 base.leftJoin({ u: departments }, ({ u }) => u.id.eq(1));
 // @ts-expect-error Missing extension namespaces are not globally augmented.

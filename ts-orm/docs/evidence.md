@@ -89,3 +89,17 @@ SUM 在累加前提升普通输入，累计来源在下一层直接保持宽中�
 反向 ROWS 原型确认 PG/MySQL 原生返回空 frame，HANA88 报 Invalid window frame specification；移除诊断输出后保留明确的跨库负例，共同 API 拒绝反向范围。65 个单元用例、类型负例和三库实测通过。偏移值采用项目 int32 范围的受控字面量，不把这个共同上限冒充各引擎最大值。
 
 另以纯内存 format(format(source)) 复现 Prettier 3.9.10 对部分 TS 链式表达式首遍不稳定；独立工具提交 cb45469 增加有限收敛检查，只重写仍有差异的文件，CI 原格式检查保持开启。
+
+## 2026-10-21：分页与事务选项
+
+bfe1e93bb7cace3823b99165368a8caad6a0063c 的 [TS CI 39487509280](https://github.com/kenconnet666/easy_query_pro/actions/runs/39487509280) 与 [Java/三库 CI 39487509355](https://github.com/kenconnet666/easy_query_pro/actions/runs/39487509355) 均成功；它们验证上一窗口批，不替代本批证据。
+
+page 先编译两个完整计划，再同租约顺序执行 COUNT 与当前页。总数/总页数保持 bigint，参数和结果 codec 沿用编译器。明确要求顺序与正整数，拒绝已有 limit/offset；COUNT 等待期间如果事务结束，不再启动数据查询。
+
+三库真实并发测试在 COUNT 后由第二独立租约插入并提交：READ COMMITTED 返回 total=1、rows=[1,2]，REPEATABLE READ 返回 total=1、rows=[1]。SERIALIZABLE 分页单独验证，不让 MySQL 范围锁等待测试自身。HANA 使用两个独立容量为 1 的测试池，主池三种隔离通过 CURRENT_TRANSACTION_ISOLATION_LEVEL 验证，在归还后恢复默认值。
+
+只读访问模式探针确认 HANA READ ONLY 会跨提交和池归还保留，后续 INSERT 报要求先 SET TRANSACTION READ WRITE。诊断探针已恢复访问模式并删除，正式 API 改为 acquire 前拒绝 HANA pooled adapter 的 readOnly 选项；PG/MySQL 则验证只读读成功、写拒绝、失败后普通写仍能提交。
+
+PG 事务先插入、捕获除零错误再正常返回的用例，旧实现红测为 Missing expected rejection；COMMIT command tag 检查后正确抛出回滚失败，并确认插入不存在。MySQL completion_type=CHAIN 和 RELEASE 两种会话设置都验证 COMMIT/ROLLBACK 后的普通写立即对另一租约可见，原会话设置在 finally 恢复；不依赖其他数据库才有的事务状态变量。
+
+本地 74 个单元用例、类型正负例、构建及格式检查通过，三库契约按改动运行，包含分组 CTE → 窗口 CTE → 外层过滤的真实分页。测试随机表与两个自有 HANA 池在 finally 清理，持久实例保持运行。自定义驱动未声明 capability 时显式选项提前拒绝，设置失败不会调用业务回调，MySQL 下一事务设置后 START 失败会销毁连接。

@@ -55,6 +55,8 @@ await pool.end(); // 池属于应用，ORM 仅借用并归还连接
 
 schema 声明不执行 DDL。查询需要明确 select；同一个 base 可以独立派生多个 where 分支。as() 暴露新的关系字段并保留 codec，外层表达式的业务子类方法需显式重新 mount。count 使用派生查询保留 DISTINCT/limit 等语义，目前不做删投影优化。
 
+显式排序后的查询可调用 `page(页码, 大小)`，总数和总页数使用 bigint。COUNT 和数据共用一条连接；稳定视图使用 `db.transaction(callback, { isolationLevel: "repeatableRead" })`。详细能力与失败边界见 [分页与事务](docs/transactions.md)。
+
 ## CTE 与集合查询
 
 ```ts
@@ -125,7 +127,7 @@ INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字�
 
 原生函数返回 SQL 条件时声明 `syntax: "predicate"`，默认是标量值。HANA 的条件在 SELECT/ORDER BY 值位置会转换成保留 NULL 的 CASE；WHERE/JOIN 中的 BOOLEAN 标量则显式比较 TRUE。renderer 不需要自己拼接这类共同转换。
 
-PostgreSQL 适配使用查询局部文本 parser，不改全局配置；binary 模式不在当前适配范围。MySQL 使用服务端预处理，并局部保留精确数值/JSON文本。HANA 使用 SAP 官方客户端的显式连接池，完整获取结果后归还连接；池重置事务状态，应用负责最终关闭池。驱动包为可选 peer，使用相应子路径时安装 pg（TS 工程还需 @types/pg）、mysql2 或 @sap/hana-client。
+PostgreSQL 适配使用查询局部文本 parser，不改全局配置；binary 模式不在当前适配范围。MySQL 使用服务端预处理，并局部保留精确数值/JSON文本。HANA 使用 SAP 官方客户端的显式连接池，完整获取结果后归还连接；池重置隔离级别，但 READ ONLY 访问模式不会自动复原，当前适配器提前拒绝该选项。应用负责最终关闭池。驱动包为可选 peer，使用相应子路径时安装 pg（TS 工程还需 @types/pg）、mysql2 或 @sap/hana-client。
 
 HANA 示例：使用 `hana.createPool({ serverNode, uid, pwd }, { poolCapacity: 4, maxConnectedOrPooled: 4 })` 创建应用池，通过 `hanaDriver(pool)` 与 `hanaDialect` 创建 client。凭据和传输加密策略由应用配置；生产连接应按部署要求配置 TLS。SAP 客户端包含原生组件，pnpm 安装时需允许该包的构建脚本，仓库已在 pnpm-workspace.yaml 明确授权。
 
