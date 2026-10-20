@@ -3,6 +3,11 @@ package org.dpdns.zerodep.easyquery.pro.dsl.hana;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.ProxyEntity;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
+import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
+import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonInput;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.HanaJsonTextType;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.HanaJsonTextExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.HanaJsonTextExpressions;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.lob.HanaBinaryLobExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.lob.HanaLobExpressions;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.lob.HanaTextLobExpression;
@@ -12,14 +17,28 @@ import java.util.Objects;
 
 public final class HanaDsl {
     private final ExpressionScope scope;
+    private final ProDsl portable;
 
     private HanaDsl(ProxyEntity<?, ?> entity) {
         scope = new ExpressionScope(entity);
         if (scope.dialect() != SqlDialect.HANA) throw new IllegalArgumentException("HanaDsl requires HANA");
+        portable = ProDsl.of(entity);
     }
 
     public static HanaDsl of(ProxyEntity<?, ?> entity) {
         return new HanaDsl(entity);
+    }
+
+    public <T> HanaJsonTextExpression<T> view(PropTypeColumn<T> source, HanaJsonTextType type) {
+        return HanaJsonTextExpressions.view(scope, portable, source, type);
+    }
+
+    public HanaJsonTextExpression<String> value(JsonInput value, HanaJsonTextType type) {
+        return HanaJsonTextExpressions.value(scope, portable, value, type);
+    }
+
+    public HanaJsonTextExpression<String> nativeCast(PropTypeColumn<?> source, HanaJsonTextType type) {
+        return HanaJsonTextExpressions.cast(scope, portable, source, type);
     }
 
     public <T> HanaTextLobExpression<T> view(PropTypeColumn<T> source, HanaTypes.TextLob type) {

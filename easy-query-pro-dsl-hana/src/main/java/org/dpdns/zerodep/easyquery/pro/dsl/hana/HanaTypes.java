@@ -4,6 +4,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.UnicodeStrings;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.CastTarget;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.StorageType;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.HanaJsonTextType;
 
 public final class HanaTypes {
     private static final CharacterLob CLOB = new CharacterLob("CLOB");
@@ -12,6 +13,14 @@ public final class HanaTypes {
     private static final BinaryLob BLOB = new BinaryLob();
 
     private HanaTypes() {
+    }
+
+    public static HanaJsonTextType jsonNclob() {
+        return HanaJsonTextType.nclob();
+    }
+
+    public static HanaJsonTextType jsonNvarchar(int utf16Capacity) {
+        return HanaJsonTextType.nvarchar(utf16Capacity);
     }
 
     public static CharacterLob clob() {

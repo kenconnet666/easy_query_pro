@@ -42,6 +42,7 @@ HANA 使用独立 Docker 部署和持久卷，内存上限 12 GiB、无额外 sw
 - [MySQL unsigned 存储、参数与精确整数映射](docs/mysql-unsigned.md)
 - [MySQL TIME 时长、微秒与连接池绑定](docs/mysql-duration.md)
 - [HANA 受限 LOB 视图、切片与查询限制](docs/hana-lob-dsl.md)
+- [HANA JSON 文本视图与存储容量](docs/hana-json-text.md)
 - [PostgreSQL SQL 数组、元素类型与绑定边界](docs/pgsql-arrays.md)
 - [PostgreSQL 日历间隔、精确映射与原生运算](docs/pgsql-interval.md)
 - [开发环境与运行方式](docs/development.md)

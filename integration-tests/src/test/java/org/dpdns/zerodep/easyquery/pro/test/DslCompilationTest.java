@@ -131,6 +131,14 @@ class DslCompilationTest {
         compile(false, "StringTypeExpression<String> bytes = HanaDsl.of(p).value(new byte[]{1}, HanaTypes.blob()).sliceBytes(1, 1);");
     }
 
+    @Test
+    void hanaJsonTextUsesSharedReadersWithoutPretendingToBeJsonb() throws IOException {
+        compile(true, "HanaJsonTextExpression<String> json = HanaDsl.of(p).value(JsonInput.encoded(\"{}\"), HanaTypes.jsonNclob()); StringTypeExpression<String> field = json.textAt(JsonPath.root().key(\"name\")); json.asText().toUpper();");
+        compile(false, "HanaDsl.of(p).value(JsonInput.encoded(\"{}\"), HanaTypes.jsonNclob()).containsJson(JsonInput.jsonNull());");
+        compile(false, "HanaDsl.of(p).value(JsonInput.encoded(\"{}\"), HanaTypes.jsonNclob()).setPath(JsonPath.root(), JsonInput.jsonNull());");
+        compile(false, "PgJsonbExpression<String> json = HanaDsl.of(p).value(JsonInput.jsonNull(), HanaTypes.jsonNclob());");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
@@ -148,6 +156,7 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.hana.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.hana.lob.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.type.*;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;

@@ -380,9 +380,19 @@ HanaTypes/HanaDsl 新增 CLOB/NCLOB/TEXT/BLOB 的明确视图。NULL、UTF-16/�
 
 本地最终 23 个离线/消费者编译检查和 7 个 HANA 实库用例通过，包含新 LOB 视图与原有大对象、流式、失败清理回归；消费者检查现在为 18 个正例、43 个负例。最后补齐直接 Selector 接口的返回标记后，2 个查询限制用例再次通过。IDEA 构建与关键文件错误检查通过，MCP 确认 EQP_TYPED_LOB_* schema 遗留为 0，探测源文件及本轮诊断日志已清理。更多关系包装/分片组合仍属于 G4.6，不将基础查询限制通过视作全部组合完结。说明见 [HANA LOB DSL](hana-lob-dsl.md)。
 
+## HANA JSON 文本与物理存储
+
+提交 `68a34aacdd3a8935832723335bf93ba20e3ea9fd` 的 [CI 39382829009](https://github.com/kenconnet666/easy_query_pro/actions/runs/39382829009) 已通过全部五个强制任务，包含 LOB 返回类型、查询限制、byte[] 标量及既有回归。
+
+HanaJsonTextExpression 复用全部共同 JSON 读取，只声明 NCLOB 或指定容量的 NVARCHAR，不实现不存在的 JSONB/原生修改。参数描述增加容量匹配和同值描述相等性，NativeJsonType 继续保留物理 SQL 名称；既有 MySQL/PG 语义不变。
+
+JsonPathAccess 的导航前置检查从 HANA 构造函数分离，保留 ProDsl 在构造导航时的显式检查；完整 asText 只执行物理转换，不因没有部署 JSON 路径函数而失败。辅助函数部署继续由应用显式完成。NCLOB 的返回标记、排序/分组限制与新 LOB 设施复用。
+
+本地 26 个离线/消费者编译检查、4 个 HANA 实库用例通过，包含共同路径回归、6004 单元 Unicode 值、完整文档、NVARCHAR 容量、业务 record、Draft/单列/克隆、JSON null/SQL NULL 和坏文本导航。消费者检查现在为 19 个正例、46 个负例。IDEA 构建与关键文件错误检查通过，MCP 确认 EQP_JSON_TEXT_* schema 遗留为 0；本轮编译/原生日志记录后清理。说明见 [HANA JSON 文本](hana-json-text.md)，更多类型目录与 G4.6/G6 组合继续实施。
+
 ## 下一步
 
-1. 检查 HANA LOB 提交的 CI，继续 HANA JSON 文本视图及三库原生类型目录。
+1. 检查 HANA JSON 文本提交的 CI，继续原生数值/字符目录，并关闭 HANA 核心写入未决项。
 2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
 3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
 4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。

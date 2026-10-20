@@ -139,6 +139,7 @@ public final class ProDsl {
         scope.requireSource(document);
         Objects.requireNonNull(path, "path");
         var access = runtime.getService(JsonPathAccess.class);
+        access.requireNavigationSupport();
         return factory -> {
             var rooted = factory.anySQLFunction("{0}", args -> args.sqlFunc(document.getTable(), scope.operand(document, factory)));
             var node = access.fragment(factory, rooted, path);

@@ -73,7 +73,7 @@ public abstract class AbstractJsonExpression<T> extends MappedValueExpression<T>
     public static void requireView(ExpressionScope scope, PropTypeColumn<?> source, NativeJsonType target) {
         scope.requireSource(source);
         target.requireDialect(scope.dialect());
-        if (source instanceof JsonExpression<?> known && known.sqlType() != target) {
+        if (source instanceof JsonExpression<?> known && !known.sqlType().equals(target)) {
             throw new IllegalArgumentException("Use an explicit CAST from " + known.sqlType().sqlName() + " to " + target.sqlName());
         }
         if (source instanceof JsonFragmentExpression && target.dialect() == SqlDialect.POSTGRESQL && target.sqlName().equals("JSONB")) {
@@ -94,7 +94,7 @@ public abstract class AbstractJsonExpression<T> extends MappedValueExpression<T>
             known = true;
         } catch (IllegalArgumentException ignored) {
         }
-        if (known && !declared.equals(target.sqlName())) {
+        if (known && !target.matchesDeclaration(annotation.dbType())) {
             throw new IllegalArgumentException("Column " + column.getPropertyName() + " declares " + declared + "; use an explicit " + target.sqlName() + " CAST");
         }
     }

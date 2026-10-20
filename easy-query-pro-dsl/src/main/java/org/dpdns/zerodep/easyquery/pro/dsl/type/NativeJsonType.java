@@ -4,9 +4,10 @@ import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.UnicodeStrings;
 
 import java.util.Objects;
+import java.util.Locale;
 
 /**
- * Native SQL JSON storage; separate concrete descriptor classes select different expression APIs.
+ * Database-specific JSON storage or a declared JSON text view; concrete descriptors select different expression APIs.
  */
 public abstract class NativeJsonType implements StorageType<String>, CastTarget<String> {
     private final SqlDialect dialect;
@@ -46,7 +47,11 @@ public abstract class NativeJsonType implements StorageType<String>, CastTarget<
     }
 
     @Override
-    public final String prepareValue(String value) {
+    public String prepareValue(String value) {
         return UnicodeStrings.requirePortable(value, "JSON document");
+    }
+
+    public boolean matchesDeclaration(String declaration) {
+        return declaration.trim().toUpperCase(Locale.ROOT).split("[\\s(]", 2)[0].equals(name);
     }
 }

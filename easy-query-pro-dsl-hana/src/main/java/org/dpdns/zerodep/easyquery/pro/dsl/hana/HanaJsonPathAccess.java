@@ -11,10 +11,14 @@ final class HanaJsonPathAccess implements JsonPathAccess {
     private final String documentFunction;
 
     HanaJsonPathAccess(HanaOptions options) {
-        if (options.jsonSupportSchema() == null) {
+        documentFunction = options.jsonSupportSchema() == null ? null : HanaJsonSupport.documentFunctionName(options.jsonSupportSchema());
+    }
+
+    @Override
+    public void requireNavigationSupport() {
+        if (documentFunction == null) {
             throw new IllegalStateException("HANA JSON paths require HanaOptions.jsonSupportSchema and explicit deployment of HanaJsonSupport.createDocumentFunctionSql");
         }
-        documentFunction = HanaJsonSupport.documentFunctionName(options.jsonSupportSchema());
     }
 
     @Override
@@ -44,6 +48,7 @@ final class HanaJsonPathAccess implements JsonPathAccess {
     }
 
     private SQLFunction filter(SQLFunc factory, SQLFunction document, String kind) {
+        requireNavigationSupport();
         // 限定名作为 format 实参传递，schema 名中的花括号不能变成模板占位符。
         return factory.anySQLFunction("{1}({0},{2})", args -> args.sqlFunc(document).format(documentFunction).value(kind));
     }
