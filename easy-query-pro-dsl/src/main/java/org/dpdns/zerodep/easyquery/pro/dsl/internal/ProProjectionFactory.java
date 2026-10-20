@@ -1,0 +1,130 @@
+package org.dpdns.zerodep.easyquery.pro.dsl.internal;
+
+import com.easy.query.core.basic.api.select.provider.SQLExpressionProvider;
+import com.easy.query.core.basic.api.select.provider.SQLExpressionProviderImpl;
+import com.easy.query.core.basic.extension.conversion.ColumnReaderImpl;
+import com.easy.query.core.context.QueryRuntimeContext;
+import com.easy.query.core.expression.builder.AsSelector;
+import com.easy.query.core.expression.builder.Selector;
+import com.easy.query.core.expression.builder.impl.AsSelectorImpl;
+import com.easy.query.core.expression.builder.impl.SelectorImpl;
+import com.easy.query.core.expression.func.AggregationType;
+import com.easy.query.core.exception.EasyQueryInvalidOperationException;
+import com.easy.query.core.expression.lambda.SQLActionExpression;
+import com.easy.query.core.expression.parser.core.available.TableAvailable;
+import com.easy.query.core.expression.parser.core.base.ColumnAsSelector;
+import com.easy.query.core.expression.parser.core.base.ColumnSelector;
+import com.easy.query.core.expression.parser.core.base.impl.ColumnAsSelectorImpl;
+import com.easy.query.core.expression.parser.core.base.impl.ColumnSelectorImpl;
+import com.easy.query.core.expression.parser.factory.DefaultSQLExpressionInvokeFactory;
+import com.easy.query.core.expression.segment.FuncColumnSegment;
+import com.easy.query.core.expression.segment.SQLSegment;
+import com.easy.query.core.expression.segment.builder.SQLBuilderSegment;
+import com.easy.query.core.expression.segment.impl.SQLFunctionColumnSegmentImpl;
+import com.easy.query.core.expression.sql.builder.EntityQueryExpressionBuilder;
+import com.easy.query.core.func.SQLFunction;
+import com.easy.query.core.func.SQLFunctionTranslateImpl;
+import com.easy.query.core.metadata.ColumnMetadata;
+import com.easy.query.core.metadata.EntityMetadata;
+
+/**
+ * Corrects only classified Pro scalar projections through the upstream selector/segment extension points.
+ */
+public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
+    @Override
+    public <T> SQLExpressionProvider<T> createSQLExpressionProvider(int index, EntityQueryExpressionBuilder query) {
+        return new Provider<>(index, query);
+    }
+
+    private static final class Provider<T> extends SQLExpressionProviderImpl<T> {
+        private final EntityQueryExpressionBuilder query;
+        private final TableAvailable table;
+
+        private Provider(int index, EntityQueryExpressionBuilder query) {
+            super(index, query);
+            this.query = query;
+            this.table = query.getTable(index).getEntityTable();
+        }
+
+        @Override
+        public ColumnSelector<T> getColumnSelector(SQLBuilderSegment projects) {
+            return new ColumnSelectorImpl<>(table, new ScalarSelector(query, projects));
+        }
+
+        @Override
+        public <R> ColumnAsSelector<T, R> getColumnAsSelector(SQLBuilderSegment projects, EntityMetadata result) {
+            return new ColumnAsSelectorImpl<>(table, new ScalarAsSelector(query, projects, result));
+        }
+    }
+
+    private static final class ScalarSelector extends SelectorImpl {
+        private ScalarSelector(EntityQueryExpressionBuilder query, SQLBuilderSegment projects) {
+            super(query, projects);
+        }
+
+        @Override
+        public Selector columnFunc(TableAvailable table, SQLFunction function, String propertyAlias) {
+            if (!ExpressionScope.isRowLocal(function)) return super.columnFunc(table, function, propertyAlias);
+            var column = table.getEntityMetadata().getColumnNotNull(propertyAlias);
+            var segment = new SQLFunctionTranslateImpl(function).toSQLSegment(expressionContext, table, runtimeContext, column.getName());
+            sqlBuilderSegment.append(new ScalarColumn(table, column, runtimeContext, segment, column.getName()));
+            return this;
+        }
+    }
+
+    private static final class ScalarAsSelector extends AsSelectorImpl {
+        private ScalarAsSelector(EntityQueryExpressionBuilder query, SQLBuilderSegment projects, EntityMetadata result) {
+            super(query, projects, result);
+        }
+
+        @Override
+        public AsSelector columnFunc(TableAvailable table, String property, SQLFunction function, String propertyAlias, SQLActionExpression before) {
+            if (!ExpressionScope.isRowLocal(function))
+                return super.columnFunc(table, property, function, propertyAlias, before);
+            before.apply();
+            ColumnMetadata source = table == null || property == null ? null : table.getEntityMetadata().getColumnNotNull(property);
+            if (source == null && (propertyAlias == null || propertyAlias.isBlank()))
+                throw new EasyQueryInvalidOperationException("A computed projection requires a property alias");
+            var result = propertyAlias == null && source != null ? null : getResultColumnName(propertyAlias);
+            String alias = result == null ? source.getName() : result.getColumnAsName();
+            if (source != null) {
+                // Draft does not derive a column reader from a computed expression.
+                expressionContext.getResultValueConverterMap(true).put(propertyAlias == null ? property : propertyAlias,
+                        new ColumnReaderImpl(table.getEntityMetadata(), source, null));
+            }
+            return appendScalar(table, source != null ? source : result.getColumnMetadata(), function, alias);
+        }
+
+        @Override
+        public AsSelector columnFunc(TableAvailable table, SQLFunction function, String propertyAlias) {
+            if (!ExpressionScope.isRowLocal(function)) return super.columnFunc(table, function, propertyAlias);
+            var result = propertyAlias == null ? null : getResultColumnName(propertyAlias);
+            return appendScalar(table, result == null ? null : result.getColumnMetadata(), function, result == null ? null : result.getColumnAsName());
+        }
+
+        private AsSelector appendScalar(TableAvailable table, ColumnMetadata column, SQLFunction function, String alias) {
+            var segment = new SQLFunctionTranslateImpl(function).toSQLSegment(expressionContext, table, runtimeContext, alias);
+            sqlBuilderSegment.append(new ScalarColumn(table, column, runtimeContext, segment, alias));
+            return this;
+        }
+    }
+
+    private static final class ScalarColumn extends SQLFunctionColumnSegmentImpl {
+        private final SQLSegment expression;
+
+        private ScalarColumn(TableAvailable table, ColumnMetadata column, QueryRuntimeContext runtime, SQLSegment expression, String alias) {
+            super(table, column, runtime, expression, AggregationType.UNKNOWN, alias);
+            this.expression = expression;
+        }
+
+        @Override
+        public boolean isAggregateColumn() {
+            return false;
+        }
+
+        @Override
+        public FuncColumnSegment cloneSQLColumnSegment() {
+            return new ScalarColumn(table, columnMetadata, runtimeContext, expression, alias);
+        }
+    }
+}

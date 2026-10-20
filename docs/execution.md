@@ -416,9 +416,19 @@ HanaTypes 增加 ASCII VARCHAR、Unicode NVARCHAR、ALPHANUM 和仅用于存储�
 
 本地 18 个离线/消费者编译检查和 3 个实库用例通过；补上 ALPHANUM UTF-16 满容量与自动索引断言后，2 个离线检查、3 个实库用例再次通过。消费者编译现为 21 个正例、53 个负例。IDEA 构建通过，MCP 确认本轮表/schema 遗留为 0。说明见 [HANA 字符目录](hana-characters.md)，Cloud 与本地部署的 ALPHANUM 能力明确区分。
 
+## 共同逐行表达式与三库分片投影
+
+提交 `7e14da6b6d0835f7bc5d6c2f877769c6c981acb6` 的 [CI 39392502617](https://github.com/kenconnet666/easy_query_pro/actions/runs/39392502617) 已通过全部五个强制任务，包含字符类型和 Code First 幂等检查。
+
+用真实分表补入 G4.6 验证后，确认需要区分可下推的逐行表达式与聚合后转换。ExpressionScope 现在显式传播已知逐行分类；普通列/绑定值/共同转换可组合，聚合与未知包装保持拒绝。UNKNOWN 本身不作为安全依据。
+
+实库同时复现了 3.2.17 Draft 的普通 columnFunc 被当成聚合列，进而触发 UNKNOWN 合并失败。最终修复收拢在公开的投影工厂/selector SPI，保留上游别名、列 metadata、克隆和 visitor；没有新建 AST 或合并器。后续补充验证包含仍公开但已 deprecated 的基本类型/DTO/Map 别名选择，其测试调用单独保留以防兼容回退。
+
+最终本地 47 个离线检查、26 个实库用例通过，覆盖三库双分表、分页/count/clone、JSON/NULLIF/NULL-safe、已有 SUM 合并，以及 HANA/JSON/原生数字的回归。IDEA 构建通过；三库 MCP 确认本轮表/schema 遗留为 0。边界见 [分片说明](dsl-sharding.md)，该记录不把多 DataSource 和全部原生类型分片标为完成。
+
 ## 下一步
 
-1. 检查 HANA 字符目录提交的 CI，推进 G4.6 组合/分片基础，并关闭 HANA 核心写入未决项。
+1. 检查共同分片投影提交的 CI，继续原生视图、多 DataSource 与派生关系组合。
 2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
 3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
 4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。

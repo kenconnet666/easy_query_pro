@@ -59,23 +59,41 @@ public final class ExpressionScope {
         return new ScopedFunction(delegate, aggregation, requiresServerEvaluation, sources);
     }
 
+    /**
+     * A scalar operation stays row-local only when every operand carries that guarantee.
+     */
+    public SQLFunction operation(SQLFunction delegate, AggregationType aggregation, SQLFunction... operands) {
+        boolean requiresServerEvaluation = aggregation != AggregationType.UNKNOWN;
+        for (var operand : operands) {
+            // UNKNOWN alone is insufficient: upstream arithmetic can hide SUM/AVG inside another function.
+            if (!isRowLocal(operand))
+                requiresServerEvaluation = true;
+        }
+        return function(delegate, aggregation, requiresServerEvaluation);
+    }
+
+    public static boolean isRowLocal(SQLFunction function) {
+        return function instanceof ScopedFunction scoped && !scoped.requiresServerEvaluation && scoped.aggregation == AggregationType.UNKNOWN;
+    }
+
     public <T> PropTypeColumn<T> comparisonParameter(PropTypeColumn<T> left, T value) {
         requireSource(left);
         return new AnyTypeExpressionImpl<>(context, anchor, null, factory -> {
             if (left instanceof DSLSQLFunctionAvailable) {
-                return factory.anySQLFunction("{0}", args -> args.value(left._toFunctionSerializeValue(value)));
+                return function(factory.anySQLFunction("{0}", args -> args.value(left._toFunctionSerializeValue(value))), AggregationType.UNKNOWN, false);
             }
             // 保留列元数据，让上游比较参数链完成值转换、加密与列 handler 选择，避免提前序列化两次。
-            return factory.anySQLFunction("{0}", args -> args.sql(EasyColumnSegmentUtil.createColumnCompareValue2Segment(left.getTable(),
-                    left.getTable().getEntityMetadata().getColumnNotNull(left.getValue()), context.getExpressionContext(), value)));
+            return function(factory.anySQLFunction("{0}", args -> args.sql(EasyColumnSegmentUtil.createColumnCompareValue2Segment(left.getTable(),
+                    left.getTable().getEntityMetadata().getColumnNotNull(left.getValue()), context.getExpressionContext(), value))), AggregationType.UNKNOWN, false);
         }, left.getPropertyType());
     }
 
     public SQLFunction operand(PropTypeColumn<?> source, SQLFunc factory) {
         if (source instanceof DSLSQLFunctionAvailable function) return function.func().apply(factory);
         // 普通属性先走上游的 SQL 属性转换；派生结果不再套用整列值转换器。
-        return factory.anySQLFunction("{0}", args -> args.sql(EasyColumnSegmentUtil.createColumn2Segment(source.getTable(),
-                source.getTable().getEntityMetadata().getColumnNotNull(source.getValue()), context.getExpressionContext(), false, true)));
+        return function(factory.anySQLFunction("{0}", args -> args.sql(EasyColumnSegmentUtil.createColumn2Segment(source.getTable(),
+                        source.getTable().getEntityMetadata().getColumnNotNull(source.getValue()), context.getExpressionContext(), false, true))),
+                AggregationType.UNKNOWN, false, source.getTable());
     }
 
     public void requireSource(PropTypeColumn<?> source) {
@@ -88,13 +106,13 @@ public final class ExpressionScope {
         private final SQLFunction delegate;
         private final AggregationType aggregation;
         private final TableAvailable[] sources;
-        private final boolean derived;
+        private final boolean requiresServerEvaluation;
 
-        private ScopedFunction(SQLFunction delegate, AggregationType aggregation, boolean derived, TableAvailable... sources) {
+        private ScopedFunction(SQLFunction delegate, AggregationType aggregation, boolean requiresServerEvaluation, TableAvailable... sources) {
             this.delegate = delegate;
             this.aggregation = aggregation;
             this.sources = sources;
-            this.derived = derived;
+            this.requiresServerEvaluation = requiresServerEvaluation;
         }
 
         @Override
@@ -127,8 +145,8 @@ public final class ExpressionScope {
                     throw new IllegalArgumentException("Pro expression cannot be reused outside its query scope", absent);
                 }
                 // 分片后再次合并聚合值不能等价于数据库 CAST；不静默复用 SUM/AVG 的合并算法。
-                if (derived && expression.isSharding())
-                    throw new UnsupportedOperationException("Pro operations on derived expressions require server-side evaluation before shard merging");
+                if (requiresServerEvaluation && expression.isSharding())
+                    throw new UnsupportedOperationException("Pro operations on aggregate or unclassified expressions require server-side evaluation before shard merging");
                 return segment.toSQL(sql);
             });
         }

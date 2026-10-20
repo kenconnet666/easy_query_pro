@@ -15,14 +15,9 @@ import com.easy.query.core.proxy.extension.functions.ColumnBooleanFunctionAvaila
 import com.easy.query.core.proxy.extension.functions.type.StringTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.DateTimeTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.IgnoreValueConverterTypeExpression;
-import com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl;
-import com.easy.query.core.proxy.extension.functions.type.impl.DateTimeTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.NumberTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.BooleanTypeExpression;
-import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.AnyTypeExpressionImpl;
-import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
-import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import com.easy.query.core.util.EasyClassUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.TextType;
@@ -31,6 +26,10 @@ import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.JsonPathAccess;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExpressionScope;
+import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
+import com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl;
+import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
+import com.easy.query.core.proxy.extension.functions.type.impl.DateTimeTypeExpressionImpl;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonPath;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonFragmentExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ScalarComparisonRestriction;
@@ -85,7 +84,7 @@ public final class ProDsl {
         return factory -> {
             SQLFunction operand = scope.operand(source, factory);
             var cast = factory.anySQLFunction(template, args -> args.sqlFunc(source.getTable(), operand));
-            return scope.function(cast, operand.getAggregationType(), source instanceof DSLSQLFunctionAvailable, source.getTable());
+            return scope.operation(cast, operand.getAggregationType(), operand);
         };
     }
 
@@ -141,7 +140,8 @@ public final class ProDsl {
         var access = runtime.getService(JsonPathAccess.class);
         access.requireNavigationSupport();
         return factory -> {
-            var rooted = factory.anySQLFunction("{0}", args -> args.sqlFunc(document.getTable(), scope.operand(document, factory)));
+            var operand = scope.operand(document, factory);
+            var rooted = factory.anySQLFunction("{0}", args -> args.sqlFunc(document.getTable(), operand));
             var node = access.fragment(factory, rooted, path);
             SQLFunction selected = switch (result) {
                 case FRAGMENT -> node;
@@ -153,7 +153,7 @@ public final class ProDsl {
                         factory.anySQLFunction("(CASE {0} WHEN 'true' THEN TRUE WHEN 'false' THEN FALSE ELSE NULL END)",
                                 args -> args.sqlFunc(access.serializedText(factory, node)));
             };
-            return scope.function(selected, AggregationType.UNKNOWN, true, document.getTable());
+            return scope.operation(selected, AggregationType.UNKNOWN, operand);
         };
     }
 
@@ -191,8 +191,10 @@ public final class ProDsl {
         Objects.requireNonNull(unit, "unit");
         String template = runtime.getService(TemporalTruncation.class).template(unit, dateOnly);
         // 上游 SQLFormatArgument 按每次出现延迟渲染，重复 {0} 会产生对应的独立绑定。
-        return factory -> scope.function(factory.anySQLFunction(template, args -> args.sqlFunc(source.getTable(), scope.operand(source, factory))),
-                AggregationType.UNKNOWN, true, source.getTable());
+        return factory -> {
+            var operand = scope.operand(source, factory);
+            return scope.operation(factory.anySQLFunction(template, args -> args.sqlFunc(source.getTable(), operand)), AggregationType.UNKNOWN, operand);
+        };
     }
 
     /**
@@ -253,10 +255,14 @@ public final class ProDsl {
     private Function<SQLFunc, SQLFunction> nullIfFunction(PropTypeColumn<?> left, PropTypeColumn<?> right) {
         scope.requireSource(left);
         scope.requireSource(right);
-        return factory -> scope.function(factory.anySQLFunction("NULLIF({0},{1})", args -> {
-            args.sqlFunc(left.getTable(), scope.operand(left, factory));
-            args.sqlFunc(right.getTable(), scope.operand(right, factory));
-        }), AggregationType.UNKNOWN, true, left.getTable(), right.getTable());
+        return factory -> {
+            var leftOperand = scope.operand(left, factory);
+            var rightOperand = scope.operand(right, factory);
+            return scope.operation(factory.anySQLFunction("NULLIF({0},{1})", args -> {
+                args.sqlFunc(left.getTable(), leftOperand);
+                args.sqlFunc(right.getTable(), rightOperand);
+            }), AggregationType.UNKNOWN, leftOperand, rightOperand);
+        };
     }
 
     private static String resultProperty(PropTypeColumn<?> source) {
@@ -282,12 +288,13 @@ public final class ProDsl {
         var templates = runtime.getService(NullSafeComparison.class);
         String template = distinct ? templates.distinct() : templates.equal();
         return new BooleanTypeExpressionImpl<>(context, anchor, null, factory -> {
+            var leftOperand = scope.operand(left, factory);
+            var rightOperand = scope.operand(right, factory);
             var result = factory.anySQLFunction(template, args -> {
-                args.sqlFunc(left.getTable(), scope.operand(left, factory));
-                args.sqlFunc(right.getTable(), scope.operand(right, factory));
+                args.sqlFunc(left.getTable(), leftOperand);
+                args.sqlFunc(right.getTable(), rightOperand);
             });
-            return scope.function(result, AggregationType.UNKNOWN,
-                    left instanceof DSLSQLFunctionAvailable || right instanceof DSLSQLFunctionAvailable, left.getTable(), right.getTable());
+            return scope.operation(result, AggregationType.UNKNOWN, leftOperand, rightOperand);
         }, Boolean.class);
     }
 
