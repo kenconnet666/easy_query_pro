@@ -28,6 +28,10 @@
     "./mysql": {
       "types": "./dist/drivers/mysql.d.ts",
       "import": "./dist/drivers/mysql.js"
+    },
+    "./hana": {
+      "types": "./dist/drivers/hana.d.ts",
+      "import": "./dist/drivers/hana.js"
     }
   },
   "files": [
@@ -35,6 +39,7 @@
     "README.md"
   ],
   "devDependencies": {
+    "@sap/hana-client": "2.30.27",
     "@types/node": "^24.0.0",
     "@types/pg": "^8.23.1",
     "mysql2": "3.24.6",
@@ -44,11 +49,15 @@
   },
   "packageManager": "pnpm@11.22.0",
   "peerDependencies": {
-    "pg": "^8.23.1",
+    "@sap/hana-client": "^2.30.27",
     "@types/pg": "^8.23.1",
-    "mysql2": "^3.24.6"
+    "mysql2": "^3.24.6",
+    "pg": "^8.23.1"
   },
   "peerDependenciesMeta": {
+    "@sap/hana-client": {
+      "optional": true
+    },
     "pg": {
       "optional": true
     },

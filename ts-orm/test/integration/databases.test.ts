@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { Pool as PgPool } from "pg";
 import { createPool } from "mysql2/promise";
+import hana from "@sap/hana-client";
 import {
   call,
   column,
@@ -10,6 +11,7 @@ import {
   identifier,
   mysqlDialect,
   postgresDialect,
+  hanaDialect,
   sql,
   sqlFragment,
   table,
@@ -21,6 +23,7 @@ import {
 } from "../../src/index.js";
 import { postgresDriver } from "../../src/drivers/postgres.js";
 import { mysqlDriver } from "../../src/drivers/mysql.js";
+import { hanaDriver } from "../../src/drivers/hana.js";
 
 interface Harness {
   driver: Driver;
@@ -43,10 +46,20 @@ async function verify(harness: Harness): Promise<void> {
     amount: column(types.decimal(19, 4)),
     big: column(types.bigint()),
   });
+  const insert = (
+    client: typeof db,
+    row: { id: number; name: string; managerId: number | null; amount: string; big: bigint },
+  ) =>
+    client.command(sql`INSERT INTO ${identifier(name)} (${identifier("id")}, ${identifier("name")}, ${identifier("manager_id")}, ${identifier("amount")}, ${identifier("big")}) VALUES (
+      ${valueOf(row.id, definition.columns.id.type)}, ${valueOf(row.name, definition.columns.name.type)},
+      ${valueOf(row.managerId, definition.columns.managerId.type)}, ${valueOf(row.amount, definition.columns.amount.type)},
+      ${valueOf(row.big, definition.columns.big.type)})`);
   let created = false;
   try {
+    const create = dialect.name === "hana" ? sql`CREATE COLUMN TABLE` : sql`CREATE TABLE`;
+    const textType = dialect.name === "hana" ? sql`NVARCHAR(255)` : sql`VARCHAR(255)`;
     await db.command(
-      sql`CREATE TABLE ${identifier(name)} (id INTEGER PRIMARY KEY, name VARCHAR(255), manager_id INTEGER, amount DECIMAL(19,4), big BIGINT)`,
+      sql`${create} ${identifier(name)} (${identifier("id")} INTEGER PRIMARY KEY, ${identifier("name")} ${textType}, ${identifier("manager_id")} INTEGER, ${identifier("amount")} DECIMAL(19,4), ${identifier("big")} BIGINT)`,
     );
     created = true;
     for (const row of [
@@ -60,10 +73,7 @@ async function verify(harness: Harness): Promise<void> {
       { id: 2, name: "child", managerId: 1, amount: "0.0100", big: -9007199254740993n },
       { id: 3, name: "unmatched", managerId: 999, amount: "-2.0000", big: 0n },
     ]) {
-      await db.command(sql`INSERT INTO ${identifier(name)} (id, name, manager_id, amount, big) VALUES (
-        ${valueOf(row.id, definition.columns.id.type)}, ${valueOf(row.name, definition.columns.name.type)},
-        ${valueOf(row.managerId, definition.columns.managerId.type)}, ${valueOf(row.amount, definition.columns.amount.type)},
-        ${valueOf(row.big, definition.columns.big.type)})`);
+      assert.equal((await insert(db, row)).affectedRows, 1n);
     }
     const base = db.from({ u: definition });
     const selected = base
@@ -83,6 +93,10 @@ async function verify(harness: Harness): Promise<void> {
     assert.equal(await selected.count(), 3n);
     assert.equal(await selected.limit(1, 1).count(), 1n);
     assert.equal(await selected.limit(0).first(), undefined);
+    assert.equal(
+      (await db.command(sql`SELECT ${identifier("id")} FROM ${identifier(name)}`)).affectedRows,
+      0n,
+    );
 
     const joined = await base
       .leftJoin({ m: definition }, ({ u, m }) => u.managerId.eq(m.id))
@@ -120,7 +134,9 @@ async function verify(harness: Harness): Promise<void> {
         phase: "row",
         render: {
           [dialect.name]: (args: readonly SqlNode[]) =>
-            sqlFragment`CONCAT(${args[1]!}, ${args[0]!}, ${args[1]!})`,
+            dialect.name === "hana"
+              ? sqlFragment`CONCAT(${args[1]!}, CONCAT(${args[0]!}, ${args[1]!}))`
+              : sqlFragment`CONCAT(${args[1]!}, ${args[0]!}, ${args[1]!})`,
         },
       },
       types.text(),
@@ -151,9 +167,7 @@ async function verify(harness: Harness): Promise<void> {
 
     await assert.rejects(
       db.transaction(async (tx) => {
-        await tx.command(sql`INSERT INTO ${identifier(name)} (id, name, manager_id, amount, big) VALUES (
-        ${valueOf(4, types.integer())}, ${valueOf("rollback", types.text())}, NULL,
-        ${valueOf("1.0000", types.decimal(19, 4))}, ${valueOf(1n, types.bigint())})`);
+        await insert(tx, { id: 4, name: "rollback", managerId: null, amount: "1.0000", big: 1n });
         assert.equal(
           await tx
             .from({ u: definition })
@@ -172,6 +186,31 @@ async function verify(harness: Harness): Promise<void> {
         .select(({ u }) => ({ id: u.id }))
         .count(),
       0n,
+    );
+    await db.transaction(async (tx) => {
+      await insert(tx, { id: 5, name: "commit", managerId: null, amount: "2.0000", big: 2n });
+    });
+    assert.equal(
+      await base
+        .where(({ u }) => u.id.eq(5))
+        .select(({ u }) => ({ id: u.id }))
+        .count(),
+      1n,
+    );
+    // 连接归还后必须恢复普通自动提交语义，不能把下一位调用方的写入留在旧事务中。
+    await insert(db, {
+      id: 6,
+      name: "after transaction",
+      managerId: null,
+      amount: "3.0000",
+      big: 3n,
+    });
+    assert.equal(
+      await base
+        .where(({ u }) => u.id.eq(6))
+        .select(({ u }) => ({ id: u.id }))
+        .count(),
+      1n,
     );
   } finally {
     try {
@@ -199,6 +238,35 @@ test(
       driver: postgresDriver(pool),
       dialect: postgresDialect,
       close: () => pool.end(),
+    });
+  },
+);
+
+test(
+  "HANA typed query and pooled transaction contract",
+  { skip: process.env.EQTS_HANA_TEST !== "1" },
+  async () => {
+    const pool = hana.createPool(
+      {
+        serverNode: process.env.EQTS_HANA_SERVER ?? "127.0.0.1:39041",
+        uid: process.env.EQTS_HANA_USER ?? "SYSTEM",
+        pwd: required("EQTS_HANA_PASSWORD"),
+        encrypt: false,
+      },
+      { poolCapacity: 1, maxConnectedOrPooled: 1 },
+    );
+    await verify({
+      driver: hanaDriver(pool),
+      dialect: hanaDialect,
+      async close() {
+        try {
+          assert.equal(pool.getInUseCount(), 0);
+        } finally {
+          await new Promise<void>((resolve, reject) =>
+            pool.clear((error) => (error ? reject(error) : resolve())),
+          );
+        }
+      },
     });
   },
 );

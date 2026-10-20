@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@sap/hana-client':
+        specifier: 2.30.27
+        version: 2.30.27
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
@@ -28,6 +31,10 @@ importers:
         version: 7.0.2
 
 packages:
+
+  '@sap/hana-client@2.30.27':
+    resolution: {integrity: sha512-yXkwRcErq4BGfeNCtpkX7ZhZyjfz/IcP0H+QxQQtjrxA/prgm72pv3YC2GbHi5PMpHjjagQZrmaPUKXwYyEIJg==}
+    engines: {node: '>=4.0.0'}
 
   '@types/node@24.19.2':
     resolution: {integrity: sha512-93d49wCWJkCyN87MxLpNN6KXPCwFw7bVUg79mGUV1OS40JGWwVCr8n61DXCSqz7CV6/VfPkb7xec7uP2M+QHWQ==}
@@ -159,6 +166,14 @@ packages:
     resolution: {integrity: sha512-NZKeq9AfyQvEeNlN0zSYAaWrmBffJh3IELMZfRpJVWgrpEbtEpnjvzqBPf+mxoI287JohRDoa+/nsfqqiZmF6g==}
     engines: {node: '>= 6.0.0'}
 
+  debug@3.1.0:
+    resolution: {integrity: sha512-OX8XqP7/1a9cqkxYw2yXss15f26NKWBpDXQd0/uK/KPqdQhxbPa994hnzjcE2VqQpDslf55723cKPUOGSmMY3g==}
+    peerDependencies:
+      supports-color: '*'
+    peerDependenciesMeta:
+      supports-color:
+        optional: true
+
   generate-function@2.3.1:
     resolution: {integrity: sha512-eeB5GfMNeevm/GRYq20ShmsaGcmI81kIX2K9XQx5miC8KdHaC6Jm0qQ8ZNeGOi7wYB8OsdxKs+Y2oVuTFuVwKQ==}
 
@@ -175,6 +190,9 @@ packages:
   lru.min@1.1.5:
     resolution: {integrity: sha512-5J9ysMYUpYIg9RF2vJpy9SinEmSviFSe0GyPpCQ4L5QSkLAgeLXlTAOu2ZwWUU5m+0SBl6gUU1R1ZQB3aKypfA==}
     engines: {bun: '>=1.0.0', deno: '>=1.30.0', node: '>=8.0.0'}
+
+  ms@2.0.0:
+    resolution: {integrity: sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A==}
 
   mysql2@3.24.6:
     resolution: {integrity: sha512-enu73KhbAua2L3dIxjc6qg6ZJ7H3pt1BImZASWNWY5xSsmJ1ZuUPULTDGXgmJbI61vb+nJAG19IZclIq19UidQ==}
@@ -266,6 +284,12 @@ packages:
 
 snapshots:
 
+  '@sap/hana-client@2.30.27':
+    dependencies:
+      debug: 3.1.0
+    transitivePeerDependencies:
+      - supports-color
+
   '@types/node@24.19.2':
     dependencies:
       undici-types: 7.24.6
@@ -338,6 +362,10 @@ snapshots:
 
   aws-ssl-profiles@1.1.2: {}
 
+  debug@3.1.0:
+    dependencies:
+      ms: 2.0.0
+
   generate-function@2.3.1:
     dependencies:
       is-property: 1.0.2
@@ -351,6 +379,8 @@ snapshots:
   long@5.3.2: {}
 
   lru.min@1.1.5: {}
+
+  ms@2.0.0: {}
 
   mysql2@3.24.6(@types/node@24.19.2):
     dependencies:

@@ -37,7 +37,10 @@ class PostgresConnection implements DriverConnection {
     });
     if (result.rowCount !== null && !Number.isSafeInteger(result.rowCount))
       throw new RangeError("Driver returned an unsafe affected row count");
-    return { rows: result.rows, affectedRows: BigInt(result.rowCount ?? 0) };
+    return {
+      rows: result.rows,
+      affectedRows: result.command === "SELECT" ? 0n : BigInt(result.rowCount ?? 0),
+    };
   }
   async begin(): Promise<void> {
     await this.control("BEGIN");

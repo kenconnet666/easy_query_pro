@@ -4,7 +4,7 @@
 
 当前处于实现阶段，完成标准和状态见 [执行计划](docs/plan.md)。Java 增强包由独立子代理继续推进；此目录使用自己的 Node/TypeScript 工程，避免影响 Maven 模块。
 
-当前基础已通过类型正负例、23 个行为用例以及 PostgreSQL/MySQL 的真实查询和事务验证；证据与尚未完成的能力见 [验证记录](docs/evidence.md)。HANA 当前只有 SQL 编译，Node 驱动仍在实施，不能用 Java 适配器的结果代替 TS 验收。
+当前基础已通过类型正负例、23 个行为用例以及 PostgreSQL/MySQL/HANA 的真实查询和事务验证；证据与尚未完成的能力见 [验证记录](docs/evidence.md)。仍在持续完善组合查询、写入与报表能力，当前包未发布。
 
 设计边界：
 
@@ -61,10 +61,12 @@ INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字�
 
 扩展通过 createDatabase 的 extensions 或 withExtensions 安装，namespace 具体类型在查询和事务中保留。mount(factory) 返回工厂的具体表达式类型。函数 renderer 返回 sqlFragment 结构节点，编译器按最终顺序绑定值；普通值先通过 valueOf(value, type)，标识符使用 identifier，不能把用户值放进静态 SQL 文本。
 
-PostgreSQL 适配使用查询局部文本 parser，不改全局配置；binary 模式不在当前适配范围。MySQL 使用服务端预处理，并局部保留精确数值/JSON文本。驱动包为可选 peer，使用相应子路径时安装 pg（TS 工程还需 @types/pg）或 mysql2。
+PostgreSQL 适配使用查询局部文本 parser，不改全局配置；binary 模式不在当前适配范围。MySQL 使用服务端预处理，并局部保留精确数值/JSON文本。HANA 使用 SAP 官方客户端的显式连接池，完整获取结果后归还连接；池重置事务状态，应用负责最终关闭池。驱动包为可选 peer，使用相应子路径时安装 pg（TS 工程还需 @types/pg）、mysql2 或 @sap/hana-client。
+
+HANA 示例：使用 `hana.createPool({ serverNode, uid, pwd }, { poolCapacity: 4, maxConnectedOrPooled: 4 })` 创建应用池，通过 `hanaDriver(pool)` 与 `hanaDialect` 创建 client。凭据和传输加密策略由应用配置；生产连接应按部署要求配置 TLS。SAP 客户端包含原生组件，pnpm 安装时需允许该包的构建脚本，仓库已在 pnpm-workspace.yaml 明确授权。
 
 ## 本地与 CI
 
-在此目录运行 `pwsh -File tools/test-local.ps1` 可读取已有 Debian Docker 测试实例的进程内凭据并运行两库契约；不打印密码或写入环境文件。普通 pnpm test 不要求数据库。
+在此目录运行 `pwsh -File tools/test-local.ps1` 可读取已有 Debian Docker 测试实例的进程内凭据并运行三库契约；不打印密码或写入环境文件。可用 `-Database hana` 只验证改动相关的数据库。普通 pnpm test 不要求数据库。
 
-独立 CI 将 Node 22/24 与 Windows/Linux 检查并行，MySQL/PostgreSQL 分别使用已有 Compose 的 2 GiB/1 GiB 限制。长测试交 CI；本地只做改动相关的必要验证。
+独立 CI 将 Node 22/24 与 Windows/Linux 检查并行，MySQL/PostgreSQL 分别使用已有 Compose 的 2 GiB/1 GiB 限制。HANA Node 契约复用 Java CI 的 12 GiB HANA 作业与临时实例，不再启动第二个大容器。长测试交 CI；本地只做改动相关的必要验证。
