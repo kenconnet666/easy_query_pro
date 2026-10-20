@@ -96,6 +96,15 @@ class DslCompilationTest {
         compile(false, "PgSqlDsl.of(p).value(java.util.List.of(1), PgSqlTypes.array(Integer.class)).anyEq(p.name());");
     }
 
+    @Test
+    void intervalsRetainCalendarMeaningAndDateArithmeticReturnsATimestamp() throws IOException {
+        compile(true, "PgIntervalExpression<PgInterval> span = PgSqlDsl.of(p).value(PgInterval.of(1, 2, 3), PgSqlTypes.interval()); DateTimeTypeExpression<java.time.LocalDateTime> result = span.addToDate(e.eventDate()); span.plus(span).equalTo(span).eq(false);");
+        compile(false, "PgSqlDsl.of(p).value(java.time.Duration.ofHours(1), PgSqlTypes.interval());");
+        compile(false, "DateTimeTypeExpression<java.time.LocalDate> day = PgSqlDsl.of(p).value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()).addToDate(e.eventDate());");
+        compile(false, "PgSqlDsl.of(p).value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()).addToDateTime(e.eventDate());");
+        compile(false, "PgSqlDsl.of(p).value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()).plus(p.amount());");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
@@ -107,6 +116,7 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.type.*;

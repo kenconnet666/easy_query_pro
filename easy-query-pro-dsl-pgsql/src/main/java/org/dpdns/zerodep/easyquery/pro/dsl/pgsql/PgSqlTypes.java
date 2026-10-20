@@ -3,6 +3,7 @@ package org.dpdns.zerodep.easyquery.pro.dsl.pgsql;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NativeJsonType;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayType;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalType;
 
 public final class PgSqlTypes {
     private static final Json JSON = new Json();
@@ -21,6 +22,10 @@ public final class PgSqlTypes {
 
     public static <E> PgArrayType<E> array(Class<E> elementType) {
         return PgArrayType.of(elementType);
+    }
+
+    public static PgIntervalType interval() {
+        return PgIntervalType.INSTANCE;
     }
 
     public static final class Json extends NativeJsonType {

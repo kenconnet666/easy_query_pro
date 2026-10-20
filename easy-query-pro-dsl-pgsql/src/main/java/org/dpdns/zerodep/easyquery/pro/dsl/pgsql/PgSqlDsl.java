@@ -18,6 +18,10 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayExpressions;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayType;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayValue;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgInterval;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalType;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalExpressions;
 
 import java.util.Arrays;
 import java.util.List;
@@ -38,6 +42,21 @@ public final class PgSqlDsl {
 
     public static PgSqlDsl of(ProxyEntity<?, ?> entity) {
         return new PgSqlDsl(entity);
+    }
+
+    public <T> PgIntervalExpression<T> view(PropTypeColumn<T> source, PgIntervalType type) {
+        Objects.requireNonNull(type, "type");
+        return PgIntervalExpressions.view(scope, source);
+    }
+
+    public PgIntervalExpression<PgInterval> value(PgInterval value, PgIntervalType type) {
+        Objects.requireNonNull(type, "type");
+        return PgIntervalExpressions.value(scope, value);
+    }
+
+    public PgIntervalExpression<PgInterval> nativeCast(PropTypeColumn<?> source, PgIntervalType type) {
+        Objects.requireNonNull(type, "type");
+        return PgIntervalExpressions.cast(scope, source);
     }
 
     public <E, T> PgArrayExpression<E, T> view(PropTypeColumn<T> source, PgArrayType<E> type) {

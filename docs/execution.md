@@ -328,9 +328,21 @@ IDEA 格式化和构建通过；批量格式化曾被 IDE 的新增文件 Git �
 
 IDEA 构建通过，MCP 确认 eqp_array_* fixture schema 遗留为 0；临时表随所属连接关闭，开发数据库保留。MySQL Draft 投影的 IDE 泛型提示整理为独立提交 `5eaa032`。本轮数组编译/原生/离线/索引诊断日志在记录证据后清理，标准报告保留。使用说明见 [PostgreSQL 数组](pgsql-arrays.md)。
 
+## PostgreSQL 日历间隔与精确读取
+
+提交 `5bbf90b92cc9600cc449e88fe282d7bd7abe1824` 的 [CI 39368313313](https://github.com/kenconnet666/easy_query_pro/actions/runs/39368313313) 已通过全部五个强制任务，包含数组类型、业务 List、下界、资源释放和三库完整回归。IDEA 意外生成的一份与源文件内容相同的 java~ 备份已在独立整理提交 `22ae495` 中删除，并加入忽略规则。
+
+PgInterval 使用 Java 17 sealed 类型区分精确有限三分量与正负 infinity。月份/天数/时间保持独立；固定 Duration 转换只允许月份和天数为零。原生 DSL 提供加减/取反、比较，以及 LocalDate/LocalDateTime 的日历加减；日期运算结果明确为 LocalDateTime。实际证明 1 month 和 30 days 在 SQL 比较可相等，但加到 2024-01-31 得到不同日期。
+
+实库探测复现 pgJDBC 42.7.14 的超大小时 int 溢出，以及官方已记录的 sql_standard 字段丢失。因此通过公开 getString 读取四种服务器输出格式，用 BigInteger/BigDecimal 精确恢复分量，不复制任意文本输入解析或修改连接 IntervalStyle。进一步强制 interval 二进制传输，发现 getString 对有效非 NULL 值也返回 null；用 wasNull 判断后再读取公开 getBytes 的 16 字节表示，修复该静默丢值路径。两种协议均覆盖分量极值及无限哨兵。
+
+本地 8 组输出格式/预处理映射最先通过；DSL 的 3 个真实用例与 13 个离线/消费者编译用例随后通过。补充二进制路径后，12 组映射和 5 个选定离线检查通过。消费者编译目前为 15 个正例、32 个负例。MCP 确认 eqp_array/eqp_interval 本轮 schema 遗留为 0，JDBC 探测连接均已关闭。
+
+数组标量元数据整理为内部 PgScalarMetadataManager，为两类显式 PG 值复用；普通 Java 类型的默认映射不变。IDEA 构建通过；探测源文件和本轮三份诊断日志记录证据后清理，标准报告保留。说明见 [PostgreSQL interval](pgsql-interval.md)。完整原生类型目录、时区类型、组合和最终性能/消费者门槛继续执行。
+
 ## 下一步
 
-1. 检查 PostgreSQL 数组提交的 CI，继续 PostgreSQL interval 与三库原生类型目录。
+1. 检查 PostgreSQL interval 提交的 CI，继续 MySQL unsigned/时长与三库原生类型目录。
 2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
 3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
 4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。
