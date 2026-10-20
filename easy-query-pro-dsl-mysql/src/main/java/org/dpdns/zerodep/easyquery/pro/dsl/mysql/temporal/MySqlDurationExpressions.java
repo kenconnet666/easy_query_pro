@@ -56,7 +56,7 @@ public final class MySqlDurationExpressions {
         Duration checked = Objects.requireNonNull(type, "type").prepareValue(value);
         String template = type.castTemplate(scope.dialect());
         var source = new AnyTypeExpressionImpl<Duration>(scope.context(), scope.anchor(), null,
-                factory -> factory.anySQLFunction(template, args -> args.value(checked)), Duration.class);
+                factory -> scope.function(factory.anySQLFunction(template, args -> args.value(checked)), AggregationType.UNKNOWN, false), Duration.class);
         return new Expression<>(scope, source, factory -> scope.operand(source, factory));
     }
 
@@ -64,7 +64,7 @@ public final class MySqlDurationExpressions {
         scope.requireSource(source);
         String template = Objects.requireNonNull(type, "type").castTemplate(scope.dialect());
         var cast = new AnyTypeExpressionImpl<Duration>(scope.context(), source.getTable(), null,
-                factory -> factory.anySQLFunction(template, args -> args.sqlFunc(scope.operand(source, factory))), Duration.class);
+                factory -> scope.scalar(factory, source, value -> factory.anySQLFunction(template, args -> args.sqlFunc(value))), Duration.class);
         return new Expression<>(scope, cast, factory -> scope.operand(cast, factory));
     }
 
@@ -86,13 +86,13 @@ public final class MySqlDurationExpressions {
 
         private MySqlDurationExpression<T> arithmetic(MySqlDurationExpression<?> other, String name) {
             scope.requireSource(other);
-            return new Expression<>(scope, this, factory -> factory.anySQLFunction(name + "({0},{1})", args ->
-                    args.sqlFunc(func().apply(factory)).sqlFunc(scope.operand(other, factory))));
+            return new Expression<>(scope, this, factory -> scope.scalar(factory, this, other, (left, right) -> factory.anySQLFunction(name + "({0},{1})", args ->
+                    args.sqlFunc(left).sqlFunc(right))));
         }
 
         @Override
         public MySqlDurationExpression<T> negated() {
-            return new Expression<>(scope, this, factory -> factory.anySQLFunction("SUBTIME(CAST('00:00:00' AS TIME(6)),{0})", args -> args.sqlFunc(func().apply(factory))));
+            return new Expression<>(scope, this, factory -> scope.scalar(factory, this, value -> factory.anySQLFunction("SUBTIME(CAST('00:00:00' AS TIME(6)),{0})", args -> args.sqlFunc(value))));
         }
 
         @Override
@@ -108,17 +108,15 @@ public final class MySqlDurationExpressions {
         private BooleanTypeExpression<Boolean> compare(MySqlDurationExpression<?> other, String operator) {
             scope.requireSource(other);
             return new BooleanTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(factory.anySQLFunction("({0} " + operator + " {1})", args ->
-                                    args.sqlFunc(func().apply(factory)).sqlFunc(scope.operand(other, factory))),
-                            AggregationType.UNKNOWN, true, getTable(), other.getTable()), Boolean.class);
+                    factory -> scope.scalar(factory, this, other, (left, right) -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
+                            args.sqlFunc(left).sqlFunc(right))), Boolean.class);
         }
 
         @Override
         public NumberTypeExpression<BigDecimal> toSeconds() {
             // TIME_TO_SEC discards fractions; multiplication avoids div_precision_increment rounding.
             return new NumberTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(factory.anySQLFunction("(TIME_TO_SEC({0}) + SIGN({0}) * MICROSECOND({0}) * 0.000001)", args -> args.sqlFunc(func().apply(factory))),
-                            AggregationType.UNKNOWN, true, getTable()), BigDecimal.class);
+                    factory -> scope.scalar(factory, this, value -> factory.anySQLFunction("(TIME_TO_SEC({0}) + SIGN({0}) * MICROSECOND({0}) * 0.000001)", args -> args.sqlFunc(value))), BigDecimal.class);
         }
 
         @Override
@@ -134,8 +132,7 @@ public final class MySqlDurationExpressions {
         private DateTimeTypeExpression<LocalDateTime> dateTime(PropTypeColumn<LocalDateTime> time, String name) {
             scope.requireSource(time);
             return new DateTimeTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(factory.anySQLFunction(name + "({0},{1})", args -> args.sqlFunc(scope.operand(time, factory)).sqlFunc(func().apply(factory))),
-                            AggregationType.UNKNOWN, true, getTable(), time.getTable()), LocalDateTime.class);
+                    factory -> scope.scalar(factory, time, this, (date, duration) -> factory.anySQLFunction(name + "({0},{1})", args -> args.sqlFunc(date).sqlFunc(duration))), LocalDateTime.class);
         }
     }
 }

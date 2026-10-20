@@ -2,6 +2,10 @@
 
 当前验证的是同一 DataSource 的两张真实分表，使用 EasyQuery 3.2.17 的 `ShardingEntityExpressionExecutor`、initializer、route 和原有合并器。MySQL、PostgreSQL、HANA 都执行同一消费契约。更完整的多 DataSource、业务类型、派生关系、UNION 和分组组合仍在 G4.6 验收中。
 
+原生视图的追加实测包含 MySQL JSON 修改/包含判断和 Duration 完整投影/加减/微秒/日期时间组合，PostgreSQL JSON/JSONB 转换/修改、数组 ANY/包含/元素/长度以及 interval 日历组合，HANA NVARCHAR/NCLOB JSON 读取与 LOB 完整投影、标量文本/切片/二进制切片。它们传播现有逐行分类，并同时检查双输入操作的两个操作数；数组比较中的聚合元素仍会拒绝。
+
+HANA 作用域包装通过公开 TableSQLSegment/visitor 保留被包装结果的类型，因此 LOB 的直接 DISTINCT 继续在执行前失败，显式转换为标量文本则可用。类型检测停在当前表达式的结果，不把其内部 LOB 操作数误认为最终结果。返回列保留映射 handler/ValueConverter，没有另外复制一套类型读取器。
+
 ## 逐行计算与聚合后计算
 
 增强表达式在内部保留“只依赖当前行和参数”的分类，普通列、typed value、比较绑定值属于已知逐行输入。共同 CAST、JSON path、日期截断、NULLIF、NULL-safe 比较只有在全部操作数都满足这个条件时，才保留这一分类。它不通过 `AggregationType.UNKNOWN` 猜测：上游的算术包装可能把内部的 SUM/AVG 隐藏成 UNKNOWN。
@@ -25,3 +29,5 @@
 - `MySqlShardingDslIT`、`PostgresShardingDslIT`、`HanaShardingDslIT`：分别创建自己的测试表/schema；HANA 另外在自己的 schema 部署 JSON 文档函数。
 
 测试结束删除自身表/schema，并关闭自己创建的分片 executor。每个 DataSource 的分片并发上限为 2，开发数据库与用户数据保持保留。更广范围的类型、连接池和跨数据源组合不能用这些测试结果替代。
+
+分片排序继续遵守上游“排序列必须在投影中”的要求；测试显式选择 id，不暗中增加或改变业务返回字段。任意未分类的上游函数、计算字段排序和跨分片聚合后转换仍不能从本次结果推断为可用。

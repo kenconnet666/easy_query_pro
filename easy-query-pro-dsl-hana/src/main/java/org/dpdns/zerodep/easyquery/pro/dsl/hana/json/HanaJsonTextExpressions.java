@@ -6,6 +6,7 @@ import com.easy.query.core.expression.builder.GroupSelector;
 import com.easy.query.core.expression.builder.OrderSelector;
 import com.easy.query.core.func.SQLFunc;
 import com.easy.query.core.func.SQLFunction;
+import com.easy.query.core.expression.func.AggregationType;
 import com.easy.query.core.func.def.enums.OrderByModeEnum;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.SQLFunctionExpressionUtil;
@@ -48,7 +49,10 @@ public final class HanaJsonTextExpressions {
         @Override
         public Function<SQLFunc, SQLFunction> func() {
             var function = super.func();
-            return lob ? factory -> HanaLobSqlSupport.lobResult(function.apply(factory)) : function;
+            return lob ? factory -> {
+                var value = function.apply(factory);
+                return scope.operation(HanaLobSqlSupport.lobResult(value), AggregationType.UNKNOWN, value);
+            } : function;
         }
 
         @Override

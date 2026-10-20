@@ -14,7 +14,7 @@ class PostgresShardingDslIT {
         try (var schema = PostgresTestDatabase.createSchema(source, "eqp_shard_"); var ddl = schema.connection().createStatement()) {
             var tables = List.of("first_shard", "second_shard");
             for (String table : tables)
-                ddl.execute("CREATE TABLE " + schema.qualified(table) + " (id INTEGER PRIMARY KEY, name VARCHAR(200), amount DECIMAL(19,4))");
+                ddl.execute("CREATE TABLE " + schema.qualified(table) + " (id INTEGER PRIMARY KEY, name VARCHAR(200), amount DECIMAL(19,4), created TIMESTAMP(6))");
             ShardingDslContract.verify(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure, tables);
         }
     }

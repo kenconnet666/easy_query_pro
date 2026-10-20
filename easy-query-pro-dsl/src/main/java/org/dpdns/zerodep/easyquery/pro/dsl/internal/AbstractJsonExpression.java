@@ -66,8 +66,7 @@ public abstract class AbstractJsonExpression<T> extends MappedValueExpression<T>
     @Override
     public final StringTypeExpression<String> asText() {
         return new StringTypeExpressionImpl<>(scope.context(), scope.anchor(), null, factory ->
-                scope.function(scope.runtime().getService(JsonPathAccess.class).serializedText(factory, func().apply(factory)),
-                        AggregationType.UNKNOWN, true, getTable()), String.class);
+                scope.scalar(factory, this, value -> scope.runtime().getService(JsonPathAccess.class).serializedText(factory, value)), String.class);
     }
 
     public static void requireView(ExpressionScope scope, PropTypeColumn<?> source, NativeJsonType target) {
@@ -104,14 +103,13 @@ public abstract class AbstractJsonExpression<T> extends MappedValueExpression<T>
         String value = target.prepareValue(input.json());
         String template = target.castTemplate(scope.dialect());
         return new AnyTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                factory -> factory.anySQLFunction(template, args -> args.value(value)), String.class);
+                factory -> scope.function(factory.anySQLFunction(template, args -> args.value(value)), AggregationType.UNKNOWN, false), String.class);
     }
 
     public static PropTypeColumn<String> cast(ExpressionScope scope, NativeJsonType target, PropTypeColumn<?> source) {
         scope.requireSource(source);
         String template = target.castTemplate(scope.dialect());
         return new AnyTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                factory -> scope.function(factory.anySQLFunction(template, args -> args.sqlFunc(source.getTable(), scope.operand(source, factory))),
-                        AggregationType.UNKNOWN, true, source.getTable()), String.class);
+                factory -> scope.scalar(factory, source, value -> factory.anySQLFunction(template, args -> args.sqlFunc(source.getTable(), value))), String.class);
     }
 }

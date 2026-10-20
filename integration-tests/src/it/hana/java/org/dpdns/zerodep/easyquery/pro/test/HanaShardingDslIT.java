@@ -12,7 +12,7 @@ import java.util.List;
 class HanaShardingDslIT {
     @Test
     void rowLocalExpressionsCanBeEvaluatedBeforeShardMerge() throws SQLException {
-        String columns = "\"id\" INTEGER PRIMARY KEY, \"name\" NVARCHAR(200), \"amount\" DECIMAL(19,4)";
+        String columns = "\"id\" INTEGER PRIMARY KEY, \"name\" NVARCHAR(200), \"amount\" DECIMAL(19,4), \"created\" TIMESTAMP";
         try (var first = HanaTestDatabase.createTable("SHARD_A", columns); var second = HanaTestDatabase.createTable("SHARD_B", columns);
              var schema = HanaTestDatabase.createSchema("SHARD_JSON"); var ddl = schema.connection().createStatement()) {
             ddl.execute(HanaJsonSupport.createDocumentFunctionSql(schema.name()));

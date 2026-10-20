@@ -426,9 +426,19 @@ HanaTypes 增加 ASCII VARCHAR、Unicode NVARCHAR、ALPHANUM 和仅用于存储�
 
 最终本地 47 个离线检查、26 个实库用例通过，覆盖三库双分表、分页/count/clone、JSON/NULLIF/NULL-safe、已有 SUM 合并，以及 HANA/JSON/原生数字的回归。IDEA 构建通过；三库 MCP 确认本轮表/schema 遗留为 0。边界见 [分片说明](dsl-sharding.md)，该记录不把多 DataSource 和全部原生类型分片标为完成。
 
+## 原生视图的逐行组合与 LOB 类型传播
+
+提交 `3408b9fbaf21dda405d1307c46d6ed1361b407f3` 的 [CI 39397728470](https://github.com/kenconnet666/easy_query_pro/actions/runs/39397728470) 已通过全部五个强制任务。
+
+ExpressionScope 新增单输入/双输入的标量组合辅助，操作数仅构造一次再传播分类；MappedValueExpression 保留原列读取契约并沿用已知分类。MySQL JSON/Duration、PG JSONB/数组/interval、HANA JSON 文本与 LOB 的现有操作接入这一基础，不增加新的公开运算方法。
+
+原作用域包装是没有 visitor 信息的 SQL lambda，无法把 LOB 返回标记继续传给外层。改为公开 TableSQLSegment 的透明包装，HANA 返回类型检查沿 visitor 穿过包装，同时在具体 NativeProjection 的返回类型处停止；标量转换的 LOB 参数不会误触发结果限制。真正的 LOB DISTINCT/排序限制继续保留。
+
+实库先发现数组测试没有投影排序 id，按上游契约修正 fixture，没有绕过排序检查。最终 15 个定向离线检查和 36 个实库用例通过，包含三库双分表、所有上述原生视图的代表性组合、克隆、原有 JSON/数组/时长/interval 映射回归；此前透明 metadata 变更还通过了 28 个离线和 18 个实库用例。IDEA 构建通过，三库 MCP 确认本轮分表/schema 遗留为 0。完整多数据源和派生关系仍继续执行。
+
 ## 下一步
 
-1. 检查共同分片投影提交的 CI，继续原生视图、多 DataSource 与派生关系组合。
+1. 检查原生视图组合提交的 CI，整理分片测试职责并继续多 DataSource、派生关系组合。
 2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
 3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
 4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。

@@ -1,6 +1,5 @@
 package org.dpdns.zerodep.easyquery.pro.dsl.pgsql;
 
-import com.easy.query.core.expression.func.AggregationType;
 import com.easy.query.core.func.SQLFunc;
 import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.proxy.PropTypeColumn;
@@ -27,6 +26,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -112,7 +112,7 @@ public final class PgSqlDsl {
 
         @Override
         public PgJsonbExpression<T> toJsonb() {
-            return new Jsonb<>(scope, portable, this, factory -> factory.anySQLFunction("CAST({0} AS JSONB)", args -> args.sqlFunc(func().apply(factory))));
+            return new Jsonb<>(scope, portable, this, factory -> scope.scalar(factory, this, document -> factory.anySQLFunction("CAST({0} AS JSONB)", args -> args.sqlFunc(document))));
         }
     }
 
@@ -138,15 +138,15 @@ public final class PgSqlDsl {
 
         private BooleanTypeExpression<Boolean> jsonComparison(JsonInput value, String operator) {
             var parameter = AbstractJsonExpression.literal(scope, PgSqlTypes.jsonb(), value);
-            return predicate(factory -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
-                    args.sqlFunc(func().apply(factory)).sqlFunc(scope.operand(parameter, factory))));
+            return predicate((factory, document) -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
+                    args.sqlFunc(document).sqlFunc(scope.operand(parameter, factory))));
         }
 
         @Override
         public BooleanTypeExpression<Boolean> hasKey(String key) {
             String checked = checkedKey(key);
             // pgJDBC 用 ?? 表示原生 ? 运算符；保留 operator 节点以便数据库使用 JSONB 索引。
-            return predicate(factory -> factory.anySQLFunction("({0} ?? CAST({1} AS TEXT))", args -> args.sqlFunc(func().apply(factory)).value(checked)));
+            return predicate((factory, document) -> factory.anySQLFunction("({0} ?? CAST({1} AS TEXT))", args -> args.sqlFunc(document).value(checked)));
         }
 
         @Override
@@ -161,48 +161,48 @@ public final class PgSqlDsl {
 
         private BooleanTypeExpression<Boolean> keys(String[] keys, String operator) {
             var checked = textValues(Arrays.asList(Objects.requireNonNull(keys, "keys").clone()));
-            return predicate(factory -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
-                    args.sqlFunc(func().apply(factory)).sqlFunc(textArray(factory, checked))));
+            return predicate((factory, document) -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
+                    args.sqlFunc(document).sqlFunc(textArray(factory, checked))));
         }
 
         @Override
         public BooleanTypeExpression<Boolean> pathExists(PgJsonPath path) {
             Objects.requireNonNull(path, "path");
-            return predicate(factory -> factory.anySQLFunction("({0} @?? CAST({1} AS JSONPATH))", args ->
-                    args.sqlFunc(func().apply(factory)).value(path.expression())));
+            return predicate((factory, document) -> factory.anySQLFunction("({0} @?? CAST({1} AS JSONPATH))", args ->
+                    args.sqlFunc(document).value(path.expression())));
         }
 
         @Override
         public BooleanTypeExpression<Boolean> pathExists(PgJsonPath path, JsonInput variables, boolean silent) {
             Objects.requireNonNull(path, "path");
             var parameter = AbstractJsonExpression.literal(scope, PgSqlTypes.jsonb(), variables);
-            return predicate(factory -> factory.anySQLFunction("jsonb_path_exists({0},CAST({1} AS JSONPATH),{2},{3})", args ->
-                    args.sqlFunc(func().apply(factory)).value(path.expression()).sqlFunc(scope.operand(parameter, factory)).value(silent)));
+            return predicate((factory, document) -> factory.anySQLFunction("jsonb_path_exists({0},CAST({1} AS JSONPATH),{2},{3})", args ->
+                    args.sqlFunc(document).value(path.expression()).sqlFunc(scope.operand(parameter, factory)).value(silent)));
         }
 
         @Override
         public PgJsonbExpression<T> setPath(List<String> path, JsonInput value, boolean createMissing) {
             var checked = textValues(path);
             var parameter = AbstractJsonExpression.literal(scope, PgSqlTypes.jsonb(), value);
-            return new Jsonb<>(scope, portable, this, factory -> factory.anySQLFunction("jsonb_set({0},{1},{2},{3})", args ->
-                    args.sqlFunc(func().apply(factory)).sqlFunc(textArray(factory, checked)).sqlFunc(scope.operand(parameter, factory)).value(createMissing)));
+            return new Jsonb<>(scope, portable, this, factory -> scope.scalar(factory, this, document -> factory.anySQLFunction("jsonb_set({0},{1},{2},{3})", args ->
+                    args.sqlFunc(document).sqlFunc(textArray(factory, checked)).sqlFunc(scope.operand(parameter, factory)).value(createMissing))));
         }
 
         @Override
         public PgJsonbExpression<T> removeKey(String key) {
             String checked = checkedKey(key);
-            return new Jsonb<>(scope, portable, this, factory -> factory.anySQLFunction("({0} - CAST({1} AS TEXT))", args -> args.sqlFunc(func().apply(factory)).value(checked)));
+            return new Jsonb<>(scope, portable, this, factory -> scope.scalar(factory, this, document -> factory.anySQLFunction("({0} - CAST({1} AS TEXT))", args -> args.sqlFunc(document).value(checked))));
         }
 
         @Override
         public PgJsonbExpression<T> removePath(List<String> path) {
             var checked = textValues(path);
-            return new Jsonb<>(scope, portable, this, factory -> factory.anySQLFunction("({0} #- {1})", args -> args.sqlFunc(func().apply(factory)).sqlFunc(textArray(factory, checked))));
+            return new Jsonb<>(scope, portable, this, factory -> scope.scalar(factory, this, document -> factory.anySQLFunction("({0} #- {1})", args -> args.sqlFunc(document).sqlFunc(textArray(factory, checked)))));
         }
 
-        private BooleanTypeExpression<Boolean> predicate(Function<SQLFunc, SQLFunction> expression) {
+        private BooleanTypeExpression<Boolean> predicate(BiFunction<SQLFunc, SQLFunction, SQLFunction> expression) {
             return new BooleanTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(expression.apply(factory), AggregationType.UNKNOWN, true, getTable()), Boolean.class);
+                    factory -> scope.scalar(factory, this, document -> expression.apply(factory, document)), Boolean.class);
         }
 
         private static String checkedKey(String key) {

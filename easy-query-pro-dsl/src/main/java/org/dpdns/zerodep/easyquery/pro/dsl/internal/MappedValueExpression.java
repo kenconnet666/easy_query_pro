@@ -27,7 +27,10 @@ public abstract class MappedValueExpression<T> extends AnyTypeExpressionImpl<T> 
 
     private MappedValueExpression(ExpressionScope scope, PropTypeColumn<T> source, Function<SQLFunc, SQLFunction> function, ColumnMetadata mapping) {
         super(scope.context(), source.getTable(), mapping == null ? null : source.getValue(),
-                factory -> scope.function(function.apply(factory), AggregationType.UNKNOWN, true, source.getTable()),
+                factory -> {
+                    var value = function.apply(factory);
+                    return scope.function(value, AggregationType.UNKNOWN, !ExpressionScope.isRowLocal(value), source.getTable());
+                },
                 EasyClassUtil.getObjectTypeWhenPrimitive(Objects.requireNonNull(source.getPropertyType(), "source Java type")));
         // Keep APT's Object.class carrier: selectColumn must not reinterpret a converted record/List as a new entity.
         this.scope = scope;

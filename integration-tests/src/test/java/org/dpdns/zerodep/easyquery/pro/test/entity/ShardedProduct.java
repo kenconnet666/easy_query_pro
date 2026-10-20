@@ -15,6 +15,7 @@ import com.easy.query.core.sharding.route.table.abstraction.AbstractTableRoute;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.ShardedProductProxy;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +27,7 @@ public class ShardedProduct implements ProxyEntityAvailable<ShardedProduct, Shar
     private Integer id;
     private String name;
     private BigDecimal amount;
+    private LocalDateTime created;
 
     public ShardedProduct() {
     }
@@ -34,6 +36,7 @@ public class ShardedProduct implements ProxyEntityAvailable<ShardedProduct, Shar
         this.id = id;
         this.name = name;
         this.amount = amount;
+        this.created = LocalDateTime.of(2024, 1, 30, 0, 0).plusDays(id);
     }
 
     public Integer getId() {
@@ -58,6 +61,14 @@ public class ShardedProduct implements ProxyEntityAvailable<ShardedProduct, Shar
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    public LocalDateTime getCreated() {
+        return created;
+    }
+
+    public void setCreated(LocalDateTime created) {
+        this.created = created;
     }
 
     public static final class Tables implements EntityShardingInitializer<ShardedProduct> {

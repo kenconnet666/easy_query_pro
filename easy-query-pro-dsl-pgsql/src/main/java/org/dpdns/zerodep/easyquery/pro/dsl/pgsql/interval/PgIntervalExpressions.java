@@ -44,14 +44,14 @@ public final class PgIntervalExpressions {
 
     public static PgIntervalExpression<PgInterval> value(ExpressionScope scope, PgInterval value) {
         var source = new AnyTypeExpressionImpl<PgInterval>(scope.context(), scope.anchor(), null,
-                factory -> factory.anySQLFunction("CAST({0} AS INTERVAL)", args -> args.value(value)), PgInterval.class);
+                factory -> scope.function(factory.anySQLFunction("CAST({0} AS INTERVAL)", args -> args.value(value)), AggregationType.UNKNOWN, false), PgInterval.class);
         return new Expression<>(scope, source, factory -> scope.operand(source, factory));
     }
 
     public static PgIntervalExpression<PgInterval> cast(ExpressionScope scope, PropTypeColumn<?> source) {
         scope.requireSource(source);
         var cast = new AnyTypeExpressionImpl<PgInterval>(scope.context(), source.getTable(), null,
-                factory -> factory.anySQLFunction("CAST({0} AS INTERVAL)", args -> args.sqlFunc(scope.operand(source, factory))), PgInterval.class);
+                factory -> scope.scalar(factory, source, value -> factory.anySQLFunction("CAST({0} AS INTERVAL)", args -> args.sqlFunc(value))), PgInterval.class);
         return new Expression<>(scope, cast, factory -> scope.operand(cast, factory));
     }
 
@@ -79,13 +79,13 @@ public final class PgIntervalExpressions {
         }
 
         private SQLFunction binary(SQLFunc factory, PgIntervalExpression<?> other, String operator) {
-            return factory.anySQLFunction("({0} " + operator + " {1})", args ->
-                    args.sqlFunc(func().apply(factory)).sqlFunc(scope.operand(other, factory)));
+            return scope.scalar(factory, this, other, (left, right) -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
+                    args.sqlFunc(left).sqlFunc(right)));
         }
 
         @Override
         public PgIntervalExpression<T> negated() {
-            return new Expression<>(scope, this, factory -> factory.anySQLFunction("(-{0})", args -> args.sqlFunc(func().apply(factory))));
+            return new Expression<>(scope, this, factory -> scope.scalar(factory, this, value -> factory.anySQLFunction("(-{0})", args -> args.sqlFunc(value))));
         }
 
         @Override
@@ -101,7 +101,7 @@ public final class PgIntervalExpressions {
         private BooleanTypeExpression<Boolean> comparison(PgIntervalExpression<?> other, String operator) {
             scope.requireSource(other);
             return new BooleanTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(binary(factory, other, operator), AggregationType.UNKNOWN, true, getTable(), other.getTable()), Boolean.class);
+                    factory -> binary(factory, other, operator), Boolean.class);
         }
 
         @Override
@@ -127,9 +127,8 @@ public final class PgIntervalExpressions {
         private DateTimeTypeExpression<LocalDateTime> calendar(PropTypeColumn<?> time, String operator) {
             scope.requireSource(time);
             return new DateTimeTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(factory.anySQLFunction("({0} " + operator + " {1})", args ->
-                                    args.sqlFunc(scope.operand(time, factory)).sqlFunc(func().apply(factory))),
-                            AggregationType.UNKNOWN, true, getTable(), time.getTable()), LocalDateTime.class);
+                    factory -> scope.scalar(factory, time, this, (date, interval) -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
+                            args.sqlFunc(date).sqlFunc(interval))), LocalDateTime.class);
         }
     }
 }

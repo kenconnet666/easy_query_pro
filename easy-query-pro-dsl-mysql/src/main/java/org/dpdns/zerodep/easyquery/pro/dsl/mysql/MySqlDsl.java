@@ -26,6 +26,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.function.BiFunction;
 
 public final class MySqlDsl {
     private final ExpressionScope scope;
@@ -84,16 +85,16 @@ public final class MySqlDsl {
         @Override
         public BooleanTypeExpression<Boolean> containsJson(JsonInput candidate) {
             var parameter = literal(scope, MySqlTypes.json(), candidate);
-            return predicate(factory -> factory.anySQLFunction("JSON_CONTAINS({0},{1})", args ->
-                    args.sqlFunc(func().apply(factory)).sqlFunc(scope.operand(parameter, factory))));
+            return predicate((factory, document) -> factory.anySQLFunction("JSON_CONTAINS({0},{1})", args ->
+                    args.sqlFunc(document).sqlFunc(scope.operand(parameter, factory))));
         }
 
         @Override
         public BooleanTypeExpression<Boolean> containsJson(JsonInput candidate, JsonPath path) {
             var parameter = literal(scope, MySqlTypes.json(), candidate);
             String checked = Objects.requireNonNull(path, "path").toSqlJsonPath();
-            return predicate(factory -> factory.anySQLFunction("JSON_CONTAINS({0},{1},CONVERT({2} USING utf8mb4))", args ->
-                    args.sqlFunc(func().apply(factory)).sqlFunc(scope.operand(parameter, factory)).value(checked)));
+            return predicate((factory, document) -> factory.anySQLFunction("JSON_CONTAINS({0},{1},CONVERT({2} USING utf8mb4))", args ->
+                    args.sqlFunc(document).sqlFunc(scope.operand(parameter, factory)).value(checked)));
         }
 
         @Override
@@ -109,8 +110,8 @@ public final class MySqlDsl {
         private BooleanTypeExpression<Boolean> containsPaths(String mode, JsonPath[] paths) {
             var checked = checkedPaths(paths);
             String template = "JSON_CONTAINS_PATH({0},'" + mode + "'" + pathArguments(checked.size()) + ")";
-            return predicate(factory -> factory.anySQLFunction(template, args -> {
-                args.sqlFunc(func().apply(factory));
+            return predicate((factory, document) -> factory.anySQLFunction(template, args -> {
+                args.sqlFunc(document);
                 checked.forEach(path -> args.value(path.toSqlJsonPath()));
             }));
         }
@@ -130,12 +131,12 @@ public final class MySqlDsl {
                 template.append(",CONVERT({").append(2 * i + 1).append("} USING utf8mb4),{").append(2 * i + 2).append('}');
             }
             template.append(')');
-            return new Json<>(scope, portable, this, factory -> factory.anySQLFunction(template.toString(), args -> {
-                args.sqlFunc(func().apply(factory));
+            return new Json<>(scope, portable, this, factory -> scope.scalar(factory, this, document -> factory.anySQLFunction(template.toString(), args -> {
+                args.sqlFunc(document);
                 for (int i = 0; i < checked.size(); i++) {
                     args.value(checked.get(i).path().toSqlJsonPath()).sqlFunc(scope.operand(values.get(i), factory));
                 }
-            }));
+            })));
         }
 
         @Override
@@ -150,15 +151,15 @@ public final class MySqlDsl {
                 throw new IllegalArgumentException("JSON_REMOVE cannot remove the document root");
             }
             String template = "JSON_REMOVE({0}" + pathArguments(checked.size()) + ")";
-            return new Json<>(scope, portable, this, factory -> factory.anySQLFunction(template, args -> {
-                args.sqlFunc(func().apply(factory));
+            return new Json<>(scope, portable, this, factory -> scope.scalar(factory, this, document -> factory.anySQLFunction(template, args -> {
+                args.sqlFunc(document);
                 checked.forEach(path -> args.value(path.toSqlJsonPath()));
-            }));
+            })));
         }
 
-        private BooleanTypeExpression<Boolean> predicate(Function<SQLFunc, SQLFunction> expression) {
+        private BooleanTypeExpression<Boolean> predicate(BiFunction<SQLFunc, SQLFunction, SQLFunction> expression) {
             return new BooleanTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(expression.apply(factory), AggregationType.UNKNOWN, true, getTable()), Boolean.class);
+                    factory -> scope.scalar(factory, this, document -> expression.apply(factory, document)), Boolean.class);
         }
 
         private static List<JsonPath> checkedPaths(JsonPath[] paths) {

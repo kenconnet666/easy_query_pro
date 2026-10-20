@@ -1,6 +1,12 @@
 package org.dpdns.zerodep.easyquery.pro.dsl.internal;
 
 import com.easy.query.core.context.QueryRuntimeContext;
+import com.easy.query.core.basic.jdbc.parameter.ToSQLContext;
+import com.easy.query.core.expression.segment.SQLSegment;
+import com.easy.query.core.expression.segment.core.TableSQLSegment;
+import com.easy.query.core.expression.sql.builder.ExpressionContext;
+import com.easy.query.core.expression.visitor.TableVisitor;
+import com.easy.query.core.util.EasySQLSegmentUtil;
 import com.easy.query.core.exception.EasyQueryTableNotInSQLContextException;
 import com.easy.query.core.expression.func.AggregationType;
 import com.easy.query.core.expression.parser.core.available.TableAvailable;
@@ -17,6 +23,8 @@ import com.easy.query.core.util.EasyColumnSegmentUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 
 import java.util.Objects;
+import java.util.function.UnaryOperator;
+import java.util.function.BiFunction;
 
 /**
  * Shared client ownership, property conversion and final table-scope checks for extension facades.
@@ -74,6 +82,18 @@ public final class ExpressionScope {
 
     public static boolean isRowLocal(SQLFunction function) {
         return function instanceof ScopedFunction scoped && !scoped.requiresServerEvaluation && scoped.aggregation == AggregationType.UNKNOWN;
+    }
+
+    public SQLFunction scalar(SQLFunc factory, PropTypeColumn<?> source, UnaryOperator<SQLFunction> expression) {
+        var value = operand(source, factory);
+        return operation(expression.apply(value), AggregationType.UNKNOWN, value);
+    }
+
+    public SQLFunction scalar(SQLFunc factory, PropTypeColumn<?> left, PropTypeColumn<?> right,
+                              BiFunction<SQLFunction, SQLFunction, SQLFunction> expression) {
+        var leftValue = operand(left, factory);
+        var rightValue = operand(right, factory);
+        return operation(expression.apply(leftValue, rightValue), AggregationType.UNKNOWN, leftValue, rightValue);
     }
 
     public <T> PropTypeColumn<T> comparisonParameter(PropTypeColumn<T> left, T value) {
@@ -136,7 +156,36 @@ public final class ExpressionScope {
                 throw new IllegalArgumentException("Pro expression cannot be reused by another client");
             var expression = target.getExpressionContext();
             var segment = new SQLFunctionTranslateImpl(delegate).toSQLSegment(expression, target.getDefaultTable(), runtime, null);
-            target.sql(sql -> {
+            target.sql(new ScopedSegment(expression, segment));
+        }
+
+        private final class ScopedSegment implements TableSQLSegment {
+            private final ExpressionContext expression;
+            private final SQLSegment segment;
+
+            private ScopedSegment(ExpressionContext expression, SQLSegment segment) {
+                this.expression = expression;
+                this.segment = segment;
+            }
+
+            @Override
+            public TableAvailable getTable() {
+                return anchor;
+            }
+
+            @Override
+            public ScopedSegment cloneSQLColumnSegment() {
+                return this;
+            }
+
+            @Override
+            public void accept(TableVisitor visitor) {
+                // Preserve the wrapped result and table metadata through this transparent scope boundary.
+                EasySQLSegmentUtil.sqlSegmentTableVisit(segment, visitor);
+            }
+
+            @Override
+            public String toSQL(ToSQLContext sql) {
                 // 相关子查询先构造、后附着外层；必须在最终表上下文就绪后校验，不能在 consume 时误拒绝。
                 try {
                     sql.getAlias(anchor);
@@ -148,7 +197,7 @@ public final class ExpressionScope {
                 if (requiresServerEvaluation && expression.isSharding())
                     throw new UnsupportedOperationException("Pro operations on aggregate or unclassified expressions require server-side evaluation before shard merging");
                 return segment.toSQL(sql);
-            });
+            }
         }
     }
 }

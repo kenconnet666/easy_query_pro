@@ -27,7 +27,8 @@ import java.util.Objects;
 import java.util.function.Function;
 
 public final class HanaLobExpressions {
-    private HanaLobExpressions() { }
+    private HanaLobExpressions() {
+    }
 
     public static <T> HanaTextLobExpression<T> view(ExpressionScope scope, PropTypeColumn<T> source, HanaTypes.TextLob type) {
         requireView(scope, source, type);
@@ -43,22 +44,22 @@ public final class HanaLobExpressions {
         J checked = type.prepareValue(value);
         String template = type.castTemplate(scope.dialect());
         return new AnyTypeExpressionImpl<J>(scope.context(), scope.anchor(), null,
-                factory -> factory.anySQLFunction(template, args -> args.value(checked)), type.javaType());
+                factory -> scope.function(factory.anySQLFunction(template, args -> args.value(checked)), AggregationType.UNKNOWN, false), type.javaType());
     }
 
     public static <J> PropTypeColumn<J> cast(ExpressionScope scope, PropTypeColumn<?> source, CastTarget<J> type) {
         scope.requireSource(source);
         String template = type.castTemplate(scope.dialect());
         return new AnyTypeExpressionImpl<J>(scope.context(), source.getTable(), null,
-                factory -> scope.function(factory.anySQLFunction(template, args -> args.sqlFunc(scope.operand(source, factory))),
-                        AggregationType.UNKNOWN, true, source.getTable()), type.javaType());
+                factory -> scope.scalar(factory, source, operand -> factory.anySQLFunction(template, args -> args.sqlFunc(operand))), type.javaType());
     }
 
     private static void requireView(ExpressionScope scope, PropTypeColumn<?> source, HanaTypes.Lob<?> type) {
         Objects.requireNonNull(type, "type");
         scope.requireSource(source);
         if (scope.dialect() != SqlDialect.HANA) throw new IllegalArgumentException("HANA LOB expressions require HANA");
-        if (source instanceof HanaLobExpression<?> known && known.sqlType() != type) throw new IllegalArgumentException("Use an explicit CAST between LOB storage types");
+        if (source instanceof HanaLobExpression<?> known && known.sqlType() != type)
+            throw new IllegalArgumentException("Use an explicit CAST between LOB storage types");
         if (source instanceof DSLSQLFunctionAvailable || source.getTable() == null || source.getValue() == null) return;
         var column = source.getTable().getEntityMetadata().getColumnNotNull(source.getValue());
         if (column.getColumnValueSQLConverter() != null) return;
@@ -66,67 +67,128 @@ public final class HanaLobExpressions {
         var annotation = field == null ? null : field.getAnnotation(Column.class);
         if (annotation != null && !annotation.dbType().isBlank()) {
             String declared = annotation.dbType().trim().toUpperCase(Locale.ROOT).split("[\\s(]", 2)[0];
-            if (!declared.equals(type.sqlName())) throw new IllegalArgumentException("Column " + column.getPropertyName() + " declares " + declared + "; use an explicit " + type.sqlName() + " CAST");
+            if (!declared.equals(type.sqlName()))
+                throw new IllegalArgumentException("Column " + column.getPropertyName() + " declares " + declared + "; use an explicit " + type.sqlName() + " CAST");
         }
     }
 
     private abstract static class Lob<T> extends MappedValueExpression<T> implements HanaLobExpression<T> {
-        private Lob(ExpressionScope scope, PropTypeColumn<T> source, Function<SQLFunc, SQLFunction> expression) { super(scope, source, expression); }
-        @Override public final void accept(Selector target) { SQLFunctionExpressionUtil.accept(target, getTable(), func()); }
-        @Override public final void accept(AsSelector target) { SQLFunctionExpressionUtil.accept(target, getTable(), func()); }
-        @Override public final void accept(GroupSelector target) { throw HanaLobSqlSupport.unsupportedClause("GROUP BY"); }
-        @Override public final void accept(OrderSelector target) { throw HanaLobSqlSupport.unsupportedClause("ORDER BY"); }
-        @Override public final void asc(boolean condition, OrderByModeEnum nulls) {
+        private Lob(ExpressionScope scope, PropTypeColumn<T> source, Function<SQLFunc, SQLFunction> expression) {
+            super(scope, source, expression);
+        }
+
+        @Override
+        public final void accept(Selector target) {
+            SQLFunctionExpressionUtil.accept(target, getTable(), func());
+        }
+
+        @Override
+        public final void accept(AsSelector target) {
+            SQLFunctionExpressionUtil.accept(target, getTable(), func());
+        }
+
+        @Override
+        public final void accept(GroupSelector target) {
+            throw HanaLobSqlSupport.unsupportedClause("GROUP BY");
+        }
+
+        @Override
+        public final void accept(OrderSelector target) {
+            throw HanaLobSqlSupport.unsupportedClause("ORDER BY");
+        }
+
+        @Override
+        public final void asc(boolean condition, OrderByModeEnum nulls) {
             if (condition) throw HanaLobSqlSupport.unsupportedClause("ORDER BY");
         }
-        @Override public final void desc(boolean condition, OrderByModeEnum nulls) {
+
+        @Override
+        public final void desc(boolean condition, OrderByModeEnum nulls) {
             if (condition) throw HanaLobSqlSupport.unsupportedClause("ORDER BY");
         }
-        @Override public final Function<SQLFunc, SQLFunction> func() {
+
+        @Override
+        public final Function<SQLFunc, SQLFunction> func() {
             var function = super.func();
-            return factory -> HanaLobSqlSupport.lobResult(function.apply(factory));
+            return factory -> {
+                var value = function.apply(factory);
+                return scope.operation(HanaLobSqlSupport.lobResult(value), AggregationType.UNKNOWN, value);
+            };
         }
-        @Override public final BooleanTypeExpression<Boolean> isSqlNull() {
-            return new BooleanTypeExpressionImpl<>(scope.context(), scope.anchor(), null, factory -> scope.function(
-                    factory.anySQLFunction("(CASE WHEN {0} IS NULL THEN TRUE ELSE FALSE END)", args -> args.sqlFunc(func().apply(factory))),
-                    AggregationType.UNKNOWN, true, getTable()), Boolean.class);
+
+        @Override
+        public final BooleanTypeExpression<Boolean> isSqlNull() {
+            return new BooleanTypeExpressionImpl<>(scope.context(), scope.anchor(), null, factory -> scope.scalar(factory, this, value ->
+                    factory.anySQLFunction("(CASE WHEN {0} IS NULL THEN TRUE ELSE FALSE END)", args -> args.sqlFunc(value))), Boolean.class);
         }
+
         protected final NumberTypeExpression<Long> lobLength() {
-            return new NumberTypeExpressionImpl<>(scope.context(), scope.anchor(), null, factory -> scope.function(
-                    factory.anySQLFunction("LENGTH({0})", args -> args.sqlFunc(func().apply(factory))), AggregationType.UNKNOWN, true, getTable()), Long.class);
+            return new NumberTypeExpressionImpl<>(scope.context(), scope.anchor(), null, factory -> scope.scalar(factory, this, value ->
+                    factory.anySQLFunction("LENGTH({0})", args -> args.sqlFunc(value))), Long.class);
         }
+
         protected final SQLFunction slice(SQLFunc factory, int start, int length) {
-            return factory.anySQLFunction("SUBSTR({0},{1},{2})", args -> args.sqlFunc(func().apply(factory)).value(start).value(length));
+            return scope.scalar(factory, this, value -> factory.anySQLFunction("SUBSTR({0},{1},{2})", args -> args.sqlFunc(value).value(start).value(length)));
         }
+
         protected final void requireSlice(int start, int length) {
-            if (start < 1 || length < 0 || length > 5000) throw new IllegalArgumentException("LOB slices require a positive one-based start and 0 <= length <= 5000");
+            if (start < 1 || length < 0 || length > 5000)
+                throw new IllegalArgumentException("LOB slices require a positive one-based start and 0 <= length <= 5000");
         }
     }
 
     private static final class Text<T> extends Lob<T> implements HanaTextLobExpression<T> {
         private final HanaTypes.TextLob type;
-        private Text(ExpressionScope scope, PropTypeColumn<T> source, HanaTypes.TextLob type, Function<SQLFunc, SQLFunction> expression) { super(scope, source, expression); this.type = type; }
-        @Override public HanaTypes.TextLob sqlType() { return type; }
-        @Override public NumberTypeExpression<Long> utf16Length() { return lobLength(); }
-        @Override public StringTypeExpression<String> sliceUtf16(int start, int length) {
+
+        private Text(ExpressionScope scope, PropTypeColumn<T> source, HanaTypes.TextLob type, Function<SQLFunc, SQLFunction> expression) {
+            super(scope, source, expression);
+            this.type = type;
+        }
+
+        @Override
+        public HanaTypes.TextLob sqlType() {
+            return type;
+        }
+
+        @Override
+        public NumberTypeExpression<Long> utf16Length() {
+            return lobLength();
+        }
+
+        @Override
+        public StringTypeExpression<String> sliceUtf16(int start, int length) {
             requireSlice(start, length);
             return new StringTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(slice(factory, start, length), AggregationType.UNKNOWN, true, getTable()), String.class);
+                    factory -> slice(factory, start, length), String.class);
         }
-        @Override public StringTypeExpression<String> asText() {
+
+        @Override
+        public StringTypeExpression<String> asText() {
             return new StringTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(factory.cast(func().apply(factory), String.class), AggregationType.UNKNOWN, true, getTable()), String.class);
+                    factory -> scope.scalar(factory, this, value -> factory.cast(value, String.class)), String.class);
         }
     }
 
     private static final class Binary<T> extends Lob<T> implements HanaBinaryLobExpression<T> {
-        private Binary(ExpressionScope scope, PropTypeColumn<T> source, Function<SQLFunc, SQLFunction> expression) { super(scope, source, expression); }
-        @Override public HanaTypes.BinaryLob sqlType() { return HanaTypes.blob(); }
-        @Override public NumberTypeExpression<Long> byteLength() { return lobLength(); }
-        @Override public AnyTypeExpression<byte[]> sliceBytes(int start, int length) {
+        private Binary(ExpressionScope scope, PropTypeColumn<T> source, Function<SQLFunc, SQLFunction> expression) {
+            super(scope, source, expression);
+        }
+
+        @Override
+        public HanaTypes.BinaryLob sqlType() {
+            return HanaTypes.blob();
+        }
+
+        @Override
+        public NumberTypeExpression<Long> byteLength() {
+            return lobLength();
+        }
+
+        @Override
+        public AnyTypeExpression<byte[]> sliceBytes(int start, int length) {
             requireSlice(start, length);
             return new AnyTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(slice(factory, start, length), AggregationType.UNKNOWN, true, getTable()), byte[].class);
+                    factory -> slice(factory, start, length), byte[].class);
         }
     }
 }

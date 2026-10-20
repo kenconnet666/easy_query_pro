@@ -1,7 +1,7 @@
 package org.dpdns.zerodep.easyquery.pro.hana.expression;
 
 import com.easy.query.core.expression.segment.GroupByColumnSegment;
-import com.easy.query.core.expression.segment.FuncColumnSegment;
+import com.easy.query.core.expression.segment.core.TableSQLSegment;
 import com.easy.query.core.expression.segment.OrderBySegment;
 import com.easy.query.core.expression.segment.SQLNativeSegment;
 import com.easy.query.core.expression.segment.SQLSegment;
@@ -46,7 +46,7 @@ public final class HanaSQLSegmentFactory extends DefaultSQLSegmentFactory {
 
     static boolean hasLobResult(SQLSegment segment) {
         if (segment instanceof NativeProjection nativeSegment) return nativeSegment.lob;
-        if (segment instanceof FuncColumnSegment function) {
+        if (segment instanceof TableSQLSegment function) {
             var visitor = new ResultTypeVisitor();
             function.accept(visitor);
             return visitor.lob;

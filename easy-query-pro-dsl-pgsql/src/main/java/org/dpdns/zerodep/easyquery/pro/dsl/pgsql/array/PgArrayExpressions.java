@@ -60,7 +60,7 @@ public final class PgArrayExpressions {
         requireType(scope, type);
         var parameter = type.value(values);
         var source = new AnyTypeExpressionImpl<PgArrayValue<E>>(scope.context(), scope.anchor(), null,
-                factory -> factory.anySQLFunction(type.castTemplate(scope.dialect()), args -> args.value(parameter)), type.javaType());
+                factory -> scope.function(factory.anySQLFunction(type.castTemplate(scope.dialect()), args -> args.value(parameter)), AggregationType.UNKNOWN, false), type.javaType());
         return new Expression<>(scope, source, type, factory -> scope.operand(source, factory));
     }
 
@@ -68,7 +68,7 @@ public final class PgArrayExpressions {
         requireType(scope, type);
         scope.requireSource(source);
         var cast = new AnyTypeExpressionImpl<PgArrayValue<E>>(scope.context(), source.getTable(), null,
-                factory -> factory.anySQLFunction(type.castTemplate(scope.dialect()), args -> args.sqlFunc(scope.operand(source, factory))), type.javaType());
+                factory -> scope.scalar(factory, source, operand -> factory.anySQLFunction(type.castTemplate(scope.dialect()), args -> args.sqlFunc(operand))), type.javaType());
         return new Expression<>(scope, cast, type, factory -> scope.operand(cast, factory));
     }
 
@@ -94,15 +94,17 @@ public final class PgArrayExpressions {
         @Override
         public BooleanTypeExpression<Boolean> anyEq(PropTypeColumn<E> value) {
             scope.requireSource(value);
-            return predicate(factory -> factory.anySQLFunction("({0} = ANY({1}))", args ->
-                    args.sqlFunc(scope.operand(value, factory)).sqlFunc(func().apply(factory))), value);
+            return new BooleanTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
+                    factory -> scope.scalar(factory, value, this, (element, array) -> factory.anySQLFunction("({0} = ANY({1}))", args ->
+                            args.sqlFunc(element).sqlFunc(array))), Boolean.class);
         }
 
         @Override
         public BooleanTypeExpression<Boolean> anyEqValue(E value) {
             Object encoded = type.jdbcElement(type.prepareElement(value));
-            return predicate(factory -> factory.anySQLFunction("(CAST({0} AS " + type.elementSqlName() + ") = ANY({1}))", args ->
-                    args.value(encoded).sqlFunc(func().apply(factory))), this);
+            return new BooleanTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
+                    factory -> scope.scalar(factory, this, array -> factory.anySQLFunction("(CAST({0} AS " + type.elementSqlName() + ") = ANY({1}))", args ->
+                            args.value(encoded).sqlFunc(array))), Boolean.class);
         }
 
         @Override
@@ -139,35 +141,28 @@ public final class PgArrayExpressions {
             scope.requireSource(values);
             if (!type.equals(values.sqlType()))
                 throw new IllegalArgumentException("Array SQL element types must match");
-            return predicate(factory -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
-                    args.sqlFunc(func().apply(factory)).sqlFunc(scope.operand(values, factory))), values);
-        }
-
-        private BooleanTypeExpression<Boolean> predicate(Function<SQLFunc, SQLFunction> expression, PropTypeColumn<?> other) {
             return new BooleanTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(expression.apply(factory), AggregationType.UNKNOWN, true, getTable(), other.getTable()), Boolean.class);
+                    factory -> scope.scalar(factory, this, values, (left, right) -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
+                            args.sqlFunc(left).sqlFunc(right))), Boolean.class);
         }
 
         @Override
         public NumberTypeExpression<Integer> cardinality() {
             return new NumberTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(factory.anySQLFunction("cardinality({0})", args -> args.sqlFunc(func().apply(factory))),
-                            AggregationType.UNKNOWN, true, getTable()), Integer.class);
+                    factory -> scope.scalar(factory, this, array -> factory.anySQLFunction("cardinality({0})", args -> args.sqlFunc(array))), Integer.class);
         }
 
         @Override
         public NumberTypeExpression<Integer> dimensionLength(int dimension) {
             if (dimension < 1) throw new IllegalArgumentException("SQL array dimensions are one-based");
             return new NumberTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(factory.anySQLFunction("array_length({0},{1})", args -> args.sqlFunc(func().apply(factory)).value(dimension)),
-                            AggregationType.UNKNOWN, true, getTable()), Integer.class);
+                    factory -> scope.scalar(factory, this, array -> factory.anySQLFunction("array_length({0},{1})", args -> args.sqlFunc(array).value(dimension))), Integer.class);
         }
 
         @Override
         public AnyTypeExpression<E> elementAtSqlIndex(int index) {
             return new AnyTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
-                    factory -> scope.function(factory.anySQLFunction("({0})[{1}]", args -> args.sqlFunc(func().apply(factory)).value(index)),
-                            AggregationType.UNKNOWN, true, getTable()), type.elementType());
+                    factory -> scope.scalar(factory, this, array -> factory.anySQLFunction("({0})[{1}]", args -> args.sqlFunc(array).value(index))), type.elementType());
         }
     }
 }

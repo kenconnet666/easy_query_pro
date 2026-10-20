@@ -11,7 +11,7 @@ class MySqlShardingDslIT {
     @Test
     void rowLocalExpressionsCanBeEvaluatedBeforeShardMerge() throws SQLException {
         var source = MySqlTestDatabase.dataSource();
-        String columns = "id INTEGER PRIMARY KEY, name VARCHAR(200), amount DECIMAL(19,4)";
+        String columns = "id INTEGER PRIMARY KEY, name VARCHAR(200), amount DECIMAL(19,4), created DATETIME(6)";
         try (var first = MySqlTestDatabase.createTable(source, "eqp_shard_a_", columns);
              var second = MySqlTestDatabase.createTable(source, "eqp_shard_b_", columns)) {
             ShardingDslContract.verify(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure, List.of(first.name(), second.name()));
