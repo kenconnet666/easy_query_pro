@@ -563,3 +563,17 @@ JOIN 原型还确认 EasyQuery 3.2.17 的两个同源 clone 共享 Proxy，ON �
 在现有 HDI 生命周期内加入 EQP_FUNCTION.hdbfunction，真实验证 HANA 2.00.088 支持 `"P_NAME" => ?`，省略中间参数仍正确使用 DEFAULT，显式 NULL 不等于缺省。文本、空字符串、注入样式文本和 BigDecimal 均走 JDBC。外层参数顺序、Draft 聚合、独立来源 JOIN、CTE/count/page 和原 client 事务回滚全部通过；计算视图单值/多值回归同轮执行。函数采用 SQL SECURITY INVOKER，测试容器额外授予 EXECUTE，未扩大已有持久 schema 权限。
 
 使用指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana -Dtest=HanaSourceDslTest,DslCompilationTest#hanaSourceInputsAndOutputProxyStayTyped -Dit.test=HanaHdiIT -Dsurefire.failIfNoSpecifiedTests=false`，12 个离线/消费者检查和 1 个真实 HDI 生命周期用例通过。只读复审未发现阻塞缺陷，补充说明列表声明用于函数时仍为协议字符串，不代表 SQL 数组或表参数。IDEA 格式与构建成功；MCP 查询 SYS.SCHEMAS 确认 EQP_HDI schema 遗留为零，诊断日志记录后清理。表函数完整 CI 将随本批提交异步执行，完整 H11/G6 的非管理员、更多模型精度及干净产物消费仍继续验收。
+
+## HANA 邻接树生成器与外层渲染上下文
+
+表函数提交 `166db7d0639eb2d4004407afbd41987d90d272bd` 已通过 [CI 39460618488](https://github.com/kenconnet666/easy_query_pro/actions/runs/39460618488)。H12 的 HanaHierarchy/HanaHierarchySpec 以原查询快照为来源，通过 HANA HIERARCHY 生成树与森林；键和根保持相同泛型，兄弟顺序、最大深度、多父节点、循环与孤儿策略显式表达。定义创建时用公开 native subQuery 接入，完整 SQLParameter、列 converter、CTE 和查询上下文继续交上游处理，不提取 SQL/参数值后重建。
+
+两层来源规范化隔离 HANA START 与 SIBLING 对列别名的不同规则，保留原业务列并补 NODE_ID/PARENT_ID。结果以 fresh DTO Proxy 进入原 EntityQueryable，新 QUERY context 不继承来源临时 reader。实库验证多根、根集合、深度、稳定兄弟顺序、循环闭合、孤儿和重复节点错误、外层 SMART 展示筛选、CTE/count/page、来源变更快照，以及 CodecRecord 业务键的 ValueConverter/String handler。SQL converter 路径复用公开 createColumnCompareValue2Segment，本轮业务键实测不冒称非平凡根键 SQL converter 的完整覆盖。
+
+只读复审指出 clone 后内外 ExpressionContext 分开，外层追加分片时内层检查会失效；新增负例首先复现未抛异常，再由 HanaQuerySQLContext 将本次外层分片标记沿同一 ToSQLContext 渲染链传递。该具体包装全部委托参数、别名、计数器与 SQLRewriteUnit；不扫描 SQL，也不加新执行器。修复后 clone、真实分片表 JOIN、CTE 后 JOIN 均拒绝。随后复现 APT 对不同业务 record 都使用 Object.class 载体导致 raw 错键漏检，改为实体映射中的实际值类型；编译约束与运行时边界分别保留。
+
+验证使用指定 JBR 17 与正常 Maven verify 流程。先通过 4 个离线检查和 3 个生成器实库用例；补充边界过程中修正测试装配问题：复用同一离线 client 注册分片初始化器、ColumnReader 使用零基索引、注册既有 CentsConverter、跳过包装 SQLException 的零错误码后读取真实 HANA 诊断。分批已通过来源 11 个离线检查、1 个消费者编译用例、生成器 5 个实库用例、原查询组合 5 个用例及 HDI 生命周期 1 个用例。最后以 `mvnw.cmd --batch-mode verify -Phana -Dtest=HanaHierarchyDslTest -Dit.test=HanaHierarchyIT#businessKeyRootsKeepTheSourceConverterAndJdbcHandler -Dsurefire.failIfNoSpecifiedTests=false` 通过 6 个层级离线检查和业务键实库回归；本批唯一用例合计为 18 个离线/消费者检查与 11 个实库用例。
+
+IDEA 格式与构建通过，MCP 确认本轮 HDI schema 遗留为零。七份自有诊断日志在记录红绿证据后清理，标准测试报告保留；持久三库实例未修改。只读复审确认 root context 委托与公开 converter 路径无新增阻塞问题，完整 CI 随新提交异步执行。
+
+生成器文档见 [HANA 层级来源](hana-hierarchy.md)。祖先/后代导航、距离与组织事实汇总仍继续实施，当前生成器不能替代完整 H12/G5.3/G5.8 验收。除现有 HDI 回归自有容器生命周期外，新增层级测试只使用常量关系，不创建持久对象或数据库实例。

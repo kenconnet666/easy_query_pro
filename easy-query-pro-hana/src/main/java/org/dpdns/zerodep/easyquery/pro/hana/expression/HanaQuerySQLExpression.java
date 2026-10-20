@@ -24,6 +24,6 @@ final class HanaQuerySQLExpression extends QuerySQLExpressionImpl {
                 .anyMatch(AnonymousTreeCTERECURSIVEQueryExpressionBuilder.class::isInstance)) {
             throw new UnsupportedOperationException("HANA 2.0 does not support recursive WITH; use HANA hierarchy queries");
         }
-        return super.toSQL(context);
+        return super.toSQL(HanaQuerySQLContext.withQueryContext(context, expression));
     }
 }

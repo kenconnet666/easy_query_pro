@@ -267,4 +267,11 @@ class DslCompilationTest {
         compile(true, "var amount = HanaInput.optional(\"P_MIN_AMOUNT\", BigDecimal.class); var function = HanaTableFunction.of(\"REPORT\", \"FUNCTION\", HanaViewRowProxy::createTable, amount); BigDecimal value = function.query(null, amount.bind(BigDecimal.ONE)).singleNotNull().getAmount();");
         compile(false, "var function = HanaTableFunction.of(\"REPORT\", \"FUNCTION\", HanaViewRowProxy::createTable); String wrong = function.query(null).singleNotNull().getAmount();");
     }
+
+    @Test
+    void hanaHierarchyKeysRootsAndOutputRemainTyped() throws IOException {
+        compile(true, "HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id()).roots(java.util.List.of(1))); Long rank = hierarchy.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyRowProxy::createTable).singleNotNull().getRank();");
+        compile(false, "HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.name()));");
+        compile(false, "HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id()).roots(java.util.List.of(\"bad\")));");
+    }
 }
