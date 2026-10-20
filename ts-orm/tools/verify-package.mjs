@@ -45,6 +45,15 @@ function isInside(parent, child) {
 let failure;
 let failed = false;
 try {
+  // Windows CI 的 checkout 在 D:、临时目录在 C:；默认按卷选择的 store 并不相同。
+  // pnpm 11 的 store path 返回带版本目录，--store-dir 接收其父目录；再由同一 CLI 核对，避免假设静默失效。
+  const cachedStore = await realpath(pnpm(["store", "path", "--silent"], root).trim());
+  const storeArguments = ["--store-dir", dirname(cachedStore)];
+  assert.equal(
+    await realpath(pnpm(["store", "path", "--silent", ...storeArguments], workspace).trim()),
+    cachedStore,
+    "The isolated consumer must reuse the workspace package cache",
+  );
   const tarball = join(workspace, "orm.tgz");
   const packed = JSON.parse(pnpm(["pack", "--out", tarball, "--json"], root));
   const entries = Array.isArray(packed) ? packed[0].files : packed.files;
@@ -80,6 +89,7 @@ try {
       "--ignore-workspace",
       "--no-frozen-lockfile",
       "--config.auto-install-peers=false",
+      ...storeArguments,
       "--virtual-store-dir",
       join(workspace, "node_modules", ".pnpm"),
     ],

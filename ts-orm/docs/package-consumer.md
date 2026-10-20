@@ -20,6 +20,10 @@
 
 每次临时目录由 mkdtemp 创建。结束时核对真实父目录及本任务前缀后清理；失败也清理，清理错误与原验证错误一起保留。共享 pnpm 缓存保持原状。整个过程不会发布 npm 包，当前包仍 private。
 
+离线消费者显式复用工作区实际 pnpm store，安装前用同一 CLI 核对路径。Windows CI 的工作区在 D 盘、临时目录在 C 盘，默认按卷选择的两个 store 不一定都有依赖；跨卷复制缓存中的包仍是离线安装，不能通过取消 `--offline` 掩盖这个问题。虚拟 node_modules 继续留在临时目录，清理不会删除共享 store。
+
+数组提交 `2e7d66b6bacb877ede05d443d8c68766a661df79` 的 [TS CI 39506917747](https://github.com/kenconnet666/easy_query_pro/actions/runs/39506917747) 首次暴露该问题：两个 Windows 消费者报 `ERR_PNPM_NO_OFFLINE_TARBALL`，Linux 与真实 PG/MySQL 作业成功。这是 CI 工具缓存定位的失败，不能将整次运行记为通过；修复后的候选必须有自己的矩阵结果。
+
 CI 在 Windows/Linux、Node 22/24 四个任务分别运行该检查，保存编译器 diagnostics 和消费者日志。最初 Windows / Node 24 / TS 7.0.2 的本地观测约为 17 MiB 编译器内存、16,973 次类型实例化；这是当前固定 fixture 的单次观测，不是性能上限或其他机器的耗时承诺。后续扩展类型图时可以对照这些记录识别明显退化。
 
 这项检查覆盖发布形状和核心消费；真实数据库执行由独立的三库契约与 HANA CI 负责。可选驱动的应用仍应安装相应 peer，并采用文档中的连接与日期配置。
