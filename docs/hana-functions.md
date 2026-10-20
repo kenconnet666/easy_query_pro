@@ -13,16 +13,24 @@
 - `leftPad`/`rightPad` 也按码点处理输入与补齐模式，先重复完整模式再截取；不能让原生补齐函数切开代理对。`empty`/`notEmpty` 使用长度判断，避免 HANA 忽略尾随空格的比较规则把纯空格归为空字符串。`blank` 仍沿用上游去除普通空格的含义，不扩展成 Java Unicode whitespace 判断。
 - 普通字符串转换使用 `TO_NVARCHAR`。不能为方便直接加 `NVARCHAR(5000)`，因为 HANA 会静默截断较长的 NCLOB。
 - Java `Byte` 的 SQL 转换使用有符号 `SMALLINT`，读取通过专用 handler 检查 -128..127。ngdbc 的 `getByte` 会回绕超范围值；适配器改为 SQLState `22003` 的明确异常。其他 handler 继续复用上游 registry，应用的显式注册仍有效。
-- 上游按 Java class 的 `BigDecimal` 转换沿用 `DECIMAL(36,18)`。精确的可配置 precision/scale 属于通用类型 DSL 的后续工作，不能混为同一功能。
+- 上游按 Java class 的 `BigDecimal` 转换沿用 `DECIMAL(36,18)`。精确的可配置 precision/scale 使用已提供的 [通用类型 DSL](dsl-types.md)，与上游固定 class 转换分别保留。
 - LOB 到日期或布尔的转换需要先显式得到字符表达式，再做相应 CAST。不能把 NCLOB 与普通字符类型的转换能力视为相同。
 
 ## 聚合、窗口与布尔投影
 
-COUNT/SUM/AVG/MIN/MAX、条件聚合、三种排名及五种聚合窗口继续使用上游实现。已有窗口的默认 peer frame、排序和分区已在 HANA 执行验证；这不等于后续新增的显式 ROWS/RANGE 已实现。
+COUNT/SUM/AVG/MIN/MAX、条件聚合、三种排名及五种聚合窗口继续使用上游实现。已有窗口的默认 peer frame、排序和分区已在 HANA 执行验证；增强的显式 ROWS 与 MySQL/PG RANGE 见 [窗口规格](dsl-windows.md)，HANA 当前基线拒绝 RANGE。现有排名 builder 仍要求非空分区，不能用已验证的全局聚合窗口替代全局排名入口的验收。
 
 多列最大/最小值忽略 NULL，全 NULL 返回 NULL。HANA 原生 `GREATEST`/`LEAST` 传播 NULL，因此翻译时先以首个非空值填补空项。关联 UNION 子查询虽然单独可运行，revision 88 在当前组合 fixture 中触发 `ColDicVal ... not found` 优化器错误，故不采用该路径。当前标量翻译可能重复表达式，多列场景仍需纳入性能验收。
 
-普通字符串聚合使用 `STRING_AGG`，分隔符绑定、可选排序、NULL 和空集已验证。`joining(..., true)` 的查询级去重尚未完成，当前在翻译阶段明确拒绝；这是未关闭的实现项，不能当作完整交付后的永久删减。
+普通字符串聚合使用 `STRING_AGG`，分隔符绑定、可选排序、NULL 和空集已验证。需要去重时，已经验证的组合是先仅投影要去重的列，再 DISTINCT，并以 CTE 明确关系边界后执行普通 joining：
+
+```java
+var unique = rows.select(row -> Select.DRAFT.of(row.name()))
+    .distinct().toCteAs("unique_names");
+var names = unique.selectColumn(row -> row.value1().asStr().joining(",")).toList();
+```
+
+不要在该 DISTINCT 投影中同时保留唯一 id，否则相同 name 不会被去重。需要聚合结果顺序时必须在 joining 内声明排序，不能依赖来源的遍历顺序。`HanaAggregateFunctionsIT` 已验证带排序/绑定分隔符及空输入的组合；直接 `joining(..., true)` 仍在翻译阶段拒绝，其查询级自动去重保持未关闭，不能把上述显式组合当作同一个 API 已经实现。
 
 HANA 不能直接投影谓词。`booleanSQLFunction` 将谓词转换为保留 TRUE/FALSE/UNKNOWN 的 CASE 值，UNKNOWN 返回 SQL NULL，不悄悄转换为 false。原有的 `equalsWith` 则继续保持自身 CASE 规则，两者不混同。
 
@@ -37,6 +45,8 @@ var joined = cte.cloneQueryable().leftJoin(second, (left, right) -> left.id().eq
 ```
 
 `TestProductProxy` 是测试实体的生成类型，应用替换为自身 Proxy。统计分组结果数量，应先完成分组投影再 `count()`；直接对未投影的 group builder 调用 count 会沿用上游按组计数后求和的行为。测试和示例遵循这些已有契约，HANA 底层不复制 Proxy/Queryable 来修改通用行为。
+
+直接使用旧 SQLFunc 工厂时，`selectColumn` 已返回核心 `Query<T>`，可直接交给 `subQueryValue` / `exists` 的 Query 重载或 `ColumnFuncSelector.subQuery`。两条路径均已验证相关引用、参数顺序、NULL、clone 和 count，EXISTS 还覆盖 NOT 与分页；不需要为了接入工厂复制 Queryable 包装器。旧 round 的显式 SQLTableOwner 与默认表入口同样可用，负 scale 继续表示十位等位置的舍入。
 
 ## 日期与时间
 

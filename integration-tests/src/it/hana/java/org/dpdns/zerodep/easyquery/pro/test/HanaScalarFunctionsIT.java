@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -39,7 +40,10 @@ class HanaScalarFunctionsIT {
         assertEquals(-1, source.cloneQueryable().selectColumn(p -> p.name().indexOf("missing")).toList().get(0));
         assertEquals("O'Reilly", source.cloneQueryable().selectColumn(p -> p.name().subString(0, 8)).toList().get(0));
         assertEquals(value + "-tail", source.cloneQueryable()
-                .selectColumn(p -> p.name().concat(parts -> { parts.value("-"); parts.value("tail"); }))
+                .selectColumn(p -> p.name().concat(parts -> {
+                    parts.value("-");
+                    parts.value("tail");
+                }))
                 .toList().get(0));
         assertNull(source(null, BigDecimal.ONE).selectColumn(p -> p.name().concat("suffix")).toList().get(0));
     }
@@ -93,9 +97,9 @@ class HanaScalarFunctionsIT {
         assertNull(source(null, BigDecimal.ONE).selectColumn(p -> p.name().leftPad(3)).toList().get(0));
         assertEquals("😀x😀中", source("中", BigDecimal.ONE).selectColumn(p -> new StringTypeExpressionImpl<String>(
                 p.getEntitySQLContext(), p.getTable(), null, fx -> fx.leftPad(args -> {
-                    PropTypeColumn.columnFuncSelector(args, p.name());
-                    args.value(4).value("😀x");
-                }), String.class)).toList().get(0));
+            PropTypeColumn.columnFuncSelector(args, p.name());
+            args.value(4).value("😀x");
+        }), String.class)).toList().get(0));
     }
 
     @Test
@@ -145,9 +149,9 @@ class HanaScalarFunctionsIT {
             };
             double actual = source("math", new BigDecimal("0.5")).selectColumn(p -> new NumberTypeExpressionImpl<Double>(
                     p.getEntitySQLContext(), p.getTable(), null, fx -> fx.math(args -> {
-                        PropTypeColumn.columnFuncSelector(args, p.amount());
-                        if (method == MathMethodEnum.Pow || method == MathMethodEnum.Atan2) args.value(2);
-                    }, method), Double.class)).toList().get(0);
+                PropTypeColumn.columnFuncSelector(args, p.amount());
+                if (method == MathMethodEnum.Pow || method == MathMethodEnum.Atan2) args.value(2);
+            }, method), Double.class)).toList().get(0);
             assertEquals(expected, actual, 0.0000001, method.name());
         }
         assertDecimal("1.25", source("math", new BigDecimal("-1.25")).selectColumn(p -> p.amount().abs()).toList().get(0));
@@ -158,7 +162,28 @@ class HanaScalarFunctionsIT {
     }
 
     @Test
-    @SuppressWarnings("deprecation") // 保留旧 equalsWith 工厂的兼容性验证。
+    void legacyRoundFactoryKeepsTableOwnersNullsAndNegativeScale() {
+        record Sample(String value, int scale, String expected) {
+        }
+        for (boolean explicitOwner : List.of(false, true)) {
+            for (var sample : List.of(new Sample("12.35", 1, "12.4"), new Sample("-1.25", 1, "-1.3"),
+                    new Sample("125", -1, "130"), new Sample(null, 2, null))) {
+                var value = sample.value() == null ? null : new BigDecimal(sample.value());
+                var rounded = source("legacy", value).selectColumn(p -> new NumberTypeExpressionImpl<BigDecimal>(
+                        p.getEntitySQLContext(), p.getTable(), null,
+                        fx -> explicitOwner ? fx.round(() -> p.getTable(), "amount", sample.scale()) : fx.round("amount", sample.scale()),
+                        BigDecimal.class));
+                assertEquals(rounded.toSQL(), rounded.cloneQueryable().toSQL());
+                var actual = rounded.toList().get(0);
+                if (sample.expected() == null) assertNull(actual);
+                else assertDecimal(sample.expected(), actual);
+            }
+        }
+    }
+
+    @Test
+    @SuppressWarnings("deprecation")
+        // 保留旧 equalsWith 工厂的兼容性验证。
     void booleanFactoriesRetainValuesAndPredicateComposition() {
         assertEquals(Boolean.TRUE, source("a", BigDecimal.ONE).selectColumn(p -> p.name().equalsWith("a")).toList().get(0));
         assertEquals(Boolean.FALSE, source(null, BigDecimal.ONE).selectColumn(p -> p.name().equalsWith("a")).toList().get(0));
@@ -167,9 +192,9 @@ class HanaScalarFunctionsIT {
         for (BigDecimal value : Arrays.asList(BigDecimal.ONE, BigDecimal.ZERO, null)) {
             var predicate = source("a", value).selectColumn(p -> new BooleanTypeExpressionImpl<Boolean>(
                     p.getEntitySQLContext(), p.getTable(), null, fx -> fx.booleanSQLFunction("{0} > {1}", args -> {
-                        PropTypeColumn.columnFuncSelector(args, p.amount());
-                        args.value(BigDecimal.ZERO);
-                    }), Boolean.class));
+                PropTypeColumn.columnFuncSelector(args, p.amount());
+                args.value(BigDecimal.ZERO);
+            }), Boolean.class));
             assertEquals(value == null ? null : value.signum() > 0, predicate.toList().get(0));
             assertEquals(predicate.toSQL(), predicate.cloneQueryable().toSQL());
         }

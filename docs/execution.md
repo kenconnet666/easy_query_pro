@@ -727,3 +727,11 @@ SQL92 对应空 DefaultDatabaseConfiguration，作为 HANA 完整配置的中性
 最终指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Pconsumers -pl consumer-tests -am -Dinvoker.test=examples/spring-client -Dconsumer.database=<mysql|postgres|hana>`，三库独立构建各 8 项全部通过、零跳过（7 个离线/初始化检查与各库 1 个实库契约）。@Transactional 用例先由 JdbcTemplate 插入未提交行，立即由 EasyQuery 读取，再由 EasyQuery 写入并统一回滚；最大两连接且 fixture owner 占一连接，另以 TransactionTemplate 验证共同提交。测试同时检查原 schema/结果上限、应用 handler、HanaOptions 身份、APT/JAR、归还/autoCommit、Spring 关闭池及 worker。
 
 IDEA 格式与现有工程构建通过；独立示例以 Invoker 的实际编译/运行验收。MCP 确认三库 `EQP_SPRING_%` 表遗留为零，九份本轮根诊断日志记录后清理，target 中标准报告与隔离缓存继续复用。consumer-tests 已纳入新示例，既有独立消费者和三库 CI 步骤会自动执行它，无需新容器。前一公共修复 `731cc9561355218c1c277d35780cdaace34c2b33` 的 [CI 39498305188](https://github.com/kenconnet666/easy_query_pro/actions/runs/39498305188) 检查时仍 in_progress，未等待。使用约束见 [Spring 消费者](../examples/spring-client/README.md)；其他 Spring 主版本、JTA 与多事务管理器不自动列入兼容声明。
+
+## HANA 旧工厂与显式字符串去重组合
+
+按 67 个上游工厂审计补齐四个小型实库用例，没有新增同义函数或改动生产 SQL 翻译。旧 round 验证默认表与显式 SQLTableOwner、正负数、负 scale 和 NULL。SQLFunc.subQueryValue / exists 的 Query 与 selector 两重载直接接受 selectColumn 返回的核心 Query，保留相关引用、参数、clone 和 count；EXISTS 进一步验证 NOT、无匹配与分页。
+
+字符串去重使用已有投影→DISTINCT→CTE→普通 joining，实际验证结果、聚合内排序、含引号/中文/模板花括号的分隔符绑定和空输入 NULL。直接 joining(distinct=true) 的拒绝负例继续保留；该 API 自动改写尚未完成，没有把显式组合记成同一入口的支持，也没有解析 SQL 或新建查询引擎。
+
+指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana -Dtest=HanaConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=HanaScalarFunctionsIT#legacyRoundFactoryKeepsTableOwnersNullsAndNegativeScale,HanaQueryCompositionIT#scalarFactoryOverloadsKeepCorrelationBoundValuesAndNullResults+existsFactoryOverloadsComposeWithNotCountAndPaging,HanaAggregateFunctionsIT#distinctStringAggregationUsesAnExplicitProjectedRelation`，2 个基础离线检查及 4 个新实库用例通过。IDEA 格式与构建通过；全部使用小型常量关系，没有创建数据库对象，三份本轮诊断日志记录后清理。前一 Spring 提交 `03d2df909c003bcb56e0bee3505fa8403823f08e` 的 [CI 39499541147](https://github.com/kenconnet666/easy_query_pro/actions/runs/39499541147) 检查时 cancelled，仍按原状态记录；当前批次交后续完整 CI。

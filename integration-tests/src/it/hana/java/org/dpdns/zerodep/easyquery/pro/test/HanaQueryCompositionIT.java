@@ -7,12 +7,14 @@ import com.easy.query.core.basic.jdbc.parameter.SQLParameter;
 import com.easy.query.core.func.def.enums.OrderByModeEnum;
 import com.easy.query.core.proxy.sql.GroupKeys;
 import com.easy.query.core.proxy.sql.Select;
+import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
 import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.sql.SQLException;
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -52,11 +54,53 @@ class HanaQueryCompositionIT {
                 .select(p -> Select.DRAFT.of(p.id(), p.expression().subQueryColumn(rows()
                         .where(other -> other.name().eq(p.name())).selectColumn(other -> other.amount().max()))));
         assertEquals(selection.toSQL(), selection.cloneQueryable().toSQL());
-        var result = assertDoesNotThrow(() -> { return selection.toList(); }, selection.toSQL());
+        var result = assertDoesNotThrow(() -> {
+            return selection.toList();
+        }, selection.toSQL());
         assertEquals(2, result.size());
         assertEquals(1, result.get(0).getValue1());
         assertEquals(0, result.get(0).getValue2().compareTo(new java.math.BigDecimal("20")));
         assertEquals(0, result.get(1).getValue2().compareTo(new java.math.BigDecimal("20")));
+    }
+
+    @Test
+    void scalarFactoryOverloadsKeepCorrelationBoundValuesAndNullResults() {
+        for (boolean selector : List.of(false, true)) {
+            var selected = rows().select(p -> {
+                var inner = rows().where(other -> {
+                    other.name().eq(p.name());
+                    other.amount().gt(new BigDecimal("15"));
+                }).selectColumn(other -> other.amount().max());
+                return Select.DRAFT.of(p.id(), new NumberTypeExpressionImpl<BigDecimal>(
+                        p.getEntitySQLContext(), p.getTable(), null,
+                        fx -> selector ? fx.subQueryValue(args -> args.subQuery(inner)) : fx.subQueryValue(inner),
+                        BigDecimal.class));
+            }).orderBy(p -> p.value1().asc());
+            var sql = selected.toSQLResult();
+            assertEquals(List.of(new BigDecimal("15")), sql.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+            assertEquals(sql.getSQL(), selected.cloneQueryable().toSQL());
+            var values = selected.cloneQueryable().toList();
+            assertEquals(0, new BigDecimal("20").compareTo(values.get(0).getValue2()));
+            assertEquals(0, new BigDecimal("20").compareTo(values.get(1).getValue2()));
+            assertNull(values.get(2).getValue2());
+            assertEquals(3L, selected.cloneQueryable().count());
+        }
+    }
+
+    @Test
+    void existsFactoryOverloadsComposeWithNotCountAndPaging() {
+        for (boolean selector : List.of(false, true)) {
+            var matching = factoryExists("A", false, selector).orderBy(p -> p.id().asc());
+            assertEquals(List.of("A"), matching.toSQLResult().getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+            assertEquals(matching.toSQL(), matching.cloneQueryable().toSQL());
+            assertEquals(List.of(1, 2), matching.cloneQueryable().toList().stream().map(TestProduct::getId).toList());
+            var page = matching.cloneQueryable().toPageResult(2, 1);
+            assertEquals(2L, page.getTotal());
+            assertEquals(2, page.getData().get(0).getId());
+            assertEquals(3, factoryExists("A", true, selector).singleNotNull().getId());
+            assertEquals(0L, factoryExists("missing", false, selector).count());
+            assertEquals(3L, factoryExists("missing", true, selector).count());
+        }
     }
 
     @Test
@@ -84,7 +128,9 @@ class HanaQueryCompositionIT {
         assertEquals(List.of("A"), first.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
         assertEquals(first.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList(),
                 copy.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
-        var result = assertDoesNotThrow(() -> { return selection.toList(); }, first.getSQL());
+        var result = assertDoesNotThrow(() -> {
+            return selection.toList();
+        }, first.getSQL());
         assertEquals(2, result.size());
         assertEquals("A", result.get(1).getValue2());
     }
@@ -103,6 +149,19 @@ class HanaQueryCompositionIT {
                 .selectColumn(p -> p.id()).toList());
         assertEquals(List.of(2, 1, 3), rows().orderBy(p -> p.amount().desc(true, OrderByModeEnum.NULLS_LAST))
                 .selectColumn(p -> p.id()).toList());
+    }
+
+    private EntityQueryable<TestProductProxy, TestProduct> factoryExists(String name, boolean negate, boolean selector) {
+        var source = rows();
+        var inner = rows().where(row -> {
+            row.id().eq(source.get1Proxy().id());
+            row.name().eq(name);
+        }).selectColumn(row -> row.id());
+        var functions = query.getRuntimeContext().fx();
+        var exists = selector ? functions.exists(args -> args.subQuery(inner)) : functions.exists(inner);
+        source.getClientQueryable().where(filter -> filter.getSQLNative().sqlNativeSegment(
+                negate ? "NOT ({0})" : "{0}", context -> context.sqlFunction(exists)));
+        return source;
     }
 
     private EntityQueryable<TestProductProxy, TestProduct> rows() {

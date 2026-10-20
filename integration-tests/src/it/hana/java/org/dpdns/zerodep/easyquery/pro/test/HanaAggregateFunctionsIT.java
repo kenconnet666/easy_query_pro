@@ -70,10 +70,10 @@ class HanaAggregateFunctionsIT {
         String separator = "'中{0}";
         var selection = rows().selectColumn(p -> new StringTypeExpressionImpl<String>(
                 p.getEntitySQLContext(), p.getTable(), null, fx -> fx.joining(args -> {
-                    args.value(separator);
-                    PropTypeColumn.columnFuncSelector(args, p.name());
-                    args.sqlFunc(fx.anySQLFunction("{0} DESC", order -> PropTypeColumn.columnFuncSelector(order, p.id())));
-                }, false), String.class));
+            args.value(separator);
+            PropTypeColumn.columnFuncSelector(args, p.name());
+            args.sqlFunc(fx.anySQLFunction("{0} DESC", order -> PropTypeColumn.columnFuncSelector(order, p.id())));
+        }, false), String.class));
         assertEquals(String.join(separator, "B", "B", "A", "A", "A"), selection.toList().get(0));
         assertFalse(selection.toSQL().contains(separator));
         assertEquals(selection.toSQL(), selection.cloneQueryable().toSQL());
@@ -83,6 +83,29 @@ class HanaAggregateFunctionsIT {
         var nullable = query.queryable("SELECT 1 AS \"id\",CAST(NULL AS NVARCHAR(10)) AS \"name\" FROM DUMMY"
                 + " UNION ALL SELECT 2, 'a' FROM DUMMY UNION ALL SELECT 3, '' FROM DUMMY", TestProduct.class);
         assertEquals("a,", nullable.selectColumn(p -> p.name().joining(",")).toList().get(0));
+    }
+
+    @Test
+    void distinctStringAggregationUsesAnExplicitProjectedRelation() {
+        String separator = "'中{0}";
+        // 先投影真正需要去重的值；若携带 id 一起 DISTINCT，相同 name 仍会保留多行。
+        var unique = rows().select(p -> Select.DRAFT.of(p.name())).distinct().toCteAs("unique_names");
+        var joined = unique.selectColumn(p -> new StringTypeExpressionImpl<String>(
+                p.getEntitySQLContext(), p.getTable(), null, fx -> fx.joining(args -> {
+            args.value(separator);
+            PropTypeColumn.columnFuncSelector(args, p.value1());
+            args.sqlFunc(fx.anySQLFunction("{0} ASC", order -> PropTypeColumn.columnFuncSelector(order, p.value1())));
+        }, false), String.class));
+        assertEquals("A" + separator + "B", joined.toList().get(0));
+        assertFalse(joined.toSQL().contains(separator));
+        assertEquals(joined.toSQL(), joined.cloneQueryable().toSQL());
+        var empty = rows().where(p -> p.id().lt(0)).select(p -> Select.DRAFT.of(p.name())).distinct().toCteAs("empty_names");
+        assertNull(empty.selectColumn(p -> p.value1().asStr().joining(",")).toList().get(0));
+        assertThrows(UnsupportedOperationException.class, () -> rows().selectColumn(p -> new StringTypeExpressionImpl<String>(
+                p.getEntitySQLContext(), p.getTable(), null, fx -> fx.joining(args -> {
+            args.value(",");
+            PropTypeColumn.columnFuncSelector(args, p.name());
+        }, true), String.class)).toSQL());
     }
 
     @Test

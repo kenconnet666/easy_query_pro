@@ -2,7 +2,7 @@
 
 基线：EasyQuery 3.2.17，SQLFuncImpl 的 67 个不同公开工厂方法。SQLFunc 接口中的便捷重载最终依赖这些实现；已有窗口接口的基础分区/排序已执行；新增 ROWS/RANGE 属于独立 DSL 工作。
 
-已覆盖表示翻译路径已加入，不表示该函数的全部边界已经验收。当前证据包括 HanaScalarFunctionsIT、HanaDateTimeFunctionsIT、HanaCastFunctionsIT、HanaJsonFunctionsIT、HanaAggregateFunctionsIT、HanaQueryCompositionIT、ExpressionInteropTest 和执行记录中的 MCP SELECT。部署及边界语义见 [函数契约](hana-functions.md)。其余方法未通过前，G2.2/H08 不关闭。
+已覆盖表示翻译路径已加入，不表示该函数的全部边界已经验收。当前证据包括 HanaScalarFunctionsIT、HanaDateTimeFunctionsIT、HanaCastFunctionsIT、HanaJsonFunctionsIT、HanaAggregateFunctionsIT、HanaQueryCompositionIT、ExpressionInteropTest 和执行记录中的 MCP SELECT。旧 round 与两个子查询工厂的直接入口已补真实验收；joining 的 distinct 标志仍有未关闭边界，不能用可用的显式去重组合冒充同一个入口已经支持。部署及边界语义见 [函数契约](hana-functions.md)。
 
 | 方法 | 当前状态 |
 | --- | --- |
@@ -26,9 +26,9 @@
 | duration2 | 已覆盖 HANA 差异；HanaDateTimeFunctionsIT |
 | empty | 已补尾随空格语义，按长度判空；HanaScalarFunctionsIT |
 | equalsWith | 复用上游实现，真实执行通过；HanaScalarFunctionsIT |
-| exists | 相关 EXISTS 查询已执行；SQLFunc 独立工厂仍需组合验证 |
+| exists | 原 Query/selector 两重载、相关 EXISTS/NOT EXISTS、绑定、clone/count/page 已执行；HanaQueryCompositionIT |
 | indexOf | 已覆盖 HANA 差异；见 HanaSQLFunc |
-| joining | 普通/有序/NULL 聚合已覆盖；distinct 仍需查询级去重，当前明确拒绝 |
+| joining | 普通/有序/NULL 聚合及投影→DISTINCT→CTE→聚合已执行；直接 distinct 标志仍明确拒绝并保持开放 |
 | jsonArrayByIndex | 已覆盖标量/片段/NULL/路径与容量；HanaJsonFunctionsIT |
 | jsonArrayExtractByIndex | 已覆盖标量/片段/NULL/路径与容量；HanaJsonFunctionsIT |
 | jsonArrayLength | 已实现，要求显式部署 HanaJsonSupport 函数；HanaJsonFunctionsIT |
@@ -60,10 +60,10 @@
 | rankNumberOver | 复用上游实现，真实执行通过；HanaAggregateFunctionsIT |
 | replace | 复用上游实现，真实执行通过；HanaScalarFunctionsIT |
 | rightPad | 已按码点补齐及截取；HanaScalarFunctionsIT |
-| round | 数学入口的 rounding 已验证；旧 TableOwner 工厂仍需单独执行 |
+| round | 数学入口及旧 TableOwner/默认表工厂已执行，覆盖负 scale、正负舍入与 NULL；HanaScalarFunctionsIT |
 | rowNumberOver | 复用上游实现，真实执行通过；HanaAggregateFunctionsIT |
 | stringCompareTo | 复用上游实现，真实执行通过；HanaScalarFunctionsIT |
-| subQueryValue | 标量相关查询已执行；SQLFunc 独立工厂仍需组合验证 |
+| subQueryValue | 原 Query/selector 两重载、相关最大值/NULL、参数顺序、clone/count 已执行；HanaQueryCompositionIT |
 | subString | 已覆盖 Unicode 码点边界；HanaScalarFunctionsIT |
 | sum | 复用上游实现，真实执行通过；HanaAggregateFunctionsIT |
 | sumOver | 复用上游实现，真实执行通过；HanaAggregateFunctionsIT |
