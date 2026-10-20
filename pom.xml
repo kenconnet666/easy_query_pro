@@ -234,4 +234,12 @@
             </plugin>
         </plugins>
     </build>
+    <profiles>
+        <profile>
+            <id>consumers</id>
+            <modules>
+                <module>consumer-tests</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>

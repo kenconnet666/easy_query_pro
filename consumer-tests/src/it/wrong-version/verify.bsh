@@ -1,0 +1,8 @@
+import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
+
+String log = new String(Files.readAllBytes(new File(basedir, "build.log").toPath()), StandardCharsets.UTF_8);
+if (!log.contains("Could not resolve dependencies") || !log.contains("easy-query-pro-dsl-hana:jar:") || !log.contains("-missing")) {
+    throw new IllegalStateException("Expected resolution failure for the unstaged HANA artifact version");
+}
+return true;

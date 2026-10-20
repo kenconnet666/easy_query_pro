@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.dpdns.zerodep.easy_query_pro</groupId>
+        <artifactId>easy-query-pro-parent</artifactId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <artifactId>easy-query-pro-consumer-tests</artifactId>
+    <packaging>pom</packaging>
+    <name>EasyQuery Pro Artifact Consumers</name>
+    <properties>
+        <maven.install.skip>true</maven.install.skip>
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <consumer.database>none</consumer.database>
+    </properties>
+    <dependencies>
+        <dependency>
+            <groupId>org.dpdns.zerodep.easy_query_pro</groupId>
+            <artifactId>easy-query-pro-dsl-hana</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.dpdns.zerodep.easy_query_pro</groupId>
+            <artifactId>easy-query-pro-dsl-mysql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.dpdns.zerodep.easy_query_pro</groupId>
+            <artifactId>easy-query-pro-dsl-pgsql</artifactId>
+        </dependency>
+    </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-invoker-plugin</artifactId>
+                <version>3.10.1</version>
+                <configuration>
+                    <!-- Each selected POM is an independent Maven process consuming only staged artifacts. -->
+                    <projectsDirectory>${project.basedir}/..</projectsDirectory>
+                    <pomIncludes>
+                        <pomInclude>examples/java-client/pom.xml</pomInclude>
+                        <pomInclude>consumer-tests/src/it/missing-module/pom.xml</pomInclude>
+                        <pomInclude>consumer-tests/src/it/wrong-version/pom.xml</pomInclude>
+                    </pomIncludes>
+                    <cloneProjectsTo>${project.build.directory}/projects</cloneProjectsTo>
+                    <localRepositoryPath>${project.build.directory}/repository</localRepositoryPath>
+                    <postBuildHookScript>verify</postBuildHookScript>
+                    <streamLogs>false</streamLogs>
+                    <timeoutInSeconds>300</timeoutInSeconds>
+                    <profiles>
+                        <!-- The outer reactor selector has no meaning in independent consumer POMs. -->
+                        <profile>!consumers</profile>
+                    </profiles>
+                    <goals>
+                        <goal>clean</goal>
+                        <goal>verify</goal>
+                    </goals>
+                    <properties>
+                        <easyquerypro.version>${project.version}</easyquerypro.version>
+                        <consumer.database>${consumer.database}</consumer.database>
+                    </properties>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>verify-artifact-consumers</id>
+                        <goals>
+                            <goal>install</goal>
+                            <goal>run</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

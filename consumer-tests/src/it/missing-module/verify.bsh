@@ -1,0 +1,8 @@
+import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
+
+String log = new String(Files.readAllBytes(new File(basedir, "build.log").toPath()), StandardCharsets.UTF_8);
+if (!log.contains("COMPILATION ERROR") || !log.contains("org.dpdns.zerodep.easyquery.pro.dsl.pgsql")) {
+    throw new IllegalStateException("Expected a compiler diagnostic for the absent PostgreSQL module");
+}
+return true;

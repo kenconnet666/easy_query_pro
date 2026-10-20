@@ -695,3 +695,15 @@ PgSqlExtensions.configureQueryScope 显式安装继承原 PG 工厂的 PgSqlProE
 prepareThreshold 0/-1 均覆盖三类输入、全部归一化标志的组合、默认词素权重、原生结果/分数对照、引号/中文/停用词、前缀/短语/否定、NULL vector、空 query、错误语法与不存在配置。English vector 与 Simple 查询不匹配的用例明确语言边界。组合测试覆盖根级 OR、SMART、参数快照、独立 reader、CTE/count/page、两个评分结果 JOIN/UNION、同事务新增可搜索、回滚消失与生成列更新后索引变化。另对完整 DSL SQL 和原绑定执行 EXPLAIN，在独立事务的 SET LOCAL enable_seqscan/search_path 下确认 GIN 可用，finally 回滚恢复；不宣称小表自然规划必选 GIN 或已有性能提升。
 
 只读复审未发现必修生产问题。IDEA 格式与构建通过；MCP 确认 `eqp_pg_search_query_%` schema 遗留为零，两份自有诊断日志记录后清理。前一整理提交 `4b56bbb10723e4443ba23e44cc7c2dac5f7752ca` 的 [CI 39491259410](https://github.com/kenconnet666/easy_query_pro/actions/runs/39491259410) 检查时为 cancelled，按原状态保留并继续推进；当前候选仍需自己的完整 CI。API 与边界见 [PG 全文查询](pgsql-fulltext.md)，后续继续独立消费者、非管理员和成熟运行验收。
+
+## 独立 Java JAR/POM/APT 消费者
+
+开始本批时核实 PG 全文提交 `394dd21ad84a69e3fd91bd9837ccd890304e698e` 的 [CI 39492769759](https://github.com/kenconnet666/easy_query_pro/actions/runs/39492769759) 已成功。先在计划中固定 G6 的产物、Spring 与可靠性顺序，再参考 Apache Maven Invoker 3.10.1 的 [产物暂存](https://maven.apache.org/plugins/maven-invoker-plugin/examples/install-artifacts.html)、[独立 clone](https://maven.apache.org/plugins/maven-invoker-plugin/examples/clone-projects.html) 和 [构建后检查](https://maven.apache.org/plugins/maven-invoker-plugin/examples/pre-post-build-script.html)，新增只由 consumers profile 激活的内部测试模块；没有把 Spring、池或驱动加到生产模块的必需依赖。
+
+`examples/java-client` 有独立 POM，没有本仓库 parent、relativePath、sibling 源码或集成测试依赖。Invoker 暂存候选 JAR、真实 POM 与可达父 POM到模块 target repository，然后 clone 示例并启动新 Maven clean verify。本轮核对五个暂存 Pro JAR 的 SHA-256 均等于刚打包的模块产物；消费者进一步断言库类从 JAR 加载、自己的 ProductProxy 新生成、仓库 TestClients 不在 classpath。三个后端的共同 DSL 与原生类型 API 均从发行边界编译，而非沿 IDEA/原 reactor 的生成目录通过。
+
+另两个独立负例分别漏选 PG 模块、请求未暂存的 HANA 版本。前者要求真正的 PostgreSQL 包编译诊断；后者固定 offline 并核对指定 artifact/version 的解析错误。两者都用 post-build hook 判定原因，不把任意构建或网络失败算作预期成功。默认执行 `mvnw.cmd --batch-mode verify -Pconsumers -pl consumer-tests -am`，三个独立构建均通过；正例包含 4 个离线检查，真实数据库用例按默认 none 明确跳过。
+
+随后用相同命令分别追加 `-Dconsumer.database=mysql`、`postgres`、`hana`，每个正例均为 5 个检查全部通过、零跳过，并重复通过两个构建负例。实库覆盖从独立实体生成的 CRUD、Unicode/DECIMAL、NULL-safe、CAST、分页、原 EasyQuery 事务回滚和 Hikari 连接恢复。MySQL 首轮触发上游默认物理删除保护，测试只在带主键条件的自有表删除链添加 allowDeleteStatement(true)，未改客户端默认保护。三库最终都断言只余 fixture owner 借出，关闭 owner 后活动连接归零，复用连接 autoCommit 正确。
+
+CI 新增 Windows/Linux 独立消费者任务，并在原 MySQL/PG/HANA 数据库 job 中复用既有实例运行对应实库消费者；没有新增数据库服务，原内存限制和 HANA Node 验证步骤保持。actionlint、IDEA 格式和现有工程构建通过；独立示例的实际编译证据来自 Invoker。MCP 确认三库 `EQP_CONSUMER_%` 表遗留均为零。五份本轮根目录诊断日志记录后清理，标准 Invoker/测试报告与 target 内隔离构建缓存保留供后续 Spring 消费者复用，并由正常 clean 生命周期管理。使用入口见 [独立 Java 消费者](../examples/java-client/README.md)。
