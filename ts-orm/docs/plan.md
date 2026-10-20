@@ -36,7 +36,7 @@ Query/Expr/关系引用不可变。表达式带来源身份，编译时核对作
 | T04 | 派生表/CTE/UNION/count/page/子查询 | 按输出位置映射、codec兼容、真实结果行数及关联作用域 | 三库EXISTS/scalar/双层关联通过；LATERAL、写入子查询及分组捕获继续   |
 | T05 | INSERT/UPDATE/DELETE和事务         | 写入类型、默认/生成列、回滚、失效tx、失败释放       | 三库CRUD/隔离选项及PG RETURNING通过，HANA池RO明确拒绝               |
 | T06 | 泛型namespace与表达式factory       | 扩展隔离、方法链类型保留、明确支持方言              | namespace/mount及结构化renderer已验证，完整组合继续                 |
-| T07 | 分组/HAVING/条件聚合/窗口/报表     | NULL、空集、聚合层、窗口边界、分页                  | 分组/ROWS/排名/近似AVG三库通过；精确AVG/RANGE/分组集继续            |
+| T07 | 分组/HAVING/条件聚合/窗口/报表     | NULL、空集、聚合层、窗口边界、分页                  | 分组/ROWS/排名/近似AVG/方差标准差三库通过；精确AVG/RANGE/分组集继续 |
 | T08 | 方言专属类型/函数/来源             | 选取有实际增量的PG/MySQL/HANA能力，不复制共同层     | 开放协议/PG UUID/日期时间/一维数组/JSON空值及原文通过；原生查询继续 |
 | T09 | 关系加载、批量与写入可靠性         | 避免N+1、事务边界、部分失败、参数/SQL大小限制       | 顺序批次/实际参数预算及全计划预检通过；关系/字节边界继续            |
 | T10 | CI并行矩阵、干净消费者与类型性能   | 10表/多CTE、声明消费、pack后运行、三库CI            | 离线tarball/10JOIN/4CTE通过；四平台消费者CI已接入                   |

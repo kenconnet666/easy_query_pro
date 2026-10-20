@@ -193,3 +193,15 @@ float64 字段在三库严格往返 1.2345678901234567、Number.MAX_VALUE、最�
 有限输入不保证数据库所有中间运算都不溢出，codec 拒绝非有限输出，原数据库错误保持。PG float 数组与 JSON 值域未随 CommonSqlKind 自动放开，类型负例和运行时白名单一致。随机统计表和自有池按 finally 清理。
 
 最终 122 个单元用例、类型正负例、格式检查和真实 tarball 消费者通过；消费者新增近似 AVG 的 number/NULL 断言，观测 83 文件、16,767 类型实例化、约 18 MiB 内存。提交前 d6fc08f4dc273ed592be596012820181ac1159f4 的 Java CI 仍进行，c6100fc 的 Java CI 已被新提交取消，均未记为通过。
+
+## 2026-10-21：总体/样本方差与标准差
+
+浮点提交 580d5365f973927c19aa03ff87b989279152a3f6 的 [TS CI 39511965549](https://github.com/kenconnet666/easy_query_pro/actions/runs/39511965549) 已成功。四项统计继续依赖该 float64 基础与既有聚合/窗口层，只抽取 AVG/统计共同的输入转换，不建立另一套公式或查询执行器。
+
+参考 Java A03 的函数选择与转换时机，TS 使用 VAR_POP/VAR_SAMP/STDDEV_POP/STDDEV_SAMP，全部返回 number|null。统计专属 DISTINCT 在第三泛型能力、运行时方法和低层 AST 编译三处检查；filter 保持能力，明确去重关系路径可用。SUM/COUNT/MIN/MAX 以外聚合的数值来源统一为 computed，避免新增运算意外继承输入来源。
+
+三库全部通过 `[1,1,5,NULL,-2]` 的总体方差 6.1875、样本方差 8.25 及对应标准差；条件只保留前三项时为 32/9、16/3。空输入/NULL/单有效样本均按 POP/SAMP 固定规则断言；微小小数得到 2.5e-9/5e-9，大整数 2^53 与 2^53+1 转为 DOUBLE 后方差为 0。每个函数独立验证累计、current-only、next-only 与最后空 frame，以及 CTE/count/page、HAVING、先去重后统计，并与直接原生 SQL 对照。
+
+沿用随机统计表与自有连接池，finally 正常清理；没有改数据库精度设置、没有用 Java 历史测试替代 TS 验证。更完整 CI 随候选提交异步执行。
+
+最终 123 个单元用例、类型检查、格式与清洁消费者通过。额外验证泛型 helper 透传 DISTINCT 能力：AVG 保持可用，统计经 helper/filter 后仍不可用。打包消费者观测 83 文件、16,966 类型实例化、约 18 MiB；一次 Windows 文件写入错误在重新读取确认文件完整后重试格式化即恢复，最终格式检查保持开启并通过。

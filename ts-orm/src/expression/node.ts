@@ -7,13 +7,20 @@ export type DialectName = "postgres" | "mysql" | "hana";
 export type Phase = "row" | "aggregate" | "window";
 /** declared 可提升累加输入；accumulator 保留数据库宽中间值；computed 需要显式选择原生转换。 */
 export type NumericOrigin = "declared" | "accumulator" | "computed";
+export type ApproximateAggregateOperator =
+  "AVG" | "VAR_POP" | "VAR_SAMP" | "STDDEV_POP" | "STDDEV_SAMP";
 export interface AggregateNode {
   readonly kind: "aggregate";
-  readonly operator: "COUNT" | "SUM" | "MIN" | "MAX" | "AVG";
+  readonly operator: "COUNT" | "SUM" | "MIN" | "MAX" | ApproximateAggregateOperator;
   readonly operand?: Node;
   readonly operandType?: AnyDataType;
   readonly distinct: boolean;
   readonly filter?: Node;
+}
+
+/** HANA/MySQL 的统计语法不接 DISTINCT；不能因 PG 接受就声明为共同能力。 */
+export function aggregateAllowsDistinct(operator: AggregateNode["operator"]): boolean {
+  return ["COUNT", "SUM", "MIN", "MAX", "AVG"].includes(operator);
 }
 export interface RelationIdentity {
   readonly id: symbol;
@@ -192,12 +199,10 @@ export function numericOrigin(node: Node): NumericOrigin {
     case "nullif":
       return numericOrigin(node.left);
     case "aggregate":
-      if (node.operator === "AVG") return "computed";
-      return node.operator === "SUM"
-        ? "accumulator"
-        : node.operator === "COUNT"
-          ? "declared"
-          : numericOrigin(node.operand!);
+      if (node.operator === "SUM") return "accumulator";
+      if (node.operator === "COUNT") return "declared";
+      if (node.operator === "MIN" || node.operator === "MAX") return numericOrigin(node.operand!);
+      return "computed";
     default:
       return "computed";
   }

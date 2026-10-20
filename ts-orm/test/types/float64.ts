@@ -1,4 +1,7 @@
 import {
+  type AggregateExpression,
+  type Predicate,
+  type SqlKind,
   aggregate,
   column,
   createDatabase,
@@ -31,3 +34,23 @@ types.float64().encode(1.5);
 // @ts-expect-error The parameter domain is number rather than numeric text.
 types.float64().encode("1.5");
 void [mean, minimum];
+const variance: Expression<number | null, "float64"> = aggregate.variancePopulationApprox(
+  base.scope.m.value,
+);
+const sample = aggregate.varianceSampleApprox(base.scope.m.value);
+// @ts-expect-error Statistical DISTINCT is not a portable operation.
+sample.distinct();
+// @ts-expect-error Filters retain the same operation capability.
+sample.filter(base.scope.m.id.gt(0)).distinct();
+void variance;
+
+function filtered<T, K extends SqlKind, D extends boolean>(
+  expression: AggregateExpression<T, K, D>,
+  predicate: Predicate,
+): AggregateExpression<T, K, D> {
+  return expression.filter(predicate);
+}
+filtered(aggregate.avgApprox(base.scope.m.value), base.scope.m.id.gt(0)).distinct();
+const constrained = filtered(sample, base.scope.m.id.gt(0));
+// @ts-expect-error A generic extension must retain the caller's DISTINCT capability.
+constrained.distinct();

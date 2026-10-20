@@ -35,7 +35,44 @@ float64 参数只接收 primitive number。结果可来自驱动的 number 或�
 - `avgApprox(value).distinct()` 在转换后的 DOUBLE 域去重。2^53 与 2^53+1 可能合并；需要按精确原值去重时，先把原值 select → distinct → as()/CTE，再在外层 avgApprox。
 - AVG 的 CAST 作用于整个输入表达式，不会自动重写其内部运算。如果整数乘法本身会溢出，应先显式把运算数转为 float64，再乘，而不是期待外层 AVG 帮忙扩大每个中间值。
 
-当前精确 SUM 不接受 float64，也不会把它自动变成 DECIMAL(38,s)。是否将近似值转换为业务指定精度，必须由调用方通过 nativeCast 明确选择。AVG 的数值来源标为 computed，经过派生关系、CTE 和 scalar 仍保留；未开放统一精确 AVG、近似 SUM、方差或标准差之前，不以泛型签名冒充这些能力。
+当前精确 SUM 不接受 float64，也不会把它自动变成 DECIMAL(38,s)。是否将近似值转换为业务指定精度，必须由调用方通过 nativeCast 明确选择。AVG 与下面四项统计的数值来源都标为 computed，经过派生关系、CTE 和 scalar 仍保留。统一精确 AVG 与近似 SUM 继续单独规划。
+
+## 总体与样本的离散程度
+
+四个入口复用 AVG 的 DOUBLE 输入和有限 float64 结果域，继续支持 `.filter()` 与 `.over()`：
+
+| 入口                              | 原生函数    | 没有有效样本 | 一个有效样本 |
+| --------------------------------- | ----------- | ------------ | ------------ |
+| variancePopulationApprox          | VAR_POP     | NULL         | 0            |
+| varianceSampleApprox              | VAR_SAMP    | NULL         | NULL         |
+| standardDeviationPopulationApprox | STDDEV_POP  | NULL         | 0            |
+| standardDeviationSampleApprox     | STDDEV_SAMP | NULL         | NULL         |
+
+有效样本只计非 NULL 值，条件不满足的行继续贡献 NULL，不能改成 0。样本方差以 n-1 为分母；框架使用明确的 POP/SAMP 函数名，不映射到各数据库语义可能不同的 VAR、VARIANCE 或 STDDEV 别名。标准差使用数据库原生函数，不把方差公式或平方根计算搬到客户端。
+
+```ts
+const spread = db.from({ m: measurements }).select(({ m }) => ({
+  populationVariance: aggregate.variancePopulationApprox(m.value),
+  sampleDeviation: aggregate.standardDeviationSampleApprox(m.value).filter(m.id.gt(0)),
+}));
+```
+
+四项统计不直接支持 DISTINCT。类型层在返回的 `AggregateExpression<T,K,false>` 上限制该方法，filter 保留此能力；运行时与编译器仍拒绝绕过类型构造的非法节点。AVG/COUNT/SUM 等已有聚合的默认第三泛型为 true，既有用法不变。通用 helper 应透传能力泛型，避免把调用方的限制拓宽：
+
+```ts
+function filtered<T, K extends SqlKind, D extends boolean>(
+  expression: AggregateExpression<T, K, D>,
+  predicate: Predicate,
+): AggregateExpression<T, K, D> {
+  return expression.filter(predicate);
+}
+```
+
+同一 helper 返回的 AVG 仍可 DISTINCT，统计函数仍不可 DISTINCT；类型回归同时覆盖这两条路径。
+
+需要去重样本时，先选择原值、distinct、形成 as()/CTE，再外层统计，保留去重发生在精确域还是近似域的选择。这个限制依据 [HANA 聚合表达式](https://help.sap.com/docs/PRODUCT_ID/4fe29514fd584807ac9f2a04f6754767/20a4389775191014b5a6bf2ccc0df2ed.html) 与 [MySQL 统计函数语法](https://github.com/mysql/mysql-server/blob/8.4/sql/sql_yacc.yy#L10511-L10525)，不能因为 PG 接受更多语法而把它声明为共同能力。
+
+测试分别验证四项函数的普通聚合、条件、空集、单样本、微小 DECIMAL、分组/HAVING、累计/current-only/next-only 窗口、CTE/count/page，并与直接原生 SQL 对照。数值算法与溢出继续属于数据库：不改写成不稳定的平方和公式，不把微小负误差夹为 0，也不偷偷修改 MySQL 的 windowing_use_high_precision。[MySQL 窗口精度](https://dev.mysql.com/doc/refman/8.4/en/window-function-optimization.html)
 
 ## 驱动输出与可复现范围
 

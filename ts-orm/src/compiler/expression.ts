@@ -1,5 +1,10 @@
 import { parameterBudget, type Dialect } from "../dialects/dialect.js";
-import { visitNode, nodeOutputType, type Node } from "../expression/node.js";
+import {
+  aggregateAllowsDistinct,
+  visitNode,
+  nodeOutputType,
+  type Node,
+} from "../expression/node.js";
 import { validateWindow, type RowBoundary } from "../expression/window.js";
 import type { Order, QueryNode } from "../query/model.js";
 import { requireNativeOperation, requireNativeSupport } from "../schema/native-type.js";
@@ -179,6 +184,10 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
     case "coalesce":
       return `${node.kind.toUpperCase()}(${renderNode(node.left, scope, state)}, ${renderNode(node.right, scope, state)})`;
     case "aggregate": {
+      if (node.distinct && !aggregateAllowsDistinct(node.operator))
+        throw new TypeError(
+          "Statistical aggregates do not support DISTINCT; deduplicate a derived source first",
+        );
       if (node.operand) requireRowExpression(node.operand, "Aggregate operand");
       if (node.filter) requireRowExpression(node.filter, "Aggregate filter");
       if (node.operandType) {

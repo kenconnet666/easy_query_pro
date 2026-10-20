@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  AggregateExpression,
   aggregate,
   column,
   createDatabase,
@@ -13,6 +14,53 @@ import {
   valueOf,
   windowSpec,
 } from "../../src/index.js";
+
+test("dispersion operators share the approximate domain and reject DISTINCT at both boundaries", () => {
+  const input = valueOf("0.0001", types.decimal(19, 4));
+  const source = table("samples", { id: column(types.integer()) });
+  const variants = [
+    [aggregate.variancePopulationApprox, "VAR_POP"],
+    [aggregate.varianceSampleApprox, "VAR_SAMP"],
+    [aggregate.standardDeviationPopulationApprox, "STDDEV_POP"],
+    [aggregate.standardDeviationSampleApprox, "STDDEV_SAMP"],
+  ] as const;
+  for (const [factory, operator] of variants) {
+    const expression = factory(input).filter(valueOf(true, types.boolean()));
+    assert.throws(() => {
+      // @ts-expect-error Filtering must retain the statistical DISTINCT restriction.
+      expression.distinct();
+    }, /do not support DISTINCT/);
+    const compiled = createDatabase({ dialect: postgresDialect })
+      .from({ s: source })
+      .select(() => ({ value: expression }))
+      .compile();
+    assert.ok(compiled.sql.includes(operator + "(CASE WHEN"));
+    assert.match(
+      compiled.sql,
+      /THEN CAST\(CAST\(\$2 AS DECIMAL\(19,4\)\) AS DOUBLE PRECISION\) ELSE NULL END/,
+    );
+    assert.deepEqual(compiled.parameters, [true, "0.0001"]);
+    assert.equal(compiled.decode({ _eq_0: null }).value, null);
+  }
+  const raw = new AggregateExpression(
+    {
+      kind: "aggregate",
+      operator: "VAR_POP",
+      operand: input.node,
+      operandType: input.type,
+      distinct: true,
+    },
+    types.float64().nullable(),
+  );
+  assert.throws(
+    () =>
+      createDatabase({ dialect: postgresDialect })
+        .from({ s: source })
+        .select(() => ({ raw }))
+        .compile(),
+    /do not support DISTINCT/,
+  );
+});
 
 test("FLOAT64 accepts finite numbers and decimal/scientific driver text without implicit coercion", () => {
   const float = types.float64();

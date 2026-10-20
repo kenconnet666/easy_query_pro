@@ -69,6 +69,9 @@ const query = db
 
 type Row = Awaited<ReturnType<typeof query.execute>>[number];
 function declarationsRemainSpecific(row: Row) {
+  const statistic = aggregate.varianceSampleApprox(valueOf(1, types.integer()));
+  // @ts-expect-error Published statistical aggregates must preserve the unavailable DISTINCT capability.
+  statistic.filter(valueOf(true, types.boolean())).distinct();
   const id: number = row.id;
   const name: string = row.name;
   const ancestor: string | null = row.ancestor;
@@ -149,3 +152,10 @@ if (
   average.decode({ _eq_0: null }).mean !== null
 )
   throw new Error("The packed consumer lost its approximate average domain");
+
+const dispersion = db
+  .from({ a: accounts })
+  .select(({ a }) => ({ variance: aggregate.variancePopulationApprox(a.balance) }))
+  .compile();
+if (dispersion.decode({ _eq_0: "2.5e-9" }).variance !== 2.5e-9)
+  throw new Error("The packed consumer lost the dispersion result domain");

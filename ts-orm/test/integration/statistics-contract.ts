@@ -6,6 +6,7 @@ import {
   createDatabase,
   frame,
   identifier,
+  nativeCast,
   sql,
   table,
   types,
@@ -22,17 +23,13 @@ function near(actual: number | null | undefined, expected: number): void {
   );
 }
 
-export async function verifyStatistics(
-  db: ReturnType<typeof createDatabase>,
-  dialect: Dialect,
-): Promise<void> {
-  const name = "eqts_stats_" + randomBytes(7).toString("hex");
+function statisticsTable(name: string) {
   const measurement = types.float64().map({
     identity: Symbol("measurement"),
     to: (value: { value: number }) => value.value,
     from: (value) => ({ value }),
   });
-  const definition = table(name, {
+  return table(name, {
     id: column(types.integer()),
     bucket: column(types.integer()),
     exact: column(types.decimal(19, 4)).nullable(),
@@ -40,6 +37,14 @@ export async function verifyStatistics(
     big: column(types.bigint()),
     observed: column(measurement).nullable(),
   });
+}
+
+export async function verifyStatistics(
+  db: ReturnType<typeof createDatabase>,
+  dialect: Dialect,
+): Promise<void> {
+  const name = "eqts_stats_" + randomBytes(7).toString("hex");
+  const definition = statisticsTable(name);
   const float = dialect.name === "postgres" ? sql`DOUBLE PRECISION` : sql`DOUBLE`;
   let created = false;
   try {
@@ -185,6 +190,7 @@ export async function verifyStatistics(
       });
     }
 
+    await verifyDispersion(db, dialect, definition);
     const preciseFloat = 1.2345678901234567;
     await db
       .update(definition)
@@ -239,5 +245,108 @@ export async function verifyStatistics(
     }
   } finally {
     if (created) await db.command(sql`DROP TABLE ${identifier(name)}`);
+  }
+}
+
+/** 与 AVG 共用数据和连接生命周期；固定数学结果与直接原生 SQL 双重验证四项统计。 */
+async function verifyDispersion(
+  db: ReturnType<typeof createDatabase>,
+  dialect: Dialect,
+  definition: ReturnType<typeof statisticsTable>,
+): Promise<void> {
+  const base = db.from({ s: definition });
+  const float = dialect.name === "postgres" ? sql`DOUBLE PRECISION` : sql`DOUBLE`;
+  const variants = [
+    [aggregate.variancePopulationApprox, sql`VAR_POP`, true, false],
+    [aggregate.varianceSampleApprox, sql`VAR_SAMP`, false, false],
+    [aggregate.standardDeviationPopulationApprox, sql`STDDEV_POP`, true, true],
+    [aggregate.standardDeviationSampleApprox, sql`STDDEV_SAMP`, false, true],
+  ] as const;
+  for (const [statistic, keyword, population, deviation] of variants) {
+    const expected = (variance: number) => (deviation ? Math.sqrt(variance) : variance);
+    const result = await base
+      .select(({ s }) => ({
+        value: statistic(s.observed),
+        filtered: statistic(s.observed).filter(s.id.lte(3)),
+        absent: statistic(s.observed).filter(s.id.lt(0)),
+      }))
+      .first();
+    near(result!.value, expected(population ? 6.1875 : 8.25));
+    near(result!.filtered, expected(population ? 32 / 9 : 16 / 3));
+    assert.equal(result!.absent, null);
+    const native = await db.command(
+      sql`SELECT ${keyword}(CAST(${identifier("observed")} AS ${float})) AS ${identifier("value")} FROM ${identifier(definition.name)}`,
+    );
+    near(result!.value, types.float64().decode(native.rows[0]!.value));
+    for (const id of [0, 1, 4]) {
+      const single = await base
+        .where(({ s }) => s.id.eq(id))
+        .select(({ s }) => ({ value: statistic(s.observed) }))
+        .first();
+      assert.equal(single!.value, id === 1 && population ? 0 : null);
+    }
+    const tiny = await base
+      .where(({ s }) => s.id.lte(2))
+      .select(({ s }) => ({
+        value: statistic(nativeCast(s.id, types.decimal(19, 4)).multiply("0.0001")),
+        rounded: statistic(s.big),
+      }))
+      .first();
+    near(tiny!.value, expected(population ? 2.5e-9 : 5e-9));
+    assert.equal(tiny!.rounded, 0);
+
+    const order = windowSpec().orderBy(base.scope.s.id.asc());
+    const windows = base
+      .select(({ s }) => ({
+        id: s.id,
+        cumulative: statistic(s.observed).over(
+          order.rowsBetween(frame.unboundedPreceding, frame.currentRow),
+        ),
+        current: statistic(s.observed).over(order.rowsBetween(frame.currentRow, frame.currentRow)),
+        next: statistic(s.observed).over(order.rowsBetween(frame.following(1), frame.following(1))),
+      }))
+      .asCte("dispersion_windows");
+    const report = db
+      .from({ w: windows })
+      .orderBy(({ w }) => w.id.asc())
+      .select(({ w }) => ({
+        id: w.id,
+        cumulative: w.cumulative,
+        current: w.current,
+        next: w.next,
+      }));
+    const rows = await report.execute();
+    const cumulative = population
+      ? [0, 0, 32 / 9, 32 / 9, 6.1875]
+      : [null, 0, 16 / 3, 16 / 3, 8.25];
+    rows.forEach((row, index) => {
+      const variance = cumulative[index];
+      if (variance === null) assert.equal(row.cumulative, null);
+      else near(row.cumulative, expected(variance!));
+      assert.equal(row.current, population && index !== 3 ? 0 : null);
+      assert.equal(row.next, population && index !== 2 && index !== 4 ? 0 : null);
+    });
+    assert.equal(await report.count(), 5n);
+    assert.deepEqual(
+      (await report.page(2, 3)).rows.map((row) => row.id),
+      [4, 5],
+    );
+    const groups = await base
+      .groupBy(({ s }) => ({ bucket: s.bucket }))
+      .having(({ s }) => statistic(s.observed).gt(1))
+      .select(({ s }, _, keys) => ({ bucket: keys.bucket, value: statistic(s.observed) }))
+      .execute();
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0]!.bucket, 1);
+    near(groups[0]!.value, expected(population ? 32 / 9 : 16 / 3));
+    const distinct = base
+      .select(({ s }) => ({ observed: s.observed }))
+      .distinct()
+      .as();
+    const deduplicated = await db
+      .from({ d: distinct })
+      .select(({ d }) => ({ value: statistic(d.observed) }))
+      .first();
+    near(deduplicated!.value, expected(population ? 74 / 9 : 37 / 3));
   }
 }
