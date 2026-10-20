@@ -4,14 +4,18 @@ import com.easy.query.api.proxy.entity.select.EntityQueryable;
 import com.easy.query.api.proxy.entity.select.impl.EasyEntityQueryable;
 import com.easy.query.core.basic.api.cte.CteTableAvailable;
 import com.easy.query.core.basic.api.select.ClientQueryable;
+import com.easy.query.core.basic.jdbc.parameter.ToSQLContext;
 import com.easy.query.core.enums.ContextTypeEnum;
 import com.easy.query.core.expression.lambda.SQLFuncExpression1;
 import com.easy.query.core.expression.segment.condition.AndPredicateSegment;
 import com.easy.query.core.expression.segment.scec.context.SQLNativeExpressionContext;
 import com.easy.query.core.expression.sql.builder.AnonymousEntityTableExpressionBuilder;
+import com.easy.query.core.expression.sql.builder.ExpressionContext;
 import com.easy.query.core.proxy.ProxyEntity;
 import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.CapturedQuerySourceBuilder;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ProQuerySQLContext;
 
 import java.util.HashSet;
 import java.util.Objects;
@@ -101,8 +105,16 @@ public final class MySqlSearch {
         if (score.getPropertyType() != Double.class)
             throw new IllegalArgumentException("The search result " + SCORE_COLUMN + " property must use Double");
         var context = runtime.getExpressionBuilderFactory().createExpressionContext(runtime, ContextTypeEnum.QUERY);
-        var builder = new MySqlSearchQueryBuilder(searched.cloneQueryable(), context, proxy.getEntityClass());
+        var builder = new CapturedQuerySourceBuilder(searched, context, proxy.getEntityClass(), MySqlSearch::checkRendering);
         return new EasyEntityQueryable<>(proxy, runtime.getSQLClientApiFactory().createQueryable(proxy.getEntityClass(), builder));
+    }
+
+    private static void checkRendering(ExpressionContext expression, ToSQLContext sql) {
+        // 缺少安装时不能把未知当成非分片；后置自定义工厂也必须传播同一根标记。
+        if (!(sql instanceof ProQuerySQLContext))
+            throw new IllegalStateException("Install MySqlExtensions.configureQueryScope and preserve ProQuerySQLContext in custom query factories");
+        if (expression.isSharding() || ProQuerySQLContext.isSharding(sql))
+            throw new UnsupportedOperationException("MySQL full-text search cannot be combined with shard merging");
     }
 
     private static void bind(SQLNativeExpressionContext context, MySqlSearchSpec spec) {

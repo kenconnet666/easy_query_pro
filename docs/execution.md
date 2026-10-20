@@ -675,3 +675,11 @@ Context7 核对 PostgreSQL 17 与 pgJDBC 文档后，再读取本机锁定 42.7.
 指定 JBR 17 的正常 verify 通过 7 个离线/消费者检查与 5 个实库用例后，继续收严真实缓存证据：仅设置 CONNECTION_STRICTLY 且仍只有一个执行组会走直接执行捷径。改为 `useShardingConfigure(1, CONNECTION_STRICTLY)`，使两分表经 executeMulti0→inMemoryMerge→DefaultMemoryResultSetRow 物化；以 `mvnw.cmd --batch-mode verify -Ppostgres -Dtest=PgTextSearchTypeTest#cachedDriverObjectsDoNotRequireAnUnsafeStringCast -Dit.test=PostgresTextSearchTypeIT#connectionLimitedShardCachingKeepsNativeDriverValuesReadable -Dsurefire.failIfNoSpecifiedTests=false` 再通过缓存离线 1 项与两个 prepare 实库。最终唯一用例为 7 个离线/消费者及 5 个实库；两个物化用例以最后收严后的结果为准。
 
 IDEA 格式与构建通过，MCP 确认 `eqp_pg_search_%` schema 遗留为零。四份本轮自有诊断日志记录后清理，标准报告保留。API、编码/NULL/二进制与分片边界见 [PG 全文值类型](pgsql-text-search-types.md)，当前候选仍需自己的完整 CI。
+
+## 查询来源快照与渲染边界整理
+
+为 PG 全文来源复用已经在 HANA/MySQL 验收的基础，抽出内部具体 `CapturedQuerySourceBuilder`，删除两份重复的 SearchQueryBuilder。共同类只负责 ClientQueryable 快照、构造期 CTE/表依赖提取、visitor、clone 与同一 ToSQLContext 的子查询渲染；原生匹配/评分、物理来源校验与最终分片检查仍留各自 facade。公开查询 API 不变，HANA adapter 不反向依赖 DSL，也未引入新执行器或 SQL 字符串重绑。
+
+先按 Maven 正常生命周期仅 clean 两个变动方言 DSL 模块，去除已删除内部类的旧产物；再用指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Pmysql,hana -Dtest=HanaSearchDslTest,MySqlSearchDslTest,DslCompilationTest#hanaSearchRequiresTextColumnsAndKeepsTheScoreType+mysqlSearchRequiresPhysicalTextAndKeepsTheScoreType -Dit.test=HanaSearchIT,MySqlSearchIT -Dsurefire.failIfNoSpecifiedTests=false`，14 个离线/消费者检查和 8 个实库用例全部通过。参数顺序、CTE、SMART、克隆、count/page、事务及晚加入分片的边界沿现有测试验收，没有为内部结构增加镜像测试。
+
+IDEA 格式与构建通过；MCP 确认 HANA `EQP_FULLTEXT_%` schema 与 MySQL `eqp_search_%` 测试表遗留均为零。两份本轮自有日志记录后清理，标准测试报告保留。前一 PG 类型提交 `addec1de8cb6e8c319346512cd1ee5981611b3aa` 的 [CI 39490002201](https://github.com/kenconnet666/easy_query_pro/actions/runs/39490002201) 检查时仍 in_progress，未阻塞等待，也未用其代替本批验收。

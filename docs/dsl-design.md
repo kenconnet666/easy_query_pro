@@ -263,6 +263,8 @@ MySQL 的 [MATCH 查询来源](mysql-fulltext.md) 使用 natural language/boolea
 
 PG 的 [tsvector/tsquery 值类型](pgsql-text-search-types.md) 已接入原生 JDBC、DDL/CAST 与基础标量映射。编码对象与普通文本分开，数据库语法/规范化留给 PostgreSQL；缓存读取保留 PGobject 的实际类型，未知二进制表示不会当作 SQL NULL。匹配、query 构造与 rank 继续依赖这项基础。
 
+查询来源的重复部分集中在内部 `CapturedQuerySourceBuilder`：构造时克隆原 ClientQueryable、提取 CTE/表依赖，渲染时沿同一 ToSQLContext 委托参数，保留 visitor 与 clone。空投影边界防止外层 SMART 展示筛选进入已经完成的匹配/评分层；各方言继续负责来源约束、原生评分和最终查询的分片检查。这是已有查询树的组合基础，不引入新的执行器或公开搜索类型体系。
+
 ## 9 L4 底层方言实现清单
 
 | 翻译/执行领域 | MySQL | PostgreSQL | HANA |

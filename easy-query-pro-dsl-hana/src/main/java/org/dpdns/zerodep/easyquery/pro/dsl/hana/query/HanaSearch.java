@@ -4,15 +4,19 @@ import com.easy.query.api.proxy.entity.select.EntityQueryable;
 import com.easy.query.api.proxy.entity.select.impl.EasyEntityQueryable;
 import com.easy.query.core.basic.api.select.ClientQueryable;
 import com.easy.query.core.basic.api.cte.CteTableAvailable;
+import com.easy.query.core.basic.jdbc.parameter.ToSQLContext;
 import com.easy.query.core.enums.ContextTypeEnum;
 import com.easy.query.core.expression.lambda.SQLFuncExpression1;
 import com.easy.query.core.expression.parser.core.available.TableAvailable;
 import com.easy.query.core.expression.segment.condition.AndPredicateSegment;
 import com.easy.query.core.expression.sql.builder.AnonymousEntityTableExpressionBuilder;
+import com.easy.query.core.expression.sql.builder.ExpressionContext;
 import com.easy.query.core.proxy.ProxyEntity;
 import com.easy.query.core.proxy.SQLColumn;
 import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.CapturedQuerySourceBuilder;
+import org.dpdns.zerodep.easyquery.pro.hana.expression.HanaQuerySQLContext;
 
 import java.util.HashSet;
 import java.util.Objects;
@@ -110,8 +114,13 @@ public final class HanaSearch {
         if (score.getPropertyType() != Double.class)
             throw new IllegalArgumentException("The search result " + SCORE_COLUMN + " property must use Double");
         var context = runtime.getExpressionBuilderFactory().createExpressionContext(runtime, ContextTypeEnum.QUERY);
-        var builder = new HanaSearchQueryBuilder(searched.cloneQueryable(), context, proxy.getEntityClass());
+        var builder = new CapturedQuerySourceBuilder(searched, context, proxy.getEntityClass(), HanaSearch::checkRendering);
         return new EasyEntityQueryable<>(proxy, runtime.getSQLClientApiFactory().createQueryable(proxy.getEntityClass(), builder));
+    }
+
+    private static void checkRendering(ExpressionContext expression, ToSQLContext sql) {
+        if (expression.isSharding() || HanaQuerySQLContext.isSharding(sql))
+            throw new UnsupportedOperationException("HANA full-text search cannot be combined with shard merging");
     }
 
     private static void requireColumn(SQLColumn<?, String> column, TableAvailable source) {
