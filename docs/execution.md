@@ -250,6 +250,16 @@ U06 的 LocalDate/LocalDateTime 入口通过明确的日期粒度校验与静态
 
 历史星期的跨库差异仍未解决：1500-02-28 在 HANA 与 PostgreSQL 分别为星期五/星期三。当前共同范围、使用前提和未关闭的统一拒绝/表示问题见 [日期截断说明](dsl-temporal.md)，未将现代日期通过视为完整历史历法支持或整个 U06/G4.3 完成。
 
+## 复用上游的模板绑定机制
+
+提交 `5d727fec2d7609d5661c9f216759a37914a80d6b` 的 [CI 39345784820](https://github.com/kenconnet666/easy_query_pro/actions/runs/39345784820) 已通过全部五个强制任务，包含日期截断、历法切换后的边界和测试设施整理。
+
+进一步审计重复占位符时，最初仅看到 MessageFormat 调用而怀疑参数会少绑定；追到 `EasySQLExpressionUtil.parseParamExpression` 与 `SQLFormatArgument` 后确认，上游在每次占位符出现时才渲染并绑定，已经支持重复和重排。四个真实 HANA 组合用例证明现有实现正确：嵌套 Unicode 字符串、带绑定日期运算的格式化及花括号字面量、两个绑定时间的反向 duration、带绑定输入和分隔符的 STRING_AGG。
+
+因此未给 HANA 函数添加重复的模板展开器。反而删除新日期实现中手工维护的引用次数与中间 Template，方言只提供固定模板，共同 DSL 继续用上游 SQLFunction 绑定。当前日期文档也改为描述实际复用机制，而非要求每次引用手工分配编号。
+
+本地先运行 4 个组合测试通过，再运行 `HanaFunctionCompositionIT,HanaTemporalTruncationDslIT` 共 5 项通过，同次 57 个离线测试通过；三库的参数数量/次序与克隆离线契约保持通过。IDEA 格式化和编译通过；数据库用例仅做 SELECT，没有新建数据库资源。两份诊断日志清理，保留标准报告。MySQL/PG 的完整真实回归由本次 CI 继续执行。
+
 ## 下一步
 
 1. 检查新提交的精确类型 DSL CI，继续 HANA 未关闭的函数/写入边界与其他通用类型。

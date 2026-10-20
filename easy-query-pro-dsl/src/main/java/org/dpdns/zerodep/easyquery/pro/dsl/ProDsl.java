@@ -8,7 +8,6 @@ import com.easy.query.core.expression.parser.core.base.scec.core.SQLNativeChainE
 import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.func.SQLFunc;
 import com.easy.query.core.func.SQLFunctionTranslateImpl;
-import com.easy.query.core.func.column.impl.ColumnFunctionExpressionImpl;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.ProxyEntity;
 import com.easy.query.core.proxy.core.EntitySQLContext;
@@ -110,8 +109,9 @@ public final class ProDsl {
     private Function<SQLFunc, SQLFunction> truncation(PropTypeColumn<?> source, TruncationUnit unit, boolean dateOnly) {
         requireSource(source);
         Objects.requireNonNull(unit, "unit");
-        var translation = runtime.getService(TemporalTruncation.class);
-        return factory -> new ScopedFunction(translation.truncate(new ColumnFunctionExpressionImpl(source.getTable(), operand(source, factory)), unit, dateOnly),
+        String template = runtime.getService(TemporalTruncation.class).template(unit, dateOnly);
+        // 上游 SQLFormatArgument 按每次出现延迟渲染，重复 {0} 会产生对应的独立绑定。
+        return factory -> new ScopedFunction(factory.anySQLFunction(template, args -> args.sqlFunc(source.getTable(), operand(source, factory))),
                 AggregationType.UNKNOWN, true, source.getTable());
     }
 
