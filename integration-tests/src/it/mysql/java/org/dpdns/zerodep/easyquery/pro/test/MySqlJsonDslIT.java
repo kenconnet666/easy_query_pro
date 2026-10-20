@@ -96,7 +96,7 @@ class MySqlJsonDslIT {
                 .removePaths(root.key("tags").index(0), root.key("tags").index(0)))).where(p -> p.id().eq(1)).executeRows());
         var projection = query.queryable(MySqlJsonRecord.class).asTable(table).select(p -> {
             var json = MySqlDsl.of(p).view(p.document(), MySqlTypes.json());
-            return Select.DRAFT.of(json.textAt(root.key(key).key("child")), json.at(root.key("tags")).asText(),
+            return Select.DRAFT.<String, String, Boolean, Boolean>of(json.textAt(root.key(key).key("child")), json.at(root.key("tags")).asText(),
                     json.containsAnyPath(root.key(key)), json.containsJson(JsonInput.encoded("2"), root.key(key).key("child")));
         });
         var selected = projection.singleNotNull();
