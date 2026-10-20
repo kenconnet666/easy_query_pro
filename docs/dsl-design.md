@@ -257,6 +257,8 @@ MySQL/PG 的 RANGE 可以共享底层构造逻辑，但公开为对应方言的�
 
 全文查询必须创建或引用搜索上下文。SCORE/rank 表达式只允许组合到相应查询，不能从一个查询取出后套到另一个 query。三个数据库的分值不承诺可横向比较。
 
+HANA 已采用 [原子搜索来源](hana-fulltext.md)：CONTAINS 与 SCORE 在同一物理表 SELECT 构造，随后以独立 DTO 输出。FUZZY 阈值和搜索词均绑定；SMART 展示过滤保留在外层，根级 OR 条件整体包组。HANA 88 的多个评分子查询 JOIN 限制、UNION ALL 支持，以及上游动态 schema JOIN 的投影边界分别记录，不把数据库原生限制伪装成通用功能。
+
 ## 9 L4 底层方言实现清单
 
 | 翻译/执行领域 | MySQL | PostgreSQL | HANA |

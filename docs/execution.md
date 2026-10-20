@@ -621,3 +621,19 @@ PgSqlDsl.dateBin 只接受 LocalDateTime 来源、正且精确到微秒的 Durat
 两个适配器的失败清理现同时捕获 SQLException/RuntimeException/Error，并在不同实例时附加 suppressed；不改变上游执行和资源所有权，不重试关闭或重复关闭原始 ResultSet。上游自己记录而不向外传播的 checked 关闭异常仍沿原行为，本修复不声称改变上游所有资源异常契约。
 
 指定 JBR 17 执行 `mvnw.cmd --batch-mode test -Dtest=QueryResultCleanupTest -Dsurefire.failIfNoSpecifiedTests=false`，六个故障注入用例通过，分别断言原异常身份、suppressed 及结果/Statement 各关闭一次。IDEA 格式与构建通过，未重复无关实库或完整 CI。前一提交 `d4bcee9bb1949584fdb0ec6d12f08aa14bcff8db` 的 [CI 39474709021](https://github.com/kenconnet666/easy_query_pro/actions/runs/39474709021) 在检查时仍 in_progress，未等待。两份本轮自有诊断日志记录后清理，标准报告保留。
+
+## HANA 全文索引、原子评分来源与查询组合
+
+开始本批时核实 `e9a10703c545ab884b97971d0cab76f6a5a5c943` 的 [CI 39475700796](https://github.com/kenconnet666/easy_query_pro/actions/runs/39475700796) 已 completed/success，覆盖此前 PG 时间基础、A04 与清理异常修复。当前全文批次仍需自己的 CI，不把这一基线成功当作新实现通过。
+
+先通过 Context7 resolve/query SAP HANA Platform SQL Reference，再在专用 schema 中创建真实 COLUMN TABLE 与两个 SYNC FAST PREPROCESS ON 全文索引。原生 JDBC 证明搜索词及 FUZZY(?) Double 阈值均能绑定；EXACT、多列、拼写近似、NULL 与缺索引失败正确。未采用数字 SQL 字面量，也未用 LIKE 替代全文。
+
+HanaSearchSpec 保存不可变 EXACT/FUZZY 条件和 AND 组合，限制最多一个多列 CONTAINS。HanaSearch 只接单物理表映射的普通 String 列，在同一原查询装配 CONTAINS 与 SCORE；只克隆 ClientQueryable，避免重绑定调用者 Proxy。输出使用 fresh DTO/QUERY context，并通过薄匿名来源接入原 EntityQueryable；SQL 参数、过滤器、事务和结果执行继续沿上游。公开 API 不提供能脱离搜索层的 SCORE 表达式。HanaSearchQueryBuilder 保留 clone/visitor 和外层分片标记，使后续 SMART、CTE、分页/count 保持正确层次。
+
+离线负例首先捕获上游 CTE 的表 builder 并不标 anonymous，改用公开 CteTableAvailable 同步识别，覆盖 CTE clone。只读复审又指出原 WHERE 可能含根级 OR；用 ClientQueryable 的公开 or() 构造 `id=3 OR id=1`，实库复现搜索错误返回 `[1,3]`，其中 id=3 的 green tea 绕过搜索。修复复用已有 GroupOperations 的 PredicateSegment copy/reset 包组方式，只在快照中将完整原条件与 CONTAINS 相与，回归正确返回 `[1]`。
+
+两个额外边界明确记录而未伪装修复：EasyQuery 3.2.17 对只有 asSchema/asTable 的右侧 queryable JOIN 会丢动态来源，测试通过实际 select 投影保留该来源；HANA 88 不支持 JOIN 两个各自 SCORE() 的子查询，负例检查真实 SQLException 错误码 7。两个评分来源的 UNION ALL、外层排序和 count 则实际通过；一个搜索内多个 CONTAINS 的综合评分也与原生一致。
+
+最终指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana -Dtest=HanaSearchDslTest,DslCompilationTest#hanaSearchRequiresTextColumnsAndKeepsTheScoreType -Dit.test=HanaSearchIT -Dsurefire.failIfNoSpecifiedTests=false`，7 个离线/消费者检查及 4 个实库用例全部通过。覆盖错库、普通列/函数类型负例、参数顺序、阈值/Unicode 边界、快照与 fresh Proxy、晚分片拒绝，以及真实索引目录、EXACT/FUZZY 的原生分数对照、引号/中文/OR/短语、多列和 AND、SMART、普通 JOIN、UNION ALL、分页、临时 reader 隔离、同事务新增命中及回滚后消失。
+
+IDEA 格式与最终构建通过；MCP 查询确认 `EQP_FULLTEXT_%` schema 遗留为零。四份本轮自有诊断日志记录后清理，标准报告保留，持久开发库不变。使用说明与不支持边界见 [HANA 全文查询](hana-fulltext.md)。MySQL/PG 全文和完整非管理员/发行消费者仍继续实施。

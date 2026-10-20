@@ -278,6 +278,15 @@ class DslCompilationTest {
     }
 
     @Test
+    void hanaSearchRequiresTextColumnsAndKeepsTheScoreType() throws IOException {
+        compile(true, "HanaSearch search = HanaSearch.from(q, x -> HanaSearchSpec.exact(\"coffee\", x.name())); Double score = search.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaSearchRowProxy::createTable).singleNotNull().getScore();");
+        compile(false, "HanaSearch.from(q, x -> HanaSearchSpec.exact(\"coffee\", x.id()));");
+        compile(false, "HanaSearch.from(q, x -> HanaSearchSpec.exact(\"coffee\", x.name().toUpper()));");
+        compile(false, "HanaSearch.from(q, x -> HanaSearchSpec.fuzzy(\"coffee\", \"0.7\", x.name()));");
+        compile(false, "String score = HanaSearch.from(q, x -> HanaSearchSpec.exact(\"coffee\", x.name())).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaSearchRowProxy::createTable).singleNotNull().getScore();");
+    }
+
+    @Test
     void postgresFixedTimeBinsRequireLocalTimestampsAndDurations() throws IOException {
         compile(true, "DateTimeTypeExpression<java.time.LocalDateTime> bin = PgSqlDsl.of(e).dateBin(e.occurred(), java.time.Duration.ofMinutes(15), java.time.LocalDateTime.of(1970,1,1,0,0));");
         compile(false, "PgSqlDsl.of(e).dateBin(e.eventDate(), java.time.Duration.ofDays(1), java.time.LocalDateTime.of(1970,1,1,0,0));");
