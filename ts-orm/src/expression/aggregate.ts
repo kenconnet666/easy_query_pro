@@ -34,7 +34,7 @@ export class AggregateExpression<T, K extends SqlKind> extends Expression<T, K> 
 }
 
 type Numeric = "integer" | "bigint" | "decimal";
-type Ordered = Numeric | "text";
+type Ordered = Numeric | "text" | "date" | "localDateTime";
 function requireOperand(value: AnyExpression, allowed: readonly SqlKind[]): void {
   if (!(value instanceof Expression) || !allowed.includes(value.type.storage.kind))
     throw new TypeError("Aggregate operand has an unsupported SQL type");
@@ -85,7 +85,7 @@ export const aggregate = {
     );
   },
   min<T, K extends Ordered>(value: Expression<T, K>): AggregateExpression<T | null, K> {
-    requireOperand(value, ["integer", "bigint", "decimal", "text"]);
+    requireOperand(value, ["integer", "bigint", "decimal", "text", "date", "localDateTime"]);
     return new AggregateExpression(
       freezeNode({
         kind: "aggregate",
@@ -98,7 +98,7 @@ export const aggregate = {
     );
   },
   max<T, K extends Ordered>(value: Expression<T, K>): AggregateExpression<T | null, K> {
-    requireOperand(value, ["integer", "bigint", "decimal", "text"]);
+    requireOperand(value, ["integer", "bigint", "decimal", "text", "date", "localDateTime"]);
     return new AggregateExpression(
       freezeNode({
         kind: "aggregate",

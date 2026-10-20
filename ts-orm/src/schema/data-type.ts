@@ -1,7 +1,9 @@
 import { sameNativeStorage, snapshotNativeStorage, type NativeStorage } from "./native-type.js";
+import { date, encodeLocalDateTime, decodeLocalDateTime } from "./temporal.js";
 
 /** SQL 类型族与 JavaScript 值类型分别保存，decimal/UUID 的 string 载体不会获得文本列 API。 */
-export type CommonSqlKind = "integer" | "bigint" | "decimal" | "text" | "boolean" | "json";
+export type CommonSqlKind =
+  "integer" | "bigint" | "decimal" | "text" | "boolean" | "json" | "date" | "localDateTime";
 export type NativeSqlKind = `${string}:${string}`;
 export type SqlKind = CommonSqlKind | NativeSqlKind;
 export type CodecIdentity = string | symbol | readonly (string | symbol)[];
@@ -143,6 +145,8 @@ function validateStorage(type: StorageType): void {
     case "bigint":
     case "boolean":
     case "json":
+    case "date":
+    case "localDateTime":
       return;
     default:
       throw new TypeError("Unsupported SQL storage kind");
@@ -185,6 +189,24 @@ function boolean(value: unknown): boolean {
 
 /** 共同类型先保持三库可验证的值域；原生大数/特殊类型通过显式扩展挂载。 */
 export const types = {
+  /** 业务日期没有时区；保留 ISO 字段，避免午夜经 Date 转换后变成前一天。 */
+  date(): DataType<string, "date"> {
+    return new DataType<string, "date">(
+      { kind: "date" },
+      { identity: "iso-date", encode: date, decode: date },
+    );
+  },
+  /** 表示本地钟表字段而非时间点，夏令时跳过/重复的时刻也按原字段保留。 */
+  localDateTime(): DataType<string, "localDateTime"> {
+    return new DataType<string, "localDateTime">(
+      { kind: "localDateTime" },
+      {
+        identity: "local-datetime-microseconds",
+        encode: encodeLocalDateTime,
+        decode: decodeLocalDateTime,
+      },
+    );
+  },
   integer(): DataType<number, "integer"> {
     return new DataType<number, "integer">(
       { kind: "integer" },

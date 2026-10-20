@@ -113,3 +113,13 @@ native descriptor 保存在 DataType.storage，快照 identity、各方言两个
 PostgreSQL 真实 UUID 验证业务 ID 映射、大小写规范化、INSERT RETURNING、带参数筛选、LEFT JOIN、CTE/page、UNION 去重、LAG 经 CTE 的 NULL、COALESCE、文本 CAST 及更新。MySQL 真实证明非 NULL 非法日期 CAST 可变 NULL；另外保留了零日期参数与字面量在 NO_ZERO_DATE 下不同的结果。共同 nativeCast 因此统一推导 T|null，参数绑定仍先经过目标 codec 校验。
 
 79 个单元用例与类型负例通过，包含缺失descriptor、外部配置变化、不同identity/codec、错误方言、相等/排序/分组/窗口分区能力，以及文本操作不可用于UUID。三库已有报表、写入、窗口和事务契约也复核通过；新的完整矩阵交本候选自己的 CI。测试创建的随机表和自有连接池按 finally 清理。
+
+## 2026-10-21：共同日期与本地时间
+
+30d5f4e1671777f1a438e2ddd0af66af84a0cf65 的 [TS CI 39494263596](https://github.com/kenconnet666/easy_query_pro/actions/runs/39494263596) 与 [Java/三库 CI 39494263875](https://github.com/kenconnet666/easy_query_pro/actions/runs/39494263875) 均成功。
+
+新类型保持原生 DATE/TIMESTAMP 投影和严格字符串 codec。三库验证 1000/9999 年边界、闰日、夏令时跳过/重复字段、微秒、NULL、INSERT/UPDATE、原生日期 CAST、MIN/MAX、LAG、CTE/UNION、带参数筛选，进程 TZ 在 UTC/New York/Shanghai 三种设置下结果不变。PG SET LOCAL DateStyle='SQL, DMY' 后明确拒绝非 ISO 结果，事务归还后恢复，不猜测格式或自动改写为 TO_CHAR。
+
+HANA 首次实测返回 9 位小数秒，旧 7 位 parser 红测失败；读取改为接受额外零位后通过，非零第七位仍通过真实表回读明确拒绝。第二个独立池启用 isoTimestampOutput:true，确认 T 分隔同样无损。两个池均设置 emptyTimestampIsNull:false；服务器常量 CAST('' AS DATE/TIMESTAMP) 证明 EMPTY 非 SQL NULL，驱动保留非 NULL 值，nullable codec 仍拒绝域外值，未与真正 SQL NULL 混淆。
+
+82 个单元用例、类型正负例、构建、格式检查和三库契约通过。测试表和自有池在 finally 清理，持久数据库未修改配置。共同年份、ISO DateStyle、HANA EMPTY 和超微秒边界均记录在 temporal.md；更宽原生时间类型继续留在 T08，不以隐式转换冒充共同支持。

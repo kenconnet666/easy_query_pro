@@ -123,6 +123,8 @@ PostgreSQL 支持 `.returning(entry => ({ id: entry.id, name: entry.name }))`，
 
 INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字符串，precision 为 1–38，scale 为 0–min(precision,30)。参数和结果都校验该范围；有效数字之外的尾随零不改变值域。NULL 在业务 codec 之前处理；nullable().map() 的静态结果仍包含 null。undefined 不等于 SQL NULL。
 
+`types.date()` 与 `types.localDateTime()` 使用 ISO 字符串保留业务日期／本地钟表字段及微秒，不经过 JS Date 或时区转换。PG ISO DateStyle、HANA EMPTY 与额外小数位的约束见 [日期与本地时间](docs/temporal.md)。
+
 扩展通过 createDatabase 的 extensions 或 withExtensions 安装，namespace 具体类型在查询和事务中保留。mount(factory) 返回工厂的具体表达式类型。函数 renderer 返回 sqlFragment 结构节点，编译器按最终顺序绑定值；普通值先通过 valueOf(value, type)，标识符使用 identifier，不能把用户值放进静态 SQL 文本。
 
 `postgresTypes.uuid()` 与应用的 namespaced SQL kind 共用 DataType/codec，不要求生成器或全局注册。原生字段经过外连接、CTE、UNION 和窗口后保留类型；方言和比较能力在编译时检查。定义方式和 CAST 的可空边界见 [原生类型](docs/native-types.md)。
@@ -131,7 +133,7 @@ INTEGER 限定有符号 32 位，BIGINT 使用 bigint，DECIMAL 使用精确字�
 
 PostgreSQL 适配使用查询局部文本 parser，不改全局配置；binary 模式不在当前适配范围。MySQL 使用服务端预处理，并局部保留精确数值/JSON文本。HANA 使用 SAP 官方客户端的显式连接池，完整获取结果后归还连接；池重置隔离级别，但 READ ONLY 访问模式不会自动复原，当前适配器提前拒绝该选项。应用负责最终关闭池。驱动包为可选 peer，使用相应子路径时安装 pg（TS 工程还需 @types/pg）、mysql2 或 @sap/hana-client。
 
-HANA 示例：使用 `hana.createPool({ serverNode, uid, pwd }, { poolCapacity: 4, maxConnectedOrPooled: 4 })` 创建应用池，通过 `hanaDriver(pool)` 与 `hanaDialect` 创建 client。凭据和传输加密策略由应用配置；生产连接应按部署要求配置 TLS。SAP 客户端包含原生组件，pnpm 安装时需允许该包的构建脚本，仓库已在 pnpm-workspace.yaml 明确授权。
+HANA 示例：使用 `hana.createPool({ serverNode, uid, pwd, emptyTimestampIsNull: false }, { poolCapacity: 4, maxConnectedOrPooled: 4 })` 创建应用池，通过 `hanaDriver(pool)` 与 `hanaDialect` 创建 client。凭据和传输加密策略由应用配置；生产连接应按部署要求配置 TLS。SAP 客户端包含原生组件，pnpm 安装时需允许该包的构建脚本，仓库已在 pnpm-workspace.yaml 明确授权。
 
 ## 本地与 CI
 

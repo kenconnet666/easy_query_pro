@@ -29,6 +29,10 @@ function castType(name: DialectName, type: StorageType): string {
       return name === "mysql" ? "SIGNED" : "BOOLEAN";
     case "json":
       return name === "postgres" ? "JSONB" : name === "mysql" ? "JSON" : "NCLOB";
+    case "date":
+      return "DATE";
+    case "localDateTime":
+      return name === "mysql" ? "DATETIME(6)" : name === "hana" ? "TIMESTAMP" : "TIMESTAMP(6)";
     default:
       throw new TypeError("A native type must use its declared SQL rendering");
   }
@@ -45,6 +49,10 @@ export function dialect(name: DialectName): Dialect {
       const native = requireNativeSupport(type, name);
       const placeholder = name === "postgres" ? "$" + index : "?";
       if (native) return native.parameter[0] + placeholder + native.parameter[1];
+      // 输入已由 codec 正规化，显式格式不受 HANA 会话 DATE_FORMAT/TIMESTAMP_FORMAT 的影响。
+      if (name === "hana" && type.kind === "date") return "TO_DATE(?, 'YYYY-MM-DD')";
+      if (name === "hana" && type.kind === "localDateTime")
+        return "TO_TIMESTAMP(?, 'YYYY-MM-DD HH24:MI:SS.FF6')";
       // MySQL 的 CHAR CAST 会提升参数的 collation 强度，与列的非同名 collation 冲突。
       // 裸文本参数保留可强制转换性，由比较列决定 collation；长度已由 codec 校验。
       if (name === "mysql" && type.kind === "text") return "?";

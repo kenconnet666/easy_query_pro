@@ -10,6 +10,7 @@ import {
 /**
  * 适配应用拥有的显式 HANA 连接池。disconnect 将租约交回原池，池的关闭仍由应用负责。
  * SDK 的 exec 完整获取结果并清理内部 statement，不把需要连接继续存活的 ResultSet 暴露给 codec。
+ * 使用共同日期类型时，应用池应配置 emptyTimestampIsNull:false，避免 SDK 把非 NULL EMPTY 值先变成 null。
  */
 export function hanaDriver(pool: ConnectionPool): Driver {
   return {

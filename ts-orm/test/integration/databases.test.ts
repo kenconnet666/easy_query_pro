@@ -30,6 +30,7 @@ import { verifyReports } from "./report-contract.js";
 import { verifyWindows } from "./window-contract.js";
 import { verifyTransactions } from "./transaction-contract.js";
 import { verifyNativeTypes } from "./native-contract.js";
+import { verifyTemporal } from "./temporal-contract.js";
 
 interface Harness {
   driver: Driver;
@@ -345,6 +346,7 @@ async function verify(harness: Harness): Promise<void> {
     await verifyWindows(db, dialect);
     await verifyTransactions(db, driver, harness.observer, dialect);
     await verifyNativeTypes(db, dialect);
+    await verifyTemporal(db, dialect, createDatabase({ dialect, driver: harness.observer }));
   } finally {
     try {
       if (created) await db.command(sql`DROP TABLE ${identifier(name)}`);
@@ -385,10 +387,14 @@ test(
       uid: process.env.EQTS_HANA_USER ?? "SYSTEM",
       pwd: required("EQTS_HANA_PASSWORD"),
       encrypt: false,
+      emptyTimestampIsNull: false,
     };
     const poolOptions = { poolCapacity: 1, maxConnectedOrPooled: 1 };
     const pool = hana.createPool(connectionOptions, poolOptions);
-    const observerPool = hana.createPool(connectionOptions, poolOptions);
+    const observerPool = hana.createPool(
+      { ...connectionOptions, isoTimestampOutput: true },
+      poolOptions,
+    );
     await verify({
       driver: hanaDriver(pool),
       observer: hanaDriver(observerPool),
