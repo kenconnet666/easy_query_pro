@@ -24,6 +24,8 @@ import com.easy.query.core.expression.sql.builder.SQLAnonymousUnionEntityQueryEx
 import com.easy.query.core.metadata.ColumnMetadata;
 import com.easy.query.core.metadata.EntityMetadata;
 import com.easy.query.core.proxy.PropTypeColumn;
+import com.easy.query.core.proxy.ProxyEntity;
+import com.easy.query.core.proxy.core.draft.proxy.DraftProxy;
 import com.easy.query.core.proxy.extension.functions.type.IgnoreValueConverterTypeExpression;
 import com.easy.query.core.util.EasyClassUtil;
 import com.easy.query.core.util.EasyJdbcExecutorUtil;
@@ -70,6 +72,8 @@ final class ColumnReaders {
      * 安装自动读取规则，同时保留本次投影的新显式 valueConvert。
      * 上游在 selector 之前注册显式 reader，因此只替换 Pro 自动项和已属于源关系的继承项；
      * 新出现的不透明用户 reader 优先级更高，不能被自动推导覆盖或删除。
+     * 这里只维护优先级，不解包其内部转换链，也不修正上游已绑定的来源元数据。
+     * 裸 Draft.valueN().valueConvert 与经过 Pro 来源解析的整值表达式不是同一种读取保证。
      */
     static void setAutomatic(EntityExpressionBuilder query, String property, ColumnReader reader) {
         if (property == null) return;
@@ -163,8 +167,12 @@ final class ColumnReaders {
                 if (destination != null) reader = column(destination);
             }
             if (reader == null && types != null && i < types.length && types[i] != null) {
-                if (types[i] instanceof EntityResultColumnMetadata entity) reader = column(entity.getColumnMetadata());
-                else {
+                if (types[i] instanceof EntityResultColumnMetadata entity) {
+                    reader = column(entity.getColumnMetadata());
+                    // 小计输出沿用原实体 converter，但其结果槽已经允许 NULL，不能退回 primitive 默认值。
+                    if (entity.getColumnMetadata().getPropertyType().isPrimitive() && !entity.getJdbcProperty().isPrimitive())
+                        reader = nullable(reader);
+                } else {
                     Class<?> type = types[i].getPropertyType();
                     var handler = query.getRuntimeContext().getJdbcTypeHandlerManager().getHandler(type);
                     reader = new BoundReader(new BasicKey(type, handler), (index, rows) -> handler.getValue(new BasicJdbcProperty(index, type), rows));
@@ -183,7 +191,7 @@ final class ColumnReaders {
     }
 
     /**
-     * 窗口空 frame 可能生成 SQL NULL，原实体 primitive 的默认 0/false 不适用于这个结果。
+     * 窗口空 frame 和分组小计可能生成 SQL NULL，原实体 primitive 的默认 0/false 不适用于这个结果。
      * 仅调整已知 handler 的 JDBC 可空读取，再保留原业务转换；不反射或猜测不透明 reader 的 NULL 契约。
      */
     static ColumnReader nullable(ColumnReader reader) {
@@ -206,6 +214,44 @@ final class ColumnReaders {
     static ResultColumnMetadata scalarMetadata(int index, ColumnReader reader) {
         // 原 reader 已完成解密/转换，Basic metadata 不能再挂同一转换器，避免二次转换。
         return new BasicResultColumnMetadata(Object.class, new ReaderHandler(reader), new BasicJdbcProperty(index, Object.class));
+    }
+
+    static void prepareNullableDraft(ProxyEntity<?, ?> projection) {
+        if (!(projection instanceof DraftProxy draft)) return;
+        if (projection.getTable() != null)
+            throw new IllegalArgumentException("Expanded grouping requires a fresh Select.DRAFT.of(...) projection or an explicit DTO");
+        var types = draft.getDraftPropTypes();
+        for (int index = 0; index < types.length; index++) {
+            var type = types[index];
+            if (type == null || !type.getPropertyType().isPrimitive()) continue;
+            Class<?> boxed = EasyClassUtil.getObjectTypeWhenPrimitive(type.getPropertyType());
+            types[index] = type instanceof EntityResultColumnMetadata entity
+                    ? new NullableEntityMetadata(index, entity, boxed)
+                    : new BasicResultColumnMetadata(boxed, type.getJdbcTypeHandler(), new BasicJdbcProperty(index, boxed));
+        }
+    }
+
+    /**
+     * 保留 Entity metadata 身份，DraftStreamIterator 才会继续调用列 converter/encryption。
+     * 只替换 JDBC 读取时的可空类型；不修改共享实体 ColumnMetadata 或源代理的属性类型。
+     */
+    private static class NullableEntityMetadata extends EntityResultColumnMetadata {
+        private final JdbcProperty nullableProperty;
+
+        private NullableEntityMetadata(int index, EntityResultColumnMetadata source, Class<?> boxed) {
+            super(index, source.getColumnMetadata().getEntityMetadata(), source.getColumnMetadata());
+            nullableProperty = new BasicJdbcProperty(index, boxed);
+        }
+
+        @Override
+        public Class<?> getPropertyType() {
+            return nullableProperty.getPropertyType();
+        }
+
+        @Override
+        public JdbcProperty getJdbcProperty() {
+            return nullableProperty;
+        }
     }
 
     private record ReaderHandler(ColumnReader reader) implements JdbcTypeHandler {

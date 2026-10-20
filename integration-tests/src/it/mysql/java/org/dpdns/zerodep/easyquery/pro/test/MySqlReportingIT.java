@@ -15,6 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class MySqlReportingIT {
     @Test
+    void groupingReportsKeepSubtotalNullsAndCounts() throws SQLException {
+        GroupingReportContract.verify(TestClients.configured(MySqlTestDatabase.dataSource(), new MySQLDatabaseConfiguration(), MySqlExtensions::configure));
+    }
+
+    @Test
     void emptyFramesKeepNullForPrimitiveColumns() throws SQLException {
         WindowReportContract.verifyPrimitiveNulls(TestClients.configured(MySqlTestDatabase.dataSource(), new MySQLDatabaseConfiguration(), MySqlExtensions::configure));
     }

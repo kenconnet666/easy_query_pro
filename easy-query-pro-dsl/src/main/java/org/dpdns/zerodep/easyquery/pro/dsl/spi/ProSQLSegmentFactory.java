@@ -102,8 +102,8 @@ public class ProSQLSegmentFactory extends DefaultSQLSegmentFactory {
 
         @Override
         public void accept(TableVisitor visitor) {
-            // 只阻止当前层的窗口检查进入独立子查询，普通表 visitor 仍须保留关联关系分析。
-            if (!(visitor instanceof ExpressionScope.WindowVisitor)) super.accept(visitor);
+            // 窗口与分组语义只属于当前层；普通表 visitor 仍须保留关联关系分析。
+            if (!(visitor instanceof ExpressionScope.SemanticVisitor)) super.accept(visitor);
         }
 
         @Override
@@ -155,7 +155,7 @@ public class ProSQLSegmentFactory extends DefaultSQLSegmentFactory {
 
         @Override
         public void accept(TableVisitor visitor) {
-            if (visitor instanceof ExpressionScope.WindowVisitor) {
+            if (visitor instanceof ExpressionScope.SemanticVisitor) {
                 // 原生 expression(query) 不经过 ScalarSubquery，需在参数节点处单独守住计算层边界。
                 var sameLevel = expression.getExpressions().stream().filter(argument -> !(argument instanceof SubQueryParamExpression)).toList();
                 EasySQLSegmentUtil.paramExpressionTableVisit(sameLevel, visitor);

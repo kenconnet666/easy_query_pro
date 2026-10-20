@@ -525,3 +525,15 @@ RANGE 提交 `d3285b2d57a8b910d5e43cd40f22ebc517b1593b` 已通过 [CI 3944167573
 回补覆盖泛型工厂的 Java 17 上界选择、SELF 重建、两阶段 reader 快照、Object 标量载体、可空窗口、别名/子查询 visitor、统计筛选与精度，以及 JSON/数组/interval/Duration 的值域与 NULL 区别。HANA 部分说明会话取键时序、连接所有权、DDL 模式恢复、权限过滤、LOB 返回类型和无时区日期读取。报表测试也补上固定期望值与故障分支的设计意图。
 
 使用保留字符串/字符字面量的词法核对，确认 43 个 Java 文件注释外 token 未改变；IDEA 格式与构建通过。该批只整理注释，未扩大公共契约或另跑全量数据库测试。为避免将旧说明机械翻译成错误结论，另外通过只读 MySQL 查询复核 TIME_TO_SEC 的整数秒行为；没有创建数据库对象或修改数据。
+
+## 结构化分组汇总与查询边界
+
+中文注释提交 `57f7e9da325937f59c82f711aa2fb9cfc08df33a` 已通过 [CI 39445505407](https://github.com/kenconnet666/easy_query_pro/actions/runs/39445505407)。随后复审补全默认 frame、自定义 frame 不可变契约、四项近似统计说明、Java/SQL 类型区分及四个核心 SPI 的安装说明，单独整理为 `d3f4553`。所有研究代理只读，主线程完成实现与验证。
+
+A02 新增共同 ProGroups.rollup/mask、PG/HANA groupingSets 和结构化 GroupingSet，继续返回原 EntityQueryable；原分组代理及多表来源泛型完整保留。输入先 clone，再替换实际 GROUP 段并立即明确投影，既有条件与参数仍由原 segment 构造。PG 共同 ROLLUP 的空输入经 COUNT(*) HAVING 对齐，原生集合保留空输入差异，已有 OR HAVING 保留括号。
+
+三库回归先后复现了小计 primitive NULL 被读成 0，以及 SMART 将外层地区筛选提前、使 3 行结果变为 4 行。修复位于共享语义 visitor、投影 reader 与 predicate provider；新 Draft 的类型槽、自动 reader 和关系快照一起保留可空读取，DTO 继续按目标类型处理。上游 group 容器需要显式遍历，标量子查询仍停止当前层语义检测，没有伪造空分组或修改最终 SQL。
+
+JOIN 原型还确认 EasyQuery 3.2.17 的两个同源 clone 共享 Proxy，ON 退化为右侧列自比较，总额 60 变成 180。该行为在进入 ProGroups 前已经发生；测试改为两个独立来源，并把 clone 自连接边界写入投影文档，未在汇总层掩盖错误 ON。
+
+41 个离线/泛型消费者检查与 12 个三库实库报表用例通过，覆盖普通分支、真实 NULL、小计、DTO、参数键预投影、JOIN、SMART、CTE/count/page 和既有窗口/统计。补充 mask 数量及绑定 Draft 所有权负例后，12 个分组离线检查再次通过。IDEA 格式、构建通过，MCP 确认本轮报表 fixture 遗留为零；新增分组用例仅使用常量关系，没有创建新实例或数据库对象。完整候选 CI 异步提交，下一步继续 HANA 参数化来源和时间序列增强，不以 A02 阶段代替完整目标验收。

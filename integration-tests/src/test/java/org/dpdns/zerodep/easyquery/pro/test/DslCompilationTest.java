@@ -187,6 +187,10 @@ class DslCompilationTest {
                 import java.math.BigDecimal;
                 import com.easy.query.core.proxy.extension.functions.type.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
+                import org.dpdns.zerodep.easyquery.pro.dsl.ProGroups;
+                import org.dpdns.zerodep.easyquery.pro.dsl.group.GroupingSet;
+                import com.easy.query.core.proxy.sql.GroupKeys;
+                import com.easy.query.core.proxy.sql.Select;
                 import org.dpdns.zerodep.easyquery.pro.dsl.window.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.window.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.window.*;
@@ -210,7 +214,8 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgJsonRecordProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.MySqlJsonRecordProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgArrayRecordProxy;
-                final class Consumer { void use(ProDsl d, TestProductProxy p, TestEventProxy e, PgJsonRecordProxy j, MySqlJsonRecordProxy m, PgArrayRecordProxy aRecord) { %s } }
+                final class Consumer { void use(ProDsl d, TestProductProxy p, TestEventProxy e, PgJsonRecordProxy j, MySqlJsonRecordProxy m, PgArrayRecordProxy aRecord,
+                    com.easy.query.api.proxy.entity.select.EntityQueryable<TestProductProxy, org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct> q) { %s } }
                 """.formatted(body));
         var compiler = ToolProvider.getSystemJavaCompiler();
         assertNotNull(compiler, "Consumer compilation requires a JDK");
@@ -240,5 +245,12 @@ class DslCompilationTest {
         compile(false, "PgSqlDsl.of(p).nativeWindow().rangeIntervalBetween(RangeBoundary.preceding(PgInterval.positiveInfinity()),RangeBoundary.currentRow());");
         compile(false, "MySqlDsl.of(p).nativeWindow().rangeIntervalBetween(RangeBoundary.preceding(PgInterval.of(0,1,0)),RangeBoundary.currentRow());");
         compile(false, "d.window(scope -> \"invalid\");");
+    }
+
+    @Test
+    void reportGroupsKeepKeysSourceTuplesAndResultTypes() throws IOException {
+        compile(true, "var grouped = q.groupBy(x -> GroupKeys.of(x.id(), x.name())); var report = ProGroups.rollup(grouped, g -> Select.DRAFT.of(g.key1(), g.key2(), ProGroups.mask(g, g.key1(), g.key2()))); Integer id = report.singleNotNull().getValue1(); String name = report.singleNotNull().getValue2(); Integer mask = report.singleNotNull().getValue3();");
+        compile(true, "var grouped = q.leftJoin(q, (a,b) -> a.id().eq(b.id())).groupBy((a,b) -> GroupKeys.of(a.id(), b.name())); var report = PgGroups.groupingSets(grouped, g -> java.util.List.of(GroupingSet.of(g.key1()), GroupingSet.of(g.key2())), g -> Select.DRAFT.of(g.key1(), g.key2(), g.groupTable().t2.amount().sumBigDecimal())); BigDecimal total = report.singleNotNull().getValue3();");
+        compile(false, "var grouped = q.groupBy(x -> GroupKeys.of(x.id())); var report = ProGroups.rollup(grouped, g -> Select.DRAFT.of(g.key1())); String wrong = report.singleNotNull().getValue1();");
     }
 }

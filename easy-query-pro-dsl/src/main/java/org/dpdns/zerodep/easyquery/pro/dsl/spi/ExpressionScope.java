@@ -3,6 +3,7 @@ package org.dpdns.zerodep.easyquery.pro.dsl.spi;
 import com.easy.query.core.context.QueryRuntimeContext;
 import com.easy.query.core.basic.jdbc.parameter.ToSQLContext;
 import com.easy.query.core.expression.segment.SQLSegment;
+import com.easy.query.core.expression.segment.builder.SQLBuilderSegment;
 import com.easy.query.core.expression.segment.core.TableSQLSegment;
 import com.easy.query.core.expression.sql.builder.ExpressionContext;
 import com.easy.query.core.expression.visitor.TableVisitor;
@@ -48,9 +49,17 @@ public class ExpressionScope {
     private final SqlDialect dialect;
 
     public ExpressionScope(ProxyEntity<?, ?> entity) {
-        Objects.requireNonNull(entity, "entity");
-        context = Objects.requireNonNull(entity.getEntitySQLContext(), "Use a query-bound proxy inside an EasyQuery query scope");
-        anchor = Objects.requireNonNull(entity.getTable(), "A query-bound proxy is required");
+        this(Objects.requireNonNull(entity, "entity").getEntitySQLContext(), entity.getTable());
+    }
+
+    /**
+     * 供分组等没有独立实体表的查询代理挂载表达式。
+     * context 与 anchor 必须来自同一查询；anchor 应选实际 FROM 表，不能把分组键伪装成新实体表。
+     * 最终 SQL 构造仍会核查表归属，相关子查询则在外层上下文完整后核查。
+     */
+    public ExpressionScope(EntitySQLContext context, TableAvailable anchor) {
+        this.context = Objects.requireNonNull(context, "Use a query-bound context inside an EasyQuery query scope");
+        this.anchor = Objects.requireNonNull(anchor, "A query-bound anchor is required");
         runtime = context.getRuntimeContext();
         try {
             dialect = runtime.getService(SqlDialect.class);
@@ -118,6 +127,15 @@ public class ExpressionScope {
     }
 
     /**
+     * 标记实际 GROUP BY 中会引入小计 NULL 的 ROLLUP/GROUPING SETS 节点。
+     * 标记随 SQL 节点克隆，不写入多层查询共享的 context；外层普通投影不会被误认为仍在扩展分组。
+     * 调用者必须把此函数放入真实分组段，不能用空标记干预上游优化器。
+     */
+    public SQLFunction expandingGroup(SQLFunction delegate, TableAvailable... sources) {
+        return new ScopedFunction(delegate, AggregationType.UNKNOWN, true, false, FunctionKind.EXPANDING_GROUP, sources);
+    }
+
+    /**
      * 整值映射只透传已知语义，不把换了 Java 表达式外壳的未知函数重新声明为逐行安全。
      */
     public SQLFunction projection(SQLFunction delegate, TableAvailable... sources) {
@@ -153,8 +171,21 @@ public class ExpressionScope {
      * 返回 false 不证明任意上游/原生 SQL 没有窗口；未提供语义标记的入口需要显式查询边界。
      */
     public static boolean containsWindow(SQLSegment segment) {
-        var visitor = new WindowVisitor();
-        EasySQLSegmentUtil.sqlSegmentTableVisit(segment, visitor);
+        return containsKind(segment, FunctionKind.WINDOW);
+    }
+
+    /**
+     * 当前查询层的分组节点是否可能产生小计 NULL；不进入独立子查询。
+     */
+    public static boolean containsNullableGrouping(SQLSegment segment) {
+        return containsKind(segment, FunctionKind.EXPANDING_GROUP);
+    }
+
+    private static boolean containsKind(SQLSegment segment, FunctionKind kind) {
+        var visitor = new SemanticVisitor(kind);
+        // 上游单节点 visitor 不展开 GROUP/SELECT 的容器，必须显式遍历其中的实际 SQL 节点。
+        if (segment instanceof SQLBuilderSegment builder) EasySQLSegmentUtil.tableVisit(builder, visitor);
+        else EasySQLSegmentUtil.sqlSegmentTableVisit(segment, visitor);
         return visitor.found;
     }
 
@@ -268,7 +299,7 @@ public class ExpressionScope {
 
             @Override
             public void accept(TableVisitor visitor) {
-                if (kind == FunctionKind.WINDOW && visitor instanceof WindowVisitor windows) windows.found = true;
+                if (visitor instanceof SemanticVisitor semantics && semantics.kind == kind) semantics.found = true;
                 // 透明包装必须继续传递返回类型和表访问，否则外层 LOB/窗口检查会丢失语义。
                 EasySQLSegmentUtil.sqlSegmentTableVisit(segment, visitor);
             }
@@ -290,10 +321,15 @@ public class ExpressionScope {
         }
     }
 
-    private enum FunctionKind {EXPRESSION, AGGREGATE, WINDOW}
+    private enum FunctionKind {EXPRESSION, AGGREGATE, WINDOW, EXPANDING_GROUP}
 
-    static class WindowVisitor implements TableVisitor {
+    static class SemanticVisitor implements TableVisitor {
+        private final FunctionKind kind;
         private boolean found;
+
+        private SemanticVisitor(FunctionKind kind) {
+            this.kind = kind;
+        }
 
         @Override
         public Set<TableAvailable> getTables() {
@@ -311,7 +347,7 @@ public class ExpressionScope {
 
         @Override
         public void addAll(TableVisitor other) {
-            if (other instanceof WindowVisitor windows) found |= windows.found;
+            if (other instanceof SemanticVisitor semantics && semantics.kind == kind) found |= semantics.found;
         }
     }
 }

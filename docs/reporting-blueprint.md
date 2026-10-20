@@ -77,7 +77,7 @@ HANA 多值计算视图输入按模型声明的列表协议编码为一个绑定
 
 只读三行 fixture 含真实 NULL，三库 ROLLUP 均返回六行；MySQL 8.4.11 支持 `GROUP BY ROLLUP(a,b)`，无需专门后缀。HANA GROUPING_ID 与 MySQL/PG GROUPING 的多键位掩码均为明细 0、末键小计 1、总计 3。PG/HANA 的 `GROUPING SETS ((a),(b),())` 返回五行。真实 NULL 不能用 isNull 当作汇总标识。
 
-空输入有差异：MySQL/HANA 的 ROLLUP 返回零行，PG 保留一行空总计。共同入口拟规定没有输入则返回空报表，PG 通过受控 HAVING COUNT(*) > 0 对齐；原生 grouping sets 保留各库明确语义。此处仍是已核查的设计决策，增强实现、绑定计算键、JOIN 键、分组总行数和分页尚待正式测试。无跨分片合并证明时拒绝汇总执行，不套用普通 GROUP BY 合并器。
+空输入有差异：MySQL/HANA 的 ROLLUP 返回零行，PG 保留一行空总计。共同入口已采用没有输入则返回空报表的契约，PG 通过受控 HAVING COUNT(*) > 0 对齐；原生 grouping sets 保留各库明确语义。增强入口现已通过三库绑定计算键、独立 JOIN 来源、分组总行数、分页和 CTE 测试。小计 NULL 经 Draft/DTO 保留各自契约；SMART 外层筛选不会下推到扩展分组之前。无跨分片合并证明时拒绝汇总执行，不套用普通 GROUP BY 合并器。完整 API 与上游 clone 自连接边界见 [分组汇总说明](dsl-groups.md)。
 
 ### A03 的原生精度核查
 

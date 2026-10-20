@@ -26,6 +26,7 @@ import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.func.SQLFunctionTranslateImpl;
 import com.easy.query.core.metadata.ColumnMetadata;
 import com.easy.query.core.metadata.EntityMetadata;
+import com.easy.query.core.proxy.ProxyEntity;
 
 /**
  * 通过上游 selector/segment SPI 维护 Pro 投影的读取规则和行数语义。
@@ -38,6 +39,15 @@ import com.easy.query.core.metadata.EntityMetadata;
  * 保留读取器所有权、别名解析和行数分类，避免局部覆盖破坏其他数据库的共享契约。
  */
 public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
+    /**
+     * 扩展分组的 select 回调返回后，先将新 Draft 的 primitive 结果槽变为可空载体。
+     * 必须在上游读取 Draft 类型数组和创建派生关系之前调用；只改 context 会遗漏 valueN() 的类型。
+     * 普通 DTO 不变，已绑定的来源 Draft 不允许原地改写，请重新 Select.DRAFT.of(...)。
+     */
+    public static void prepareNullableDraft(ProxyEntity<?, ?> projection) {
+        ColumnReaders.prepareNullableDraft(projection);
+    }
+
     @Override
     public <T> SQLExpressionProvider<T> createSQLExpressionProvider(int index, EntityQueryExpressionBuilder query) {
         return new Provider<>(this, index, query);
@@ -110,6 +120,10 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
         }
 
         private void setReader(String property, ColumnReader reader) {
+            if (entityQueryExpressionBuilder.hasGroup()
+                    && ExpressionScope.containsNullableGrouping(entityQueryExpressionBuilder.getGroup())) {
+                reader = ColumnReaders.nullable(reader);
+            }
             ColumnReaders.setAutomatic(entityQueryExpressionBuilder, property,
                     ColumnReaders.usesSourceReaders(resultEntityMetadata) ? reader : null);
         }
