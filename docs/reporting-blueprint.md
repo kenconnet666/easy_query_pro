@@ -95,7 +95,9 @@ MySQL/PG 的 RANGE 规格沿用 WindowSpec 的 SELF/recreate 和 WindowFrame，�
 
 PG 整数排序键不能一律绑定 BigDecimal offset，需保留整数/精确小数类型；时间 offset 复用非负 PgInterval.Finite 的月、日、微秒，不将月折算成 Duration。MySQL 时间 offset 是 `INTERVAL ? unit` 语法，与 SQL TIME/Duration 存储无关；数量绑定、单位受控。客户端/服务端 prepare 必须分别验证，原生常量 SELECT 不是 JDBC 参数验收。首批不引入 GROUPS/EXCLUDE、复合 interval、NaN/Infinity 或跨 DST 的 timestamptz 规则。
 
-PG date_bin 确认是上游缺失能力，可表达固定 15 分钟与非零 origin。拟先使用 LocalDateTime、正且精确到微秒的 Duration、显式 origin，复用 PgInterval handler。只读查询已经确认 origin 之前的时间向下归桶；无时区 TIMESTAMP 不代表现实时间线上的固定自然日。上游 Timestamp.valueOf/setTimestamp 路径还需 JVM DST gap/overlap 的 JDBC 回归；若复现，优先在现有 PG handler 层用 JDBC 4.2 LocalDateTime 修正，不靠日期字符串绕行。
+PG date_bin 已使用 LocalDateTime、正且精确到微秒的 Duration、显式 origin 实现，复用 PgInterval handler；返回原日期表达式。真实 JDBC 两种 prepare 模式已验证 origin 之前向下归桶、微秒边界、NULL、CTE 分组/count/page 和 DST 字段。上游 Timestamp.valueOf/getTimestamp 的缺口问题已在 PG 时间基础修复，未在函数内以字符串绕行；无时区 TIMESTAMP 仍不代表现实时间线上的固定自然日。
+
+三库日历补月直接复用日期截断、LEFT JOIN、SUM/COUNT 与上游 LAG。共同验收区分无记录月份、NULL 金额记录、空事实集与展示零值；补齐后 CTE 固定窗口边界，SMART 筛选与分页不跳过空月。具体 API、结果表和源代码入口见 [时间分桶与缺月报表](reporting-time-series.md)，不新建日历/报表执行引擎。
 
 ### 官方规则链接
 

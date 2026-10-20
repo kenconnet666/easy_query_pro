@@ -5,7 +5,9 @@ import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.ProxyEntity;
 import com.easy.query.core.proxy.extension.functions.type.BooleanTypeExpression;
+import com.easy.query.core.proxy.extension.functions.type.DateTimeTypeExpression;
 import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
+import com.easy.query.core.proxy.extension.functions.type.impl.DateTimeTypeExpressionImpl;
 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
 import org.dpdns.zerodep.easyquery.pro.dsl.spi.AbstractJsonExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionScope;
@@ -24,6 +26,8 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalExpressions;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.window.PgWindowSpec;
 
 import java.util.Arrays;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
@@ -48,6 +52,38 @@ public class PgSqlDsl extends ProDsl {
 
     public PgWindowSpec<?> nativeWindow() {
         return PgWindowSpec.create(scope);
+    }
+
+    /**
+     * 将无时区 timestamp 放入从 origin 对齐的固定时长桶，返回桶起点，SQL NULL 来源仍返回 NULL。
+     *
+     * <p>Duration 不表示自然月或带时区自然日；月份/年等截断继续使用共同 truncateDateTime。
+     * stride 和 origin 必须精确到微秒，避免参数在绑定阶段舍入后改变桶边界。
+     * interval 绑定沿用 PG 原生类型处理器，执行前需完成 configureTypeHandlers。
+     */
+    public DateTimeTypeExpression<LocalDateTime> dateBin(PropTypeColumn<LocalDateTime> source,
+                                                         Duration stride, LocalDateTime origin) {
+        scope.requireSource(source);
+        Objects.requireNonNull(origin, "origin");
+        if (origin.equals(LocalDateTime.MIN) || origin.equals(LocalDateTime.MAX) || origin.getNano() % 1_000 != 0)
+            throw new IllegalArgumentException("date_bin origin must be finite and exact to microseconds");
+        var interval = PgInterval.of(0, 0, fixedMicroseconds(stride));
+        return new DateTimeTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
+                factory -> scope.scalar(factory, source, value -> factory.anySQLFunction(
+                        "date_bin(CAST({0} AS INTERVAL),CAST({1} AS TIMESTAMP WITHOUT TIME ZONE),CAST({2} AS TIMESTAMP WITHOUT TIME ZONE))",
+                        args -> args.value(interval).sqlFunc(value).value(origin))), LocalDateTime.class);
+    }
+
+    private static long fixedMicroseconds(Duration stride) {
+        Objects.requireNonNull(stride, "stride");
+        if (stride.isZero() || stride.isNegative() || stride.getNano() % 1_000 != 0)
+            throw new IllegalArgumentException("date_bin stride must be positive and exact to microseconds");
+        try {
+            // 分别计算秒和小数部分，避免 toNanos 对本可用的长时长提前溢出。
+            return Math.addExact(Math.multiplyExact(stride.getSeconds(), 1_000_000L), stride.getNano() / 1_000L);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("date_bin stride exceeds signed microseconds", overflow);
+        }
     }
 
     public <T> PgIntervalExpression<T> view(PropTypeColumn<T> source, PgIntervalType type) {

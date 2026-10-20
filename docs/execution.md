@@ -601,3 +601,15 @@ PG 增强默认 handler 改用 JDBC 4.2 LocalDateTime，专用 manager 保留原
 使用指定 JBR 17，最初 8 个离线检查与 14 个实库用例通过；新增自定义兼容负例修复后，以 `mvnw.cmd --batch-mode verify -Ppostgres -Dtest=PgTemporalMappingTest -Dit.test=PostgresTemporalBindingIT -Dsurefire.failIfNoSpecifiedTests=false` 再通过 2 个离线与 8 个时间实库用例。本批唯一用例共 8 个离线、15 个实库，覆盖缺口/重叠/NULL、显式旧/自定义 handler、UUID、timestamptz、两分表排序/分组/去重，以及 interval 和单/双 DataSource 分片 DSL 回归。
 
 IDEA 格式与构建通过，MCP 确认本轮 temporal/interval/sharding schema 遗留为零。四份自有诊断日志记录后清理，标准报告保留；JVM 时区均在 finally 恢复，持久开发库未修改。此批先交付时间基础，PG date_bin 与日历补桶随后实现；完整当前提交 CI 异步执行。安装与兼容边界见 [PG 时间映射](pgsql-temporal.md)。
+
+## 固定微秒分桶与三库日历补月
+
+提交前检查 PG 时间基础 `64951b46a5c768d4f85c0079a83fc63d0515a74f` 的 [CI 39472269506](https://github.com/kenconnet666/easy_query_pro/actions/runs/39472269506) 为 cancelled，未将它记成成功。继承该基础的 `afd877800d82f2cf424bce4e3289b18dcb0c4622` 在本批检查时 Java [CI 39473357054](https://github.com/kenconnet666/easy_query_pro/actions/runs/39473357054) 仍 in_progress；继续本地必要验收，没有阻塞等待。
+
+PgSqlDsl.dateBin 只接受 LocalDateTime 来源、正且精确到微秒的 Duration 与有限 origin，返回原 DateTimeTypeExpression。步长复用 PgInterval 绑定，秒乘法与小数加法分别检查溢出；NULL 来源保留 NULL，origin 的 MIN/MAX 无穷哨兵和亚微秒值拒绝。固定桶不引入 Instant/时区自然日，也不重复已有月份/年截断。
+
+三库共享 CalendarReportContract 用参数化日历来源 LEFT JOIN 月度事实，之后复用上游 LAG，再以 CTE 固定展示筛选边界。真实结果分别验证无事实二月、NULL 金额四月、完全空事实集、原始金额与显示零值，以及补齐后的上一月/count/page。保留“没有记录”和“有记录但金额为 NULL”的业务差别，没有新增报表执行器。
+
+指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana,mysql,postgres -Dtest=PgDateBinDslTest,DslCompilationTest#postgresFixedTimeBinsRequireLocalTimestampsAndDurations -Dit.test=PostgresDateBinIT,PostgresReportingIT#calendarMonthsKeepEmptyBucketsBeforeLagAndPaging,MySqlReportingIT#calendarMonthsKeepEmptyBucketsBeforeLagAndPaging,HanaReportingIT#calendarMonthsKeepEmptyBucketsBeforeLagAndPaging -Dsurefire.failIfNoSpecifiedTests=false`，5 个离线/消费者检查与 7 个实库用例通过。PG prepareThreshold 0/-1 覆盖负向归桶、精确边界、2 微秒步长、NULL、纽约 JVM DST 字段及东京会话、CTE 分组与分页；三库补月各一用例包含非空与空事实两条完整查询链。
+
+只读复审未发现必修问题，确认参数保持绑定、日期类型边界和补齐后窗口语义。IDEA 格式与构建通过。本批只使用少量常量关系，没有创建临时表/schema/容器；JVM 时区在 finally 恢复。自有 `date-bin-calendar-verification.log` 记录证据后清理，标准测试报告保留。文档见 [时间分桶与缺月报表](reporting-time-series.md)；当前候选提交完整 CI 仍由后续提交异步验收。

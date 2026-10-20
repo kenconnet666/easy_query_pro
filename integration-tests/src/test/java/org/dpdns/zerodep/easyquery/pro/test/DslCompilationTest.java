@@ -276,4 +276,12 @@ class DslCompilationTest {
         compile(true, "HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id())); Integer distance = hierarchy.ancestorsOf(java.util.List.of(1)).distanceBetween(-2, 0).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyNavigationRowProxy::createTable).singleNotNull().getDistance();");
         compile(false, "HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id())).descendantsOf(java.util.List.of(\"bad\"));");
     }
+
+    @Test
+    void postgresFixedTimeBinsRequireLocalTimestampsAndDurations() throws IOException {
+        compile(true, "DateTimeTypeExpression<java.time.LocalDateTime> bin = PgSqlDsl.of(e).dateBin(e.occurred(), java.time.Duration.ofMinutes(15), java.time.LocalDateTime.of(1970,1,1,0,0));");
+        compile(false, "PgSqlDsl.of(e).dateBin(e.eventDate(), java.time.Duration.ofDays(1), java.time.LocalDateTime.of(1970,1,1,0,0));");
+        compile(false, "PgSqlDsl.of(e).dateBin(e.occurred(), java.time.Period.ofMonths(1), java.time.LocalDateTime.of(1970,1,1,0,0));");
+        compile(false, "PgSqlDsl.of(e).dateBin(e.occurred(), java.time.Duration.ofMinutes(15), java.time.Instant.EPOCH);");
+    }
 }

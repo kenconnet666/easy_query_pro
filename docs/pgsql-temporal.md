@@ -17,6 +17,8 @@
 
 数组和 interval 的显式 handler 配置步骤保持不变，见 [PG interval](pgsql-interval.md) 与 [PG 数组](pgsql-arrays.md)。安装不会打开数据库连接，也不改变 JVM 或数据库会话时区。
 
+基于这套映射的固定微秒时间桶及三库缺月报表见 [时间分桶与缺月报表](reporting-time-series.md)。固定桶不会把 LocalDateTime 改成带时区时间点。
+
 ## 分片与读取边界
 
 只替换 typed getter 不足以修复分片结果。上游排序/分组/去重可能先用无类型 getObject 缓存一行；pgJDBC 默认会返回已经经过 JVM 时区解释的 Timestamp，之后再转换为 LocalDateTime 无法恢复丢失的字段。
