@@ -647,3 +647,17 @@ MySqlProExpressionFactory 继承上游 MySQLExpressionFactory，只覆写普通 
 初始方案完成 5 个离线与 9 个实库回归；改为显式安装后，指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Pmysql -Dtest=MySqlQueryContextTest,DslExtensionTest -Dit.test=MySqlQueryContextIT,MySqlConnectionIT,MySqlReportingIT,MySqlShardingDslIT -Dsurefire.failIfNoSpecifiedTests=false`，6 个离线与 10 个实库检查全部通过。离线分别证明克隆后的外层分片标记进入 CTE 内部、原绑定/WITH 根状态不变、后置应用工厂贯穿 clone/UNION，以及普通 configure 不覆盖前置工厂。显式 scope 的真实用例复用 Decimal、Grouping 和 Calendar 契约，并验证绑定 UNION/CTE 的排序/count/page；普通安装继续通过原连接、报表与单/双 DataSource 分片回归。
 
 IDEA 格式与构建通过，MCP 确认本轮 MySQL search/shard/multisource/window 前缀的测试表遗留为零。两份本批自有上下文诊断日志记录后清理，标准报告保留。该基础单独提交；MySQL 全文原生 fixture 与上层入口在下一批继续，当前基础不能替代完整全文验收。
+
+## MySQL 自然语言与布尔全文来源
+
+提交前检查根上下文基础 `2440e8b652f314fc6194ba9fe7d3d4ac7c77a2e6` 的 [CI 39481724356](https://github.com/kenconnet666/easy_query_pro/actions/runs/39481724356) 为 cancelled，按原状态记录并继续，不将其当作当前候选通过。全文的本地证据与后续候选 CI 分开。
+
+先用 Context7 resolve/query MySQL 8.4 官方文档，再以 InnoDB 真实单列/多列 FULLTEXT 索引验证 natural language 与 boolean 模式，两个 prepare 模式均可绑定搜索文本。原生事务探测确认索引在提交时更新：同事务尚未提交的新文档不命中，提交后命中，回滚文档不会出现。这一差异保留在 MySQL 契约中，不照搬 HANA 的同步索引可见性。
+
+MySqlSearchSpec 保存不可变列集合、搜索词和模式，MySqlSearch 将 MATCH 同时用于筛选与 SEARCH_SCORE Double 投影。根级 OR 先整体包组，原来源只克隆 ClientQueryable；输出 fresh DTO 不继承临时 reader。MATCH 谓词保留数据库非零真值，不增加会改变布尔负贡献结果的 `> 0`。MySqlSearchQueryBuilder 在渲染时强制检查 ProQuerySQLContext 存在；省略 configureQueryScope 或后置工厂未传播标记均清晰失败，不能退成仅构造时检查分片。
+
+测试共用已有 SearchDocument，并把只含 SEARCH_SCORE 的 HanaSearchRow 更名为 SearchHit，供两库共用，避免复制相同 DTO。使用 Maven 正常生命周期仅清理 integration-tests 的旧 APT/编译产物后重建。指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Pmysql,hana -Dtest=MySqlSearchDslTest,HanaSearchDslTest,DslCompilationTest#mysqlSearchRequiresPhysicalTextAndKeepsTheScoreType+hanaSearchRequiresTextColumnsAndKeepsTheScoreType -Dit.test=MySqlSearchIT,HanaSearchIT -Dsurefire.failIfNoSpecifiedTests=false`，14 个离线/消费者检查和 8 个实库用例通过。
+
+MySQL 两种 prepare 的真实对照覆盖短语/前缀/排除/负贡献、引号/Unicode、NULL/未命中、匹配索引、多列、根级 OR、SMART、CTE/count/page、两个评分来源 JOIN/UNION ALL、读取器隔离与原 client 事务提交。HANA 全文四个用例随共享 DTO 更名一起回归通过，包括其原生多评分 JOIN 限制。
+
+IDEA 格式与构建通过，MCP 确认 MySQL `eqp_search_%` 测试表与 HANA `EQP_FULLTEXT_%` schema 遗留均为零。三份自有诊断日志记录后清理，标准报告保留。说明与显式安装步骤见 [MySQL 全文查询](mysql-fulltext.md)；PG 全文类型、查询及完整消费者继续推进。

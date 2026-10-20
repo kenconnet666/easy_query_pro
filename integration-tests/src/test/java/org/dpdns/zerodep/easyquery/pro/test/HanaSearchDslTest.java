@@ -8,7 +8,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaSearch;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaSearchSpec;
 import org.dpdns.zerodep.easyquery.pro.test.entity.SearchDocument;
 import org.dpdns.zerodep.easyquery.pro.test.entity.ShardedProduct;
-import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaSearchRowProxy;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchDocumentProxy;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -34,7 +34,7 @@ class HanaSearchDslTest {
         }
         var search = HanaSearch.from(source, p -> HanaSearchSpec.fuzzy("O'Reilly", 0.75, p.title()));
         source.where(p -> p.id().eq(99));
-        var query = search.query(HanaSearchRowProxy::createTable).where(p -> p.score().ge(0.2));
+        var query = search.query(SearchHitProxy::createTable).where(p -> p.score().ge(0.2));
         var result = query.cloneQueryable().toSQLResult();
         assertTrue(result.getSQL().contains("SCORE() AS \"SEARCH_SCORE\""), result.getSQL());
         assertTrue(result.getSQL().contains("FUZZY(?),FULLTEXT(ON)"), result.getSQL());
@@ -61,8 +61,8 @@ class HanaSearchDslTest {
                 .and(HanaSearchSpec.exact("tea", p.title(), p.body())));
         var original = HanaSearchSpec.exact("coffee", p.title());
         var combined = original.and(HanaSearchSpec.exact("Arabica", p.body()));
-        assertEquals(1, occurrences(HanaSearch.from(source, row -> original).query(HanaSearchRowProxy::createTable).toSQL(), "CONTAINS("));
-        assertEquals(2, occurrences(HanaSearch.from(source, row -> combined).query(HanaSearchRowProxy::createTable).toSQL(), "CONTAINS("));
+        assertEquals(1, occurrences(HanaSearch.from(source, row -> original).query(SearchHitProxy::createTable).toSQL(), "CONTAINS("));
+        assertEquals(2, occurrences(HanaSearch.from(source, row -> combined).query(SearchHitProxy::createTable).toSQL(), "CONTAINS("));
     }
 
     @ParameterizedTest
@@ -79,7 +79,7 @@ class HanaSearchDslTest {
         assertThrows(IllegalArgumentException.class, () -> HanaSearch.from(raw, p -> HanaSearchSpec.exact("coffee", p.title())));
         var search = HanaSearch.from(client.queryable(SearchDocumentProxy.createTable()), p -> HanaSearchSpec.exact("coffee", p.title()));
         assertThrows(IllegalArgumentException.class, () -> search.query(SearchDocumentProxy::createTable));
-        var output = HanaSearchRowProxy.createTable();
+        var output = SearchHitProxy.createTable();
         search.query(() -> output);
         assertThrows(IllegalArgumentException.class, () -> search.query(() -> output));
     }
@@ -89,12 +89,12 @@ class HanaSearchDslTest {
     void lateShardMergingIsRejectedThroughCloneAndCteJoin(DecimalDslTest.Backend backend) {
         var client = backend.client();
         var search = HanaSearch.from(client.queryable(SearchDocumentProxy.createTable()), p -> HanaSearchSpec.exact("coffee", p.title()));
-        var copy = search.query(HanaSearchRowProxy::createTable).cloneQueryable();
+        var copy = search.query(SearchHitProxy::createTable).cloneQueryable();
         copy.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().useSharding();
         assertThrows(UnsupportedOperationException.class, copy::toSQL);
         client.getRuntimeContext().getQueryConfiguration().applyShardingInitializer(
                 new ShardedProduct.Tables(Map.of("default", List.of("eqp_search_shard_0", "eqp_search_shard_1"))));
-        var joined = search.query(HanaSearchRowProxy::createTable).toCteAs("search_before_sharding")
+        var joined = search.query(SearchHitProxy::createTable).toCteAs("search_before_sharding")
                 .innerJoin(client.queryable(ShardedProduct.class), (hit, product) -> hit.id().eq(product.id()));
         assertThrows(UnsupportedOperationException.class, joined::toSQL);
     }

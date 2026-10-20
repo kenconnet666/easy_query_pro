@@ -259,6 +259,8 @@ MySQL/PG 的 RANGE 可以共享底层构造逻辑，但公开为对应方言的�
 
 HANA 已采用 [原子搜索来源](hana-fulltext.md)：CONTAINS 与 SCORE 在同一物理表 SELECT 构造，随后以独立 DTO 输出。FUZZY 阈值和搜索词均绑定；SMART 展示过滤保留在外层，根级 OR 条件整体包组。HANA 88 的多个评分子查询 JOIN 限制、UNION ALL 支持，以及上游动态 schema JOIN 的投影边界分别记录，不把数据库原生限制伪装成通用功能。
 
+MySQL 的 [MATCH 查询来源](mysql-fulltext.md) 使用 natural language/boolean 两模式，显式安装 query scope，匹配和 Double 分数同时构造。布尔负贡献仍按原生 MATCH 谓词处理，不硬编码分数大于零；InnoDB 的提交后索引可见性与 HANA 分别验证。PG 的 tsvector/tsquery 及 rank 继续作为专属类型/操作实现，不借用字符串 LIKE 或通用分数。
+
 ## 9 L4 底层方言实现清单
 
 | 翻译/执行领域 | MySQL | PostgreSQL | HANA |

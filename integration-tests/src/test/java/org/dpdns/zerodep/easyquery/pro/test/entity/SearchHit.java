@@ -4,7 +4,7 @@ import com.easy.query.core.annotation.Column;
 import com.easy.query.core.annotation.EntityProxy;
 
 @EntityProxy
-public class HanaSearchRow extends SearchDocument {
+public class SearchHit extends SearchDocument {
     @Column("SEARCH_SCORE")
     private Double score;
 

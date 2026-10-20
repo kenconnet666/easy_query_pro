@@ -203,6 +203,7 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.mysql.query.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.hana.*;
@@ -279,11 +280,19 @@ class DslCompilationTest {
 
     @Test
     void hanaSearchRequiresTextColumnsAndKeepsTheScoreType() throws IOException {
-        compile(true, "HanaSearch search = HanaSearch.from(q, x -> HanaSearchSpec.exact(\"coffee\", x.name())); Double score = search.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaSearchRowProxy::createTable).singleNotNull().getScore();");
+        compile(true, "HanaSearch search = HanaSearch.from(q, x -> HanaSearchSpec.exact(\"coffee\", x.name())); Double score = search.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
         compile(false, "HanaSearch.from(q, x -> HanaSearchSpec.exact(\"coffee\", x.id()));");
         compile(false, "HanaSearch.from(q, x -> HanaSearchSpec.exact(\"coffee\", x.name().toUpper()));");
         compile(false, "HanaSearch.from(q, x -> HanaSearchSpec.fuzzy(\"coffee\", \"0.7\", x.name()));");
-        compile(false, "String score = HanaSearch.from(q, x -> HanaSearchSpec.exact(\"coffee\", x.name())).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaSearchRowProxy::createTable).singleNotNull().getScore();");
+        compile(false, "String score = HanaSearch.from(q, x -> HanaSearchSpec.exact(\"coffee\", x.name())).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
+    }
+
+    @Test
+    void mysqlSearchRequiresPhysicalTextAndKeepsTheScoreType() throws IOException {
+        compile(true, "var search = MySqlSearch.from(q, x -> MySqlSearchSpec.booleanMode(\"+coffee -tea\", x.name())); Double score = search.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
+        compile(false, "MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.id()));");
+        compile(false, "MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.name().toUpper()));");
+        compile(false, "String score = MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.name())).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
     }
 
     @Test

@@ -6,7 +6,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.hana.HanaExtensions;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaSearch;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaSearchSpec;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
-import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaSearchRowProxy;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchDocumentProxy;
 import org.junit.jupiter.api.Test;
 
@@ -25,21 +25,21 @@ class HanaSearchIT {
             for (String term : List.of("coffee", "O'Reilly", "中文", "coffee OR tea", "\"coffee beans\"", "unmatchedzz")) {
                 var source = client.queryable(SearchDocumentProxy.createTable()).asSchema(ignored -> schema.name());
                 var result = HanaSearch.from(source, p -> HanaSearchSpec.exact(term, p.title()))
-                        .query(HanaSearchRowProxy::createTable).orderBy(p -> p.id().asc()).toList();
+                        .query(SearchHitProxy::createTable).orderBy(p -> p.id().asc()).toList();
                 assertEquals(search(schema, "\"title\"", term, "EXACT", null),
                         result.stream().map(row -> new Hit(row.getId(), row.getScore())).toList(), term);
             }
             for (double threshold : new double[]{0, 0.7, 1}) {
                 var source = client.queryable(SearchDocumentProxy.createTable()).asSchema(ignored -> schema.name());
                 var result = HanaSearch.from(source, p -> HanaSearchSpec.fuzzy("cofee", threshold, p.title()))
-                        .query(HanaSearchRowProxy::createTable).orderBy(p -> p.id().asc()).toList();
+                        .query(SearchHitProxy::createTable).orderBy(p -> p.id().asc()).toList();
                 assertEquals(search(schema, "\"title\"", "cofee", "FUZZY(?)", threshold),
                         result.stream().map(row -> new Hit(row.getId(), row.getScore())).toList());
             }
             var source = client.queryable(SearchDocumentProxy.createTable()).asSchema(ignored -> schema.name());
             var search = HanaSearch.from(source, p -> HanaSearchSpec.exact("coffee", p.title()));
             source.where(p -> p.id().lt(0));
-            var hits = search.query(HanaSearchRowProxy::createTable);
+            var hits = search.query(SearchHitProxy::createTable);
             hits.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().getBehavior().addBehavior(EasyBehaviorEnum.SMART_PREDICATE);
             assertEquals(2L, hits.cloneQueryable().count());
             assertEquals(2, hits.cloneQueryable().where(p -> p.score().ge(0.0)).toList().size());
@@ -54,13 +54,13 @@ class HanaSearchIT {
             assertEquals(2, hits.cloneQueryable()
                     .leftJoin(right, (hit, document) -> hit.id().eq(document.id()))
                     .select((hit, document) -> hit).toList().size());
-            var joinedSearches = search.query(HanaSearchRowProxy::createTable)
-                    .innerJoin(search.query(HanaSearchRowProxy::createTable), (left, other) -> left.id().eq(other.id()))
+            var joinedSearches = search.query(SearchHitProxy::createTable)
+                    .innerJoin(search.query(SearchHitProxy::createTable), (left, other) -> left.id().eq(other.id()))
                     .select((left, other) -> Select.DRAFT.of(left.id(), left.score(), other.score()));
             var unsupported = databaseCause(assertThrows(RuntimeException.class, joinedSearches::toList));
             assertEquals(7, unsupported.getErrorCode());
             assertTrue(unsupported.getMessage().contains("score()"));
-            var union = search.query(HanaSearchRowProxy::createTable).unionAll(search.query(HanaSearchRowProxy::createTable));
+            var union = search.query(SearchHitProxy::createTable).unionAll(search.query(SearchHitProxy::createTable));
             assertEquals(4L, union.cloneQueryable().count());
             assertEquals(List.of(1, 1, 6, 6), union.orderBy(p -> p.id().asc()).toList().stream().map(row -> row.getId()).toList());
             var constrained = client.queryable(SearchDocumentProxy.createTable()).asSchema(ignored -> schema.name());
@@ -71,7 +71,7 @@ class HanaSearchIT {
             });
             assertEquals(2L, constrained.cloneQueryable().count());
             assertEquals(List.of(1), HanaSearch.from(constrained, p -> HanaSearchSpec.exact("coffee", p.title()))
-                    .query(HanaSearchRowProxy::createTable).toList().stream().map(row -> row.getId()).toList());
+                    .query(SearchHitProxy::createTable).toList().stream().map(row -> row.getId()).toList());
         }
     }
 
@@ -85,16 +85,16 @@ class HanaSearchIT {
                     .put("title", (index, result) -> "SOURCE:" + result.getString(index + 1));
             assertEquals("SOURCE:coffee beans", source.cloneQueryable().where(p -> p.id().eq(1)).singleNotNull().getTitle());
             var search = HanaSearch.from(source, p -> HanaSearchSpec.exact("coffee", p.title()));
-            assertEquals("coffee beans", search.query(HanaSearchRowProxy::createTable).where(p -> p.id().eq(1)).singleNotNull().getTitle());
+            assertEquals("coffee beans", search.query(SearchHitProxy::createTable).where(p -> p.id().eq(1)).singleNotNull().getTitle());
             var transactional = HanaSearch.from(client.queryable(SearchDocumentProxy.createTable()).asSchema(ignored -> schema.name()),
                     p -> HanaSearchSpec.exact("transactioncoffee", p.title()));
             try (var transaction = client.getEasyQueryClient().beginTransaction()) {
                 assertEquals(1L, client.getEasyQueryClient().sqlExecute("INSERT INTO " + schema.qualified("eqp_search_document") + " VALUES(?,?,?,?)",
                         List.of(99, "transactioncoffee", "same client transaction", "unindexed")));
-                assertEquals(99, transactional.query(HanaSearchRowProxy::createTable).singleNotNull().getId());
+                assertEquals(99, transactional.query(SearchHitProxy::createTable).singleNotNull().getId());
                 transaction.rollback();
             }
-            assertTrue(transactional.query(HanaSearchRowProxy::createTable).toList().isEmpty());
+            assertTrue(transactional.query(SearchHitProxy::createTable).toList().isEmpty());
         }
     }
 
@@ -104,12 +104,12 @@ class HanaSearchIT {
             createDocuments(schema);
             var client = TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure);
             var multi = HanaSearch.from(client.queryable(SearchDocumentProxy.createTable()).asSchema(ignored -> schema.name()),
-                    p -> HanaSearchSpec.exact("Arabica", p.title(), p.body())).query(HanaSearchRowProxy::createTable).singleNotNull();
+                    p -> HanaSearchSpec.exact("Arabica", p.title(), p.body())).query(SearchHitProxy::createTable).singleNotNull();
             assertEquals(1, multi.getId());
             assertEquals(search(schema, "(\"title\",\"body\")", "Arabica", "EXACT", null).get(0).score(), multi.getScore());
             var combined = HanaSearch.from(client.queryable(SearchDocumentProxy.createTable()).asSchema(ignored -> schema.name()),
                             p -> HanaSearchSpec.exact("coffee", p.title()).and(HanaSearchSpec.exact("Colombia", p.body())))
-                    .query(HanaSearchRowProxy::createTable).singleNotNull();
+                    .query(SearchHitProxy::createTable).singleNotNull();
             assertEquals(1, combined.getId());
             try (var statement = schema.connection().prepareStatement("SELECT SCORE() FROM " + schema.qualified("eqp_search_document")
                     + " WHERE CONTAINS(\"title\",?,EXACT,FULLTEXT(ON)) AND CONTAINS(\"body\",?,EXACT,FULLTEXT(ON))")) {
