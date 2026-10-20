@@ -172,12 +172,22 @@ class DslCompilationTest {
         compile(false, "var pg = PgSqlDsl.of(p); var span = pg.view(pg.value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()), ReportInterval::new); span.addToDate(e.eventDate()).isZero();");
     }
 
+    @Test
+    void windowFactoriesKeepSelfAndResultTypes() throws IOException {
+        compile(true, "ReportWindow frame = d.window(ReportWindow::new).partitionBy(p.name()).orderBy(p.id()).rowsBetween(RowBoundary.unboundedPreceding(), RowBoundary.currentRow()).trailing(2); NumberTypeExpression<BigDecimal> result = d.over(p.amount().sum(), frame);");
+        compile(true, "var frame = d.window(); NumberTypeExpression<BigDecimal> result = d.over(p.amount().sum(), frame, (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl<BigDecimal>(scope.context(), source.getTable(), source.getValue(), function, BigDecimal.class));");
+        compile(false, "d.over(p.amount().sum(), d.window(), (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl<String>(scope.context(), source.getTable(), source.getValue(), function, String.class));");
+        compile(true, "StringTypeExpression<String> result = d.overValue(p.name(), d.window().orderBy(p.id()), (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl<String>(scope.context(), source.getTable(), source.getValue(), function, String.class)).firstValue();");
+        compile(false, "NumberTypeExpression<Integer> invalid = d.overValue(p.name(), d.window().orderBy(p.id())).firstValue();");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
                 import java.math.BigDecimal;
                 import com.easy.query.core.proxy.extension.functions.type.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
+                import org.dpdns.zerodep.easyquery.pro.dsl.window.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.spi.*;
                 import org.dpdns.zerodep.easyquery.pro.test.extension.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.TruncationUnit;

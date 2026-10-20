@@ -14,6 +14,19 @@ import static org.junit.jupiter.api.Assertions.*;
 class ShardingExpressionScopeTest {
     @ParameterizedTest
     @MethodSource("org.dpdns.zerodep.easyquery.pro.test.DecimalDslTest#backends")
+    void windowsAndTheirScalarWrappersRequireCompleteDatabasePartitions(DecimalDslTest.Backend backend) {
+        var window = backend.client().queryable(TestProduct.class).select(p -> {
+            p.getEntitySQLContext().getExpressionContext().useSharding();
+            var pro = ProDsl.of(p);
+            var sum = pro.over(p.amount().sumBigDecimal(), pro.window().partitionBy(p.name()));
+            return Select.DRAFT.of(pro.nativeCast(sum, CommonTypes.decimal(19, 2)), pro.nullIfValue(sum, BigDecimal.ZERO));
+        });
+        assertThrows(UnsupportedOperationException.class, window::toSQL);
+        assertThrows(UnsupportedOperationException.class, () -> window.cloneQueryable().toSQL());
+    }
+
+    @ParameterizedTest
+    @MethodSource("org.dpdns.zerodep.easyquery.pro.test.DecimalDslTest#backends")
     void knownScalarCompositionRetainsItsRowLocalGuarantee(DecimalDslTest.Backend backend) {
         var query = backend.client().queryable(TestProduct.class).select(p -> {
             p.getEntitySQLContext().getExpressionContext().useSharding();

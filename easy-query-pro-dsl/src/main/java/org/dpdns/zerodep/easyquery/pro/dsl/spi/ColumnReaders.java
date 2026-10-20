@@ -4,9 +4,13 @@ import com.easy.query.core.basic.extension.conversion.ColumnReader;
 import com.easy.query.core.basic.extension.conversion.ColumnReaderImpl;
 import com.easy.query.core.basic.extension.conversion.DefaultValueConverter;
 import com.easy.query.core.basic.jdbc.executor.impl.def.EntityResultColumnMetadata;
+import com.easy.query.core.basic.jdbc.executor.impl.def.BasicResultColumnMetadata;
+import com.easy.query.core.basic.jdbc.executor.ResultColumnMetadata;
 import com.easy.query.core.basic.jdbc.executor.internal.enumerable.DraftResult;
 import com.easy.query.core.basic.jdbc.executor.internal.merge.result.StreamResultSet;
 import com.easy.query.core.basic.jdbc.executor.internal.props.BasicJdbcProperty;
+import com.easy.query.core.basic.jdbc.executor.internal.props.JdbcProperty;
+import com.easy.query.core.basic.jdbc.types.EasyParameter;
 import com.easy.query.core.basic.jdbc.types.handler.JdbcTypeHandler;
 import com.easy.query.core.enums.EntityMetadataTypeEnum;
 import com.easy.query.core.expression.parser.core.available.TableAvailable;
@@ -21,6 +25,8 @@ import com.easy.query.core.metadata.ColumnMetadata;
 import com.easy.query.core.metadata.EntityMetadata;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.extension.functions.type.IgnoreValueConverterTypeExpression;
+import com.easy.query.core.util.EasyClassUtil;
+import com.easy.query.core.util.EasyJdbcExecutorUtil;
 
 import java.sql.SQLException;
 import java.util.Collections;
@@ -160,6 +166,40 @@ final class ColumnReaders {
         return new BoundReader(key, new ColumnReaderImpl(column.getEntityMetadata(), column, null));
     }
 
+    static ColumnReader nullable(ColumnReader reader) {
+        if (!(reader instanceof BoundReader bound)) return reader;
+        if (bound.key instanceof BasicKey key && key.type.isPrimitive()) {
+            Class<?> boxed = EasyClassUtil.getObjectTypeWhenPrimitive(key.type);
+            return new BoundReader(new BasicKey(boxed, key.handler), (index, rows) -> key.handler.getValue(new BasicJdbcProperty(index, boxed), rows));
+        }
+        if (bound.key instanceof ColumnMetadata column && column.getPropertyType().isPrimitive()) {
+            Class<?> boxed = EasyClassUtil.getObjectTypeWhenPrimitive(column.getPropertyType());
+            return new BoundReader(new NullableColumnKey(column), (index, rows) -> {
+                var metadata = new EntityResultColumnMetadata(index, column.getEntityMetadata(), column);
+                var value = column.getJdbcTypeHandler().getValue(new BasicJdbcProperty(index, boxed), rows);
+                return EasyJdbcExecutorUtil.fromValue(metadata, value);
+            });
+        }
+        return reader;
+    }
+
+    static ResultColumnMetadata scalarMetadata(int index, ColumnReader reader) {
+        // The reader already performs decryption/conversion. Basic metadata prevents applying those twice.
+        return new BasicResultColumnMetadata(Object.class, new ReaderHandler(reader), new BasicJdbcProperty(index, Object.class));
+    }
+
+    private record ReaderHandler(ColumnReader reader) implements JdbcTypeHandler {
+        @Override
+        public Object getValue(JdbcProperty property, StreamResultSet rows) throws SQLException {
+            return reader.read(property.getJdbcIndex() - 1, rows);
+        }
+
+        @Override
+        public void setParameter(EasyParameter parameter) {
+            throw new UnsupportedOperationException("A projected reader is only used for result mapping");
+        }
+    }
+
     private static void requireCompatibleUnion(Map<String, ColumnReader> left, Map<String, ColumnReader> right) {
         if (left.size() != right.size())
             throw new IllegalArgumentException("UNION branches have incompatible projected readers");
@@ -168,7 +208,7 @@ final class ColumnReaders {
         while (a.hasNext()) {
             var x = readerKey(a.next());
             var y = readerKey(b.next());
-            boolean compatible = x == y || x instanceof BasicKey && x.equals(y);
+            boolean compatible = x == y || (x instanceof BasicKey || x instanceof NullableColumnKey) && x.equals(y);
             if (!compatible)
                 throw new IllegalArgumentException("UNION branches require compatible column mappings; project an explicit common scalar first");
         }
@@ -179,6 +219,9 @@ final class ColumnReaders {
     }
 
     private record BasicKey(Class<?> type, JdbcTypeHandler handler) {
+    }
+
+    private record NullableColumnKey(ColumnMetadata column) {
     }
 
     private record BoundReader(Object key, ColumnReader delegate) implements ColumnReader {

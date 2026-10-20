@@ -28,3 +28,8 @@ Pro 扩展注册 `ExpressionBuilderFactory` 与 `SQLExpressionInvokeFactory` 两
 实库回归覆盖 MySQL 两种预处理和两种 SQL mode、PG JSON/JSONB、数组/List、interval，以及 HANA NCLOB 业务值与长 JSON 文本。另有显式 valueConvert、普通 DTO 类型转换、上游 SUM、无预先 clone 的连续投影、UNION 同源/异源 reader、重排和 clone 的回归。
 
 这组读取验证不等于全部 SQL 结果类型限制已经闭合。HANA LOB 在多层派生查询中的 DISTINCT/排序约束、完整复杂报表和所有聚合组合仍按 [统计报表蓝图](reporting-blueprint.md) 与 G4.6/G5 继续验收。
+## 单列结果读取器
+
+整值 Pro 表达式将来源 ColumnReader 带入 `selectColumn`，包括 Draft/CTE 已暴露具体业务 record 类型的情况。有 reader 的表达式使用上游 Object 标量载体，Java 泛型 T 保持不变；局部 ResultColumnMetadata 适配只调用一次 reader，避免重复解密或业务转换，不替换全局 JDBC handler 或执行器。
+
+映射值 FIRST/LAST/NTH_VALUE 与整值 MIN/MAX 窗口复用同一路径。空 frame 的 primitive 值先作可空 JDBC 读取，再调用原业务转换器；不透明的显式 reader 保留自己的 NULL 契约。普通 DTO 仍使用目标映射。

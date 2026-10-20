@@ -14,6 +14,11 @@ import com.easy.query.core.expression.parser.core.base.scec.core.SQLNativeChainE
 import com.easy.query.core.func.SQLFunc;
 import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.func.SQLFunctionTranslateImpl;
+import com.easy.query.core.func.def.impl.SumSQLFunction;
+import com.easy.query.core.func.def.impl.AvgSQLFunction;
+import com.easy.query.core.func.def.impl.CountSQLFunction;
+import com.easy.query.core.func.def.impl.MinSQLFunction;
+import com.easy.query.core.func.def.impl.MaxSQLFunction;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.ProxyEntity;
 import com.easy.query.core.proxy.core.EntitySQLContext;
@@ -23,6 +28,7 @@ import com.easy.query.core.util.EasyColumnSegmentUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.UnaryOperator;
 import java.util.function.BiFunction;
 
@@ -64,7 +70,44 @@ public class ExpressionScope {
     }
 
     public SQLFunction function(SQLFunction delegate, AggregationType aggregation, boolean requiresServerEvaluation, TableAvailable... sources) {
-        return new ScopedFunction(delegate, aggregation, requiresServerEvaluation, sources);
+        return new ScopedFunction(delegate, aggregation, requiresServerEvaluation,
+                aggregation == AggregationType.UNKNOWN && !requiresServerEvaluation, FunctionKind.EXPRESSION, sources);
+    }
+
+    /**
+     * Declares a trusted, bare, non-distinct aggregate supplied by an extension.
+     * The caller owns dialect syntax and must apply scalar wrappers after OVER; no shard merge is inferred.
+     */
+    public SQLFunction aggregate(SQLFunction delegate, TableAvailable... sources) {
+        return new ScopedFunction(delegate, delegate.getAggregationType(), true, false, FunctionKind.AGGREGATE, sources);
+    }
+
+    public static boolean isWindowAggregate(SQLFunction function) {
+        switch (function.getAggregationType()) {
+            case SUM_DISTINCT, AVG_DISTINCT, COUNT_DISTINCT -> {
+                return false;
+            }
+            default -> {
+            }
+        }
+        if (function instanceof ScopedFunction scoped) return scoped.kind == FunctionKind.AGGREGATE;
+        if (!(function instanceof SumSQLFunction || function instanceof AvgSQLFunction || function instanceof CountSQLFunction
+                || function instanceof MinSQLFunction || function instanceof MaxSQLFunction)) return false;
+        return switch (function.getAggregationType()) {
+            case SUM, AVG, COUNT, MIN, MAX -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * Windows retain rows but require the complete database partition before any shard merging.
+     */
+    public SQLFunction window(SQLFunction delegate, TableAvailable... sources) {
+        return new ScopedFunction(delegate, AggregationType.UNKNOWN, true, true, FunctionKind.WINDOW, sources);
+    }
+
+    public SQLFunction projection(SQLFunction delegate, TableAvailable... sources) {
+        return new ScopedFunction(delegate, AggregationType.UNKNOWN, !isRowLocal(delegate), preservesRows(delegate), FunctionKind.EXPRESSION, sources);
     }
 
     /**
@@ -72,16 +115,32 @@ public class ExpressionScope {
      */
     public SQLFunction operation(SQLFunction delegate, AggregationType aggregation, SQLFunction... operands) {
         boolean requiresServerEvaluation = aggregation != AggregationType.UNKNOWN;
+        boolean preservesRows = aggregation == AggregationType.UNKNOWN;
         for (var operand : operands) {
             // UNKNOWN alone is insufficient: upstream arithmetic can hide SUM/AVG inside another function.
             if (!isRowLocal(operand))
                 requiresServerEvaluation = true;
+            preservesRows &= preservesRows(operand);
         }
-        return function(delegate, aggregation, requiresServerEvaluation);
+        return new ScopedFunction(delegate, aggregation, requiresServerEvaluation, preservesRows, FunctionKind.EXPRESSION);
     }
 
     public static boolean isRowLocal(SQLFunction function) {
         return function instanceof ScopedFunction scoped && !scoped.requiresServerEvaluation && scoped.aggregation == AggregationType.UNKNOWN;
+    }
+
+    public static boolean preservesRows(SQLFunction function) {
+        return function instanceof ScopedFunction scoped && scoped.preservesRows;
+    }
+
+    public static boolean containsWindow(SQLSegment segment) {
+        var visitor = new WindowVisitor();
+        EasySQLSegmentUtil.sqlSegmentTableVisit(segment, visitor);
+        return visitor.found;
+    }
+
+    public boolean hasWindow(SQLFunction function) {
+        return containsWindow(new SQLFunctionTranslateImpl(function).toSQLSegment(context.getExpressionContext(), anchor, runtime, null));
     }
 
     public SQLFunction scalar(SQLFunc factory, PropTypeColumn<?> source, UnaryOperator<SQLFunction> expression) {
@@ -127,12 +186,17 @@ public class ExpressionScope {
         private final AggregationType aggregation;
         private final TableAvailable[] sources;
         private final boolean requiresServerEvaluation;
+        private final boolean preservesRows;
+        private final FunctionKind kind;
 
-        private ScopedFunction(SQLFunction delegate, AggregationType aggregation, boolean requiresServerEvaluation, TableAvailable... sources) {
+        private ScopedFunction(SQLFunction delegate, AggregationType aggregation, boolean requiresServerEvaluation,
+                               boolean preservesRows, FunctionKind kind, TableAvailable... sources) {
             this.delegate = delegate;
             this.aggregation = aggregation;
             this.sources = sources;
             this.requiresServerEvaluation = requiresServerEvaluation;
+            this.preservesRows = preservesRows;
+            this.kind = kind;
         }
 
         @Override
@@ -180,6 +244,7 @@ public class ExpressionScope {
 
             @Override
             public void accept(TableVisitor visitor) {
+                if (kind == FunctionKind.WINDOW && visitor instanceof WindowVisitor windows) windows.found = true;
                 // Preserve the wrapped result and table metadata through this transparent scope boundary.
                 EasySQLSegmentUtil.sqlSegmentTableVisit(segment, visitor);
             }
@@ -195,9 +260,34 @@ public class ExpressionScope {
                 }
                 // 分片后再次合并聚合值不能等价于数据库 CAST；不静默复用 SUM/AVG 的合并算法。
                 if (requiresServerEvaluation && expression.isSharding())
-                    throw new UnsupportedOperationException("Pro operations on aggregate or unclassified expressions require server-side evaluation before shard merging");
+                    throw new UnsupportedOperationException("Pro window, aggregate or unclassified operations require server-side evaluation before shard merging");
                 return segment.toSQL(sql);
             }
+        }
+    }
+
+    private enum FunctionKind {EXPRESSION, AGGREGATE, WINDOW}
+
+    static class WindowVisitor implements TableVisitor {
+        private boolean found;
+
+        @Override
+        public Set<TableAvailable> getTables() {
+            return Set.of();
+        }
+
+        @Override
+        public void visit(TableAvailable table) {
+        }
+
+        @Override
+        public boolean containsTable(TableAvailable table) {
+            return false;
+        }
+
+        @Override
+        public void addAll(TableVisitor other) {
+            if (other instanceof WindowVisitor windows) found |= windows.found;
         }
     }
 }

@@ -7,6 +7,10 @@ import com.easy.query.core.expression.sql.builder.factory.ExpressionBuilderFacto
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.spi.ProProjectionFactory;
 import org.dpdns.zerodep.easyquery.pro.dsl.spi.ProExpressionBuilderFactory;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ProSQLSegmentFactory;
+import com.easy.query.core.expression.segment.factory.SQLSegmentFactory;
+import com.easy.query.core.expression.predicate.SmartPredicateAnonymousExpressionBuilderProvider;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.ProSmartPredicateProvider;
 
 import java.util.Objects;
 
@@ -18,10 +22,16 @@ public final class ExtensionInstaller {
     }
 
     public static void install(ServiceCollection services, SqlDialect dialect, Class<? extends SQLKeyword> backend, NullSafeComparison comparison) {
+        install(services, dialect, backend, comparison, ProSQLSegmentFactory.class);
+    }
+
+    public static void install(ServiceCollection services, SqlDialect dialect, Class<? extends SQLKeyword> backend,
+                               NullSafeComparison comparison, Class<? extends SQLSegmentFactory> segments) {
         Objects.requireNonNull(services, "services");
         Objects.requireNonNull(dialect, "dialect");
         Objects.requireNonNull(backend, "backend");
         Objects.requireNonNull(comparison, "comparison");
+        Objects.requireNonNull(segments, "segments");
         Installed previous = null;
         try {
             // 只读取本类的私有实例标记；不会提前构造 DataSource 或任何业务服务。
@@ -37,6 +47,8 @@ public final class ExtensionInstaller {
         services.addService(Installed.class, new Installed(dialect));
         services.addService(SQLExpressionInvokeFactory.class, ProProjectionFactory.class);
         services.addService(ExpressionBuilderFactory.class, ProExpressionBuilderFactory.class);
+        services.addService(SQLSegmentFactory.class, segments);
+        services.addService(SmartPredicateAnonymousExpressionBuilderProvider.class, ProSmartPredicateProvider.class);
         services.addService(NullSafeComparison.class, comparison);
         services.addServiceFactory(SqlDialect.class, provider -> {
             var keyword = provider.getService(SQLKeyword.class);

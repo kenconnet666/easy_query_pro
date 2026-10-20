@@ -75,7 +75,7 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
 
         @Override
         public Selector columnFunc(TableAvailable table, SQLFunction function, String propertyAlias) {
-            if (!ExpressionScope.isRowLocal(function)) return super.columnFunc(table, function, propertyAlias);
+            if (!ExpressionScope.preservesRows(function)) return super.columnFunc(table, function, propertyAlias);
             var column = table.getEntityMetadata().getColumnNotNull(propertyAlias);
             var segment = new SQLFunctionTranslateImpl(function).toSQLSegment(expressionContext, table, runtimeContext, column.getName());
             sqlBuilderSegment.append(new ScalarColumn(table, column, runtimeContext, segment, column.getName()));
@@ -104,7 +104,7 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
 
         @Override
         public AsSelector columnFunc(TableAvailable table, String property, SQLFunction function, String propertyAlias, SQLActionExpression before) {
-            if (!ExpressionScope.isRowLocal(function)) {
+            if (!ExpressionScope.preservesRows(function)) {
                 setReader(propertyAlias == null ? property : propertyAlias, null);
                 return super.columnFunc(table, property, function, propertyAlias, before);
             }
@@ -114,13 +114,14 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
                 throw new EasyQueryInvalidOperationException("A computed projection requires a property alias");
             var result = propertyAlias == null && source != null ? null : getResultColumnName(propertyAlias);
             String alias = result == null ? source.getName() : result.getColumnAsName();
-            setReader(propertyAlias == null ? property : propertyAlias, source == null ? null : ColumnReaders.source(entityQueryExpressionBuilder, table, property));
+            var reader = source == null ? null : ColumnReaders.source(entityQueryExpressionBuilder, table, property);
+            setReader(propertyAlias == null ? property : propertyAlias, ExpressionScope.isRowLocal(function) ? reader : ColumnReaders.nullable(reader));
             return appendScalar(table, source != null ? source : result.getColumnMetadata(), function, alias);
         }
 
         @Override
         public AsSelector columnFunc(TableAvailable table, SQLFunction function, String propertyAlias) {
-            if (!ExpressionScope.isRowLocal(function)) {
+            if (!ExpressionScope.preservesRows(function)) {
                 setReader(propertyAlias, null);
                 return super.columnFunc(table, function, propertyAlias);
             }

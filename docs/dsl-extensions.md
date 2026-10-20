@@ -22,6 +22,10 @@ recreate 的 mappingSource 是上一层表达式，必须与 SQL 回调一起原
 
 HanaSQLFunc、HanaExpressionFactory、HanaSQLSegmentFactory 允许继承，继续用 EasyQuery ServiceCollection 注册。只覆盖需要定制的函数/节点，并把默认处理委托给 super，以保留 HANA 的其余语义和保护。
 
+窗口增强还安装 `ProSQLSegmentFactory` 与 `ProSmartPredicateProvider`：前者保留别名、子查询计算层和 DISTINCT count 的合法性，后者仅阻止窗口层的错误筛选下推。HANA 使用 `HanaProSQLSegmentFactory` 委托原生 LOB 行为。需要自定义这些服务时，在对应 Extensions.configure 之后注册子类，并委托默认保护；替换为上游裸工厂会同时移除这些保证。
+
+`WindowSpec<S>` 通过 protected `recreate(State)` 保持具体规格类型，`window(ReportWindow::new)` 可挂载消费者方法。边界与示例见 [窗口说明](dsl-windows.md)。新增规格优先复用共同 partition/order/frame，不另建查询执行对象。
+
 ## 当前开发版本的包迁移
 
 ExpressionScope、MappedValueExpression、AbstractJsonExpression、ProProjectionFactory、ProExpressionBuilderFactory 从 `dsl.internal` 迁入 `dsl.spi`。当前为未发布的 1.0-SNAPSHOT，未保留旧内部路径的兼容桥接。直接引用旧路径的代码需要更新 import 并重新编译；所有 Pro 模块必须使用同一版本，不能把旧方言 JAR 与新共同 DSL 混用。

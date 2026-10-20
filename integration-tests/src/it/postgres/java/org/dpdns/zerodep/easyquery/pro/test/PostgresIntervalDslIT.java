@@ -96,6 +96,9 @@ class PostgresIntervalDslIT {
         var outer = inner.cloneQueryable().select(p -> Select.DRAFT.of(PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.interval()).negated(), p.value1()));
         assertEquals(PgInterval.of(1, 0, 0), outer.singleNotNull().getValue1());
         assertEquals(PgInterval.of(1, 0, 0), outer.cloneQueryable().singleNotNull().getValue1());
+        var minimum = inner.cloneQueryable().selectColumn(p -> PgSqlDsl.of(p).over(p.value2().min(), PgSqlDsl.of(p).window()));
+        assertEquals(PgInterval.of(-1, 0, 0), minimum.singleNotNull());
+        assertEquals(PgInterval.of(-1, 0, 0), minimum.cloneQueryable().singleNotNull());
         assertEquals(PgInterval.of(-1, 0, 0), inner.singleNotNull().getValue2());
     }
 

@@ -27,6 +27,14 @@ import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.JsonPathAccess;
 import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionScope;
 import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionFactory;
+import org.dpdns.zerodep.easyquery.pro.dsl.window.RowsWindowSpec;
+import org.dpdns.zerodep.easyquery.pro.dsl.window.WindowSpec;
+import org.dpdns.zerodep.easyquery.pro.dsl.window.WindowFunctions;
+import com.easy.query.core.proxy.extension.functions.ColumnObjectFunctionAvailable;
+import com.easy.query.core.proxy.extension.functions.ColumnAnyFunctionAvailable;
+import com.easy.query.core.proxy.extension.functions.type.AnyTypeExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.spi.MappedValueExpression;
+import com.easy.query.api.proxy.extension.window.NextSelector;
 import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl;
 import com.easy.query.core.proxy.extension.functions.type.impl.BooleanTypeExpressionImpl;
@@ -71,6 +79,44 @@ public class ProDsl {
      */
     public static <D extends ProDsl> D of(ProxyEntity<?, ?> entity, Function<? super ExpressionScope, ? extends D> factory) {
         return Objects.requireNonNull(Objects.requireNonNull(factory, "factory").apply(new ExpressionScope(entity)), "factory result");
+    }
+
+    public RowsWindowSpec window() {
+        return new RowsWindowSpec(scope);
+    }
+
+    public <W extends WindowSpec<W>> W window(Function<? super ExpressionScope, ? extends W> factory) {
+        return Objects.requireNonNull(Objects.requireNonNull(factory, "factory").apply(scope), "factory result");
+    }
+
+    public <T, C extends PropTypeColumn<T>> C over(ColumnObjectFunctionAvailable<T, C> aggregate, WindowSpec<?> window) {
+        return WindowFunctions.aggregate(scope, aggregate, window);
+    }
+
+    public <T> AnyTypeExpression<T> over(ColumnAnyFunctionAvailable<T> aggregate, WindowSpec<?> window) {
+        return WindowFunctions.aggregate(scope, aggregate, window, (bound, mapping, function) -> new MappedValueExpression<T>(bound, mapping, function) {
+        });
+    }
+
+    public <T, E extends PropTypeColumn<T>> E over(PropTypeColumn<T> aggregate, WindowSpec<?> window, ExpressionFactory<T, ? extends E> factory) {
+        return WindowFunctions.aggregate(scope, aggregate, window, factory);
+    }
+
+    public <T, C extends PropTypeColumn<T>> NextSelector<T, C> overValue(ColumnObjectFunctionAvailable<T, C> source, WindowSpec<?> window) {
+        return WindowFunctions.value(scope, source, window);
+    }
+
+    public <T> NextSelector<T, AnyTypeExpression<T>> overValue(ColumnAnyFunctionAvailable<T> source, WindowSpec<?> window) {
+        return overValue((PropTypeColumn<T>) source, window);
+    }
+
+    public <T> NextSelector<T, AnyTypeExpression<T>> overValue(PropTypeColumn<T> source, WindowSpec<?> window) {
+        return WindowFunctions.value(scope, source, window, (bound, mapping, function) -> new MappedValueExpression<T>(bound, mapping, function) {
+        });
+    }
+
+    public <T, E extends PropTypeColumn<T>> NextSelector<T, E> overValue(PropTypeColumn<T> source, WindowSpec<?> window, ExpressionFactory<T, ? extends E> factory) {
+        return WindowFunctions.value(scope, source, window, factory);
     }
 
     /**

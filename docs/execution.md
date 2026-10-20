@@ -484,3 +484,16 @@ IDEA 首次构建等待超时，随后重试成功且无构建问题；新 JAR �
 一次尝试直接执行 reactor Failsafe 目标因父项目强制 failIfNoTests 在测试开始前退出，该尝试不计为验证。最终使用正常 Maven verify 路径完成上述 PG 回归。查询复用说明同步记录 toSQL/single/list/page 的构建状态影响，下一步窗口报表按此时机建立独立分支。
 
 IDEA 构建通过；MySQL/PG MCP 确认本轮 JSON、interval 与分片 fixture 遗留为 0。子代理仅复审并建议补全 recreate 契约注释，未写入代码；对应注释已由主线程补入。
+## 共同窗口规格与报表计算层
+
+提交 `fc72da2f1ec01b3d93726f4d70f24f1b7cda19cd` 的 [CI 39419792747](https://github.com/kenconnet666/easy_query_pro/actions/runs/39419792747) 已通过五个强制任务。本轮新增不可变 SELF 窗口规格、共同 ROWS、全局窗口，以及对既有聚合/NextSelector 的薄组合；不复制排名/偏移函数，也不改写最终 SQL。
+
+三库报表包含分组后的累计、移动均值、全局金额、首末/Nth 值、空 frame、外层 EQ/IN、count/page 与 DISTINCT→CTE。故障回归先复现了 SMART_PREDICATE 将累计 35 错算为 5、primitive NULL 读成 0/false，以及派生业务 record 在 selectColumn 被当成实体构造。修复分别位于公开 predicate provider、投影 reader 与 ResultColumnMetadata SPI；别名/原生参数中的独立子查询保留各自计算层，HANA LOB visitor 继续委托原实现。
+
+泛型规格和结果工厂经 JDK 17 消费者正负例验证。对象族与数值/文本族的默认重载分别保持原映射和具体表达式族；业务 JSON、interval 经过 CTE 后的单列窗口仍返回业务值。扩展裸聚合使用可信标记，已知 DISTINCT、聚合外包装、同层嵌套窗口提前拒绝。跨分片窗口及其 CAST/NULLIF 包装不套用普通逐行合并。
+
+最终定向验证为 31 个离线/消费者检查与 12 个实库用例通过；此外 37 个相关 JSON、数组、时长及原有映射回归已经通过。执行使用 Maven Wrapper、指定 JBR 17 与三库 profile；完整消费者和全量数据库测试交当前提交的 CI，旧 SHA 的成功不覆盖本轮。IDEA 构建成功，MCP 核实窗口及相关 fixture 的表/schema 遗留为 0，持久开发实例保留。
+
+只读方言核查另确认：共同 ROWS 的位置顺序规则需兼容 HANA；MySQL/PG 原生 RANGE 要保留零边界类别。MySQL 8.4.11 常量单行查询的空窗口存在数据库预执行优化差异，原生 COUNT 同样返回 1；以非恒定数据验收框架，没有加入 SQL 补偿。上游部分已有 offset 窗口缺少 metadata，使用显式 CTE 边界，不通过扫描 SQL 伪造完整检测。详见 [窗口说明](dsl-windows.md)。
+
+G5.1 的 MySQL/PG RANGE、A03 四个近似统计入口与 A02 分组汇总继续实施。子代理已经核查实际增量与公开 SPI；ROLLUP 的空输入差异、date_bin 的 origin/微秒语义和 JDBC 时间绑定风险进入后续验证清单，尚未标为实现完成。

@@ -1,7 +1,7 @@
 package org.dpdns.zerodep.easyquery.pro.dsl.spi;
 
 import com.easy.query.core.basic.extension.conversion.ColumnReader;
-import com.easy.query.core.expression.func.AggregationType;
+import com.easy.query.core.basic.jdbc.executor.ResultColumnMetadata;
 import com.easy.query.core.func.SQLFunc;
 import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.proxy.PropTypeColumn;
@@ -27,24 +27,33 @@ public abstract class MappedValueExpression<T> extends AnyTypeExpressionImpl<T> 
         super(scope.context(), source.getTable(), reader == null ? null : source.getValue(),
                 factory -> {
                     var value = function.apply(factory);
-                    return scope.function(value, AggregationType.UNKNOWN, !ExpressionScope.isRowLocal(value), source.getTable());
+                    return scope.projection(value, source.getTable());
                 },
-                EasyClassUtil.getObjectTypeWhenPrimitive(Objects.requireNonNull(source.getPropertyType(), "source Java type")));
-        // Keep APT's Object.class carrier: selectColumn must not reinterpret a converted record/List as a new entity.
+                reader != null ? Object.class : EasyClassUtil.getObjectTypeWhenPrimitive(Objects.requireNonNull(source.getPropertyType(), "source Java type")));
+        // A derived Draft can expose a concrete record/List type. Keep reader-backed results on the scalar path.
         this.scope = scope;
         this.reader = reader;
     }
 
     final ColumnReader columnReader() {
-        return reader;
+        if (reader == null) return null;
+        var expression = func().apply(scope.runtime().fx());
+        return ExpressionScope.preservesRows(expression) && !ExpressionScope.isRowLocal(expression) ? ColumnReaders.nullable(reader) : reader;
+    }
+
+    @Override
+    public ResultColumnMetadata getTableResultColumnMetadataOrNull(int index) {
+        var resultReader = columnReader();
+        return resultReader == null ? super.getTableResultColumnMetadataOrNull(index) : ColumnReaders.scalarMetadata(index, resultReader);
     }
 
     @Override
     public SQLSelectAsExpression as(String alias) {
-        if (reader != null) {
+        var resultReader = columnReader();
+        if (resultReader != null) {
             // Draft only picks column metadata for SQLColumn. Reuse its public reader SPI for computed expressions.
             String key = alias == null ? getValue() : alias;
-            ColumnReaders.setAutomatic(scope.context().getEntityExpressionBuilder(), key, reader);
+            ColumnReaders.setAutomatic(scope.context().getEntityExpressionBuilder(), key, resultReader);
         }
         return super.as(alias);
     }

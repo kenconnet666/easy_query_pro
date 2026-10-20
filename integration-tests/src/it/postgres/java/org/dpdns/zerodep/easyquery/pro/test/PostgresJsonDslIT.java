@@ -313,6 +313,20 @@ class PostgresJsonDslIT {
         assertThrows(IllegalArgumentException.class, () -> primitive.unionAll(nullable).toSQL());
     }
 
+    @Test
+    void derivedScalarJsonKeepsItsBusinessReader() {
+        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(), p.payload()));
+        var scalar = inner.cloneQueryable().selectColumn(p -> PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb())
+                .setPath(List.of("count"), JsonInput.encoded("7"), true));
+        assertEquals(new JsonPayload("O'Reilly 中😀", 7), scalar.singleNotNull());
+        assertEquals(new JsonPayload("O'Reilly 中😀", 7), scalar.cloneQueryable().singleNotNull());
+        var window = inner.cloneQueryable().selectColumn(p -> PgSqlDsl.of(p).overValue(
+                PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb()), PgSqlDsl.of(p).window().orderBy(p.value1())).firstValue());
+        assertEquals(new JsonPayload("O'Reilly 中😀", 3), window.singleNotNull());
+        assertEquals(new JsonPayload("O'Reilly 中😀", 3), window.cloneQueryable().singleNotNull());
+        assertEquals(1, converter.writes());
+    }
+
     public static final class LongId {
         private Long id;
 
