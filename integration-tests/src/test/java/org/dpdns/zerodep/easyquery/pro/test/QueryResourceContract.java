@@ -99,6 +99,7 @@ final class QueryResourceContract {
                         resources.sqlExecutions() - before, resources.jdbcExecutions() - beforeJdbc,
                         resources.statementCount() - beforeStatements, resources.resultCount() - beforeResults,
                         TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started));
+                QueryBenchmarkContract.verify(pool, database, extensions, table, schema);
             } finally {
                 client.getRuntimeContext().getEasyTimeJobManager().shutdown();
                 client.getRuntimeContext().getShardingExecutorService().getExecutorService().shutdown();

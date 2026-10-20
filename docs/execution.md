@@ -809,3 +809,13 @@ IDEA 格式与构建通过，MCP 确认本轮全文/层级 schema、HDI 容器 s
 Windows/Linux consumer job 现在生成并上传二进制/源码/Javadoc/POM。针对连续提交反复取消 HANA 长验证的问题，按 GitHub 官方 job concurrency 默认单 pending 规则删除 workflow 级取消：快任务按 ref/矩阵取消旧；HANA Docker 保留 active、待测只留最新，外部 hana-test 按环境串行。没有开启 queue:max，没有更改12 GiB容器限制或HANA Node步骤；该配置不追溯旧workflow，也不把排队/取消视为通过。
 
 IDEA 构建、actionlint 与 diff 检查通过，未运行无关实库回归。本轮自有临时日志记录后清理，生成产物、API HTML 与标准消费者报告保留。权限提交 `d6fc08f4dc273ed592be596012820181ac1159f4` 自己的 [CI 39511708064](https://github.com/kenconnet666/easy_query_pro/actions/runs/39511708064) 为 cancelled；随后重新核实包含权限/资源批的后继 `bbfcd9e8ffed2c9c534ab5ae2dc53e00d57824f0` [Java CI 39513325131](https://github.com/kenconnet666/easy_query_pro/actions/runs/39513325131) 已成功。该基线不包含当前 R01 改动，本候选的完整 CI 和新排队行为仍需推送后验收。
+
+## 有界重复读取基线与执行边界更新
+
+按用户最新指令，Java/TS 双线持续到共享周额度边界，不再以 08:00 作为停止点；额度由主线程统一检查，该边界不表示蓝图完成。继续补 Q01 的预热和重复测量，不把前一单次资源观测样本当作完整性能证据。
+
+新增仅测试使用的 QueryBenchmarkContract，复用 2,049 行物理表与同一两连接池。普通 ORM 未安装 Pro DSL；HANA 仍使用本项目 adapter。直接 JDBC 复用普通 ORM 生成且无参数的 SQL，三个入口均物化同类 DTO，逐行对照名称/金额/NULL 与 id 校验和。每入口 3 轮预热、7 轮测量并轮换顺序；计时外断言结果和 active=0，输出全部原始微秒值与 min/median/max，不设绝对延迟阈值。
+
+指定 JBR 17 的 `mvnw.cmd --batch-mode verify -Phana,mysql,postgres -Dtest=HanaConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=HanaQueryResourceIT,MySqlQueryResourceIT,PostgresQueryResourceIT` 通过 2 个基础离线与 3 个实库用例，包含原资源契约及新增重复测量，完成于 07:38:12。三库内部样本范围有交叠，完整数据见 query-resources.md；JDBC预生成SQL、ORM构造/映射与Pro服务器CAST的成本不能由差值拆开。
+
+只读复审后将第二 client 的创建纳入第一 client 的 finally 所有权范围，并把生命周期与测量主体分开；测量循环未改动。IDEA 格式与构建验证整理后的代码。MCP 确认三库自有资源表/schema 遗留为零，本轮自有日志记录后清理，标准 Failsafe 的原始样本保留。前一 `1471d05df428eea1a4f97cf80cd88aea7d25cc9f` 的 [Java CI 39515321177](https://github.com/kenconnet666/easy_query_pro/actions/runs/39515321177) 已重新核实成功，classifier 与任务级并发规则有对应 SHA 的完整检查；当前重复测量批仍交自己的 CI。

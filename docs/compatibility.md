@@ -47,7 +47,7 @@
 | A03 | 四项总体/样本统计、NULL/单行、FILTER/OVER；统一近似 Double，拒绝未证明的跨分片合并 | [统计](dsl-statistics.md) |
 | A04 | 日历补桶与 PG LocalDateTime 固定微秒 date_bin；自然日与固定时长分开 | [时间序列](reporting-time-series.md) |
 | I01 | 独立 Java/Spring JAR/POM/APT 消费者及三库 CRUD/共享事务、启动失败清理已有验收 | [Java 示例](../examples/java-client/README.md)、[Spring 示例](../examples/spring-client/README.md) |
-| Q01 | 流/reader 异常、2049 行、4 worker/2连接、SQL/句柄计数已有验收；重复性能测量仍待收口 | [查询资源](query-resources.md) |
+| Q01 | 流/reader 异常、2049 行、4 worker/2连接、SQL/句柄计数与3预热/7次重复读取基线已有验收；复杂负载与长期压力继续收敛 | [查询资源](query-resources.md) |
 | R01 | 二进制/源码/Javadoc classifier 与独立解析验收已建立；逐 ID 最终审计和最新候选 CI 继续推进 | [产物](artifacts.md)、[计划](plan.md) |
 
 ## 必须保留的边界
@@ -58,7 +58,7 @@
 - 上游无其他操作的右侧 JOIN 查询可能丢动态 schema/table，需真实投影保留来源。克隆仍遵守上游代理生命周期；并发使用独立 fresh query，不共享可变 Queryable。窗口、统计、全文评分和不安全聚合后计算不能套用逐行分片合并。
 - Code First 只执行已建模的受控变更。HANA 88 带双引号列名的 ALTER 定义当前提前拒绝，不用重建表或改名隐藏差异；复杂依赖对象迁移继续验收。
 - HDI 实库多值模型为 NVARCHAR/INTEGER，其他模型精度和参数类型仍需对应模型。列表 NULL/空列表不开放；HANA 多 SCORE 子查询 JOIN 与 MySQL 全文事务可见性按各自文档保留。
-- 当前资源报告是一次本地观测样本，尚不能替代蓝图要求的预热后重复性能分布及长期压力结论。
+- 资源报告已包含有界的预热后重复读取分布；不同入口包含的查询构造、映射和服务器 CAST 工作不同，不能由差值声称纯框架开销，也不替代复杂负载与长期压力结论。
 - 一个旧 SHA 的绿色、另一个 SHA 的 pending/cancelled 或可选任务 skipped，均不能替代最终候选全部强制检查。
 
 ## 安装与迁移顺序
