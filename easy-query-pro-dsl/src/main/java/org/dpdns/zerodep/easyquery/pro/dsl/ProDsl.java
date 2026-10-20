@@ -90,6 +90,10 @@ public class ProDsl {
 
     /**
      * 总体方差；样本先转 DOUBLE 再统计，避免不同数据库按 DECIMAL scale 提前丢失小数。
+     *
+     * <p>四项统计都返回可空 Double，忽略 NULL；POP 单个有效样本为零，SAMP 少于两个有效样本为 NULL。
+     * BigDecimal 输入也先转近似值，不提供精确金额统计或跨分片合并。条件样本使用上游 filter。
+     * 无 GROUP BY 的单行聚合报告如需 count/page，应先 toCteAs 固定聚合结果层。
      */
     public NumberFilterTypeExpression<Double> variancePopulation(PropTypeColumn<? extends Number> source) {
         return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.VAR_POP);
@@ -97,6 +101,8 @@ public class ProDsl {
 
     /**
      * 样本方差；忽略 NULL，少于两个有效样本返回 NULL，条件样本继续使用上游 filter。
+     *
+     * @see #variancePopulation(PropTypeColumn) 四项统计共用的 DOUBLE 精度与查询边界约定
      */
     public NumberFilterTypeExpression<Double> varianceSample(PropTypeColumn<? extends Number> source) {
         return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.VAR_SAMP);
@@ -104,6 +110,8 @@ public class ProDsl {
 
     /**
      * 总体标准差，采用共同近似 Double 契约；单个有效样本为零，空样本为 NULL。
+     *
+     * @see #variancePopulation(PropTypeColumn) 四项统计共用的 DOUBLE 精度与查询边界约定
      */
     public NumberFilterTypeExpression<Double> standardDeviationPopulation(PropTypeColumn<? extends Number> source) {
         return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.STDDEV_POP);
@@ -111,6 +119,8 @@ public class ProDsl {
 
     /**
      * 样本标准差；明确使用 SAMP，不依赖各数据库含义可能不同的 STDDEV 别名。
+     *
+     * @see #variancePopulation(PropTypeColumn) 四项统计共用的 DOUBLE 精度与查询边界约定
      */
     public NumberFilterTypeExpression<Double> standardDeviationSample(PropTypeColumn<? extends Number> source) {
         return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.STDDEV_SAMP);

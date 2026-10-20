@@ -39,6 +39,8 @@ public abstract class PgWindowSpec<S extends PgWindowSpec<S>> extends WindowSpec
 
     /**
      * 整数键使用整数偏移；NUMERIC 键可以使用 BigDecimal，偏移不会被统一转换为小数。
+     * 当前按表达式已知的 Java 数值载体校验，不读取列的 dbType。自定义映射使 Java/SQL 类型不一致时，
+     * 应先 nativeCast 建立明确的 SQL 排序类型；仅更改 Java 类型声明不等于数据库 CAST。
      */
     public S rangeNumericBetween(RangeBoundary<? extends Number> start, RangeBoundary<? extends Number> end) {
         return frame(new Numeric(start, end));
@@ -46,6 +48,7 @@ public abstract class PgWindowSpec<S extends PgWindowSpec<S>> extends WindowSpec
 
     /**
      * 日历距离窗口；泛型排除 infinity，混合正负分量在执行前拒绝。
+     * 键限 LocalDate 与 LocalDateTime（DATE、TIMESTAMP）；不包含 LocalTime 或带时区时间。
      */
     public S rangeIntervalBetween(RangeBoundary<PgInterval.Finite> start, RangeBoundary<PgInterval.Finite> end) {
         return frame(new Temporal(start, end));

@@ -9,6 +9,8 @@
 3. Draft 和基本结果需要保留源列映射时，按具体来源关系和输出列名解析；不同 CTE 的同名 `valueN` 不共享读取契约。
 4. JSON 转文本、数组元素/长度、聚合和其他产生新标量的表达式使用它们的结果类型，不继承整列转换器。
 
+“显式转换优先”只描述已有 reader 的所有权，不代表 Pro 能重新解释该 reader 内部的来源。上游裸 `Draft.valueN().valueConvert(...)` 可能按 Draft 的 Object 列元数据绑定读取链；目前不会反射解包或自动修复它。经过 Pro 来源解析的映射值与该裸调用需要分别验证。
+
 内部通过 `ExpressionBuilderFactory` 的关系创建时机复制已注册 reader。EasyQuery 3.2.17 会在内外层复用表达式上下文，而外层 `valueConvert.as` 早于 selector 执行，因此不能到外层 selector 才读取原 map 来猜测哪些值属于上一层。Draft 的 resultPropTypes 又是在关系创建之后赋值，所以读类型解析延后，但 reader 注册先固定。隐式 `SELECT *` 继续沿用内层关系的列信息。
 
 `SQLExpressionInvokeFactory` 的 selector 只调整自动 reader 与已知 Pro 标量分类。显式转换优先级、DTO 目标契约和聚合分类分别处理；没有把未知函数标为可跨分片逐行计算。
@@ -19,11 +21,13 @@ UNION 按输出位置检查读取兼容性。相同默认标量类型/handler �
 
 上游查询对象有可变构建状态。需要从同一中间查询创建多个独立分支时，调用 `cloneQueryable()`；增强包保留这一契约。正常的单链连续 select 不要求先 clone 或执行来触发读取器初始化。
 
+`cloneQueryable()` 复制 builder，但 EasyQuery 3.2.17 的 Proxy 路径仍复用同一代理。自连接或同一 SQL 的多个独立来源应分别创建 queryable，或使用创建新 Proxy 的 class JOIN 重载；不能把同一 queryable 的两个 clone 当作独立表别名。三行自连接原型已观察到 ON 退化为右侧 id 与自身比较，总额从 60 放大到 180；问题在进入增强分组前就已存在，汇总层不补偿错误的 ON。
+
 CTE 等查询的 `singleNotNull`、`toList` 和 `toSQL` 可能通过上游 compensateSelect 给原构建器补全选择列。若还要从该查询派生其他投影，应在终端调用前克隆，或提前构造各分支；终端调用之后才 clone 会连同补全列一起复制，后续 select 可能追加到已有列。测试与报表示例按这个公开可变构建契约使用查询。
 
 ## 安装与验证
 
-Pro 扩展注册 `ExpressionBuilderFactory` 与 `SQLExpressionInvokeFactory` 两个公开服务。可继承默认实现收纳于 `dsl.spi`，通过 protected 创建钩子替换局部 selector/关系构造，CTE clone 继续经过原工厂。应用已有自定义工厂时，需要在同一工厂中组合相关行为；服务注册顺序决定最终实现，不能用第二次替换悄悄丢掉已有能力。扩展方式和本次包迁移见 [DSL 扩展说明](dsl-extensions.md)。
+Pro 扩展组合四个相关核心 SPI：`ExpressionBuilderFactory`、`SQLExpressionInvokeFactory`、`SQLSegmentFactory` 和 `SmartPredicateAnonymousExpressionBuilderProvider`。后两者维护查询层语义边界、DISTINCT 窗口 count 约束和 SMART 谓词下推保护。可继承默认实现收纳于 `dsl.spi`，通过 protected 创建钩子替换局部 selector/关系构造，CTE clone 继续经过原工厂。应用已有自定义工厂时，需要在同一工厂中组合相关行为；服务注册顺序决定最终实现，不能用第二次替换悄悄丢掉已有能力。扩展方式和本次包迁移见 [DSL 扩展说明](dsl-extensions.md)。
 
 实库回归覆盖 MySQL 两种预处理和两种 SQL mode、PG JSON/JSONB、数组/List、interval，以及 HANA NCLOB 业务值与长 JSON 文本。另有显式 valueConvert、普通 DTO 类型转换、上游 SUM、无预先 clone 的连续投影、UNION 同源/异源 reader、重排和 clone 的回归。
 

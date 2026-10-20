@@ -15,6 +15,8 @@ import java.util.Objects;
  * <p>partitionBy/orderBy 追加到已有列表，rowsBetween 或方言 frame 方法替换当前 frame。
  * 每次操作通过 recreate 返回新规格，应用可以从同一个基础规格派生累计、移动和整组窗口。
  * 列表达式仍属于原查询，不能把规格当作跨 client 的全局缓存。
+ * 未设置 frame 时不生成 frame SQL，采用数据库默认规则；RowsWindowSpec 提供 ROWS 配置能力，
+ * 并不隐式应用 ROWS。自定义 WindowFrame 也必须不可变，规格不会深复制其内部状态。
  *
  * @param <S> 具体规格类型；避免链式调用后丢失应用或方言新增的方法
  */
