@@ -1,15 +1,18 @@
 package org.dpdns.zerodep.easyquery.pro.test;
 
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.HanaExtensions;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.test.entity.ReportSale;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.ReportSaleProxy;
 import org.junit.jupiter.api.Test;
 
 import java.sql.SQLException;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class HanaWindowReportIT {
+class HanaReportingIT {
     @Test
     void emptyFramesKeepNullForPrimitiveColumns() throws SQLException {
         WindowReportContract.verifyPrimitiveNulls(TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure));
@@ -17,6 +20,10 @@ class HanaWindowReportIT {
 
     @Test
     void windowFramesAndGroupedReports() throws SQLException {
+        withSales(rows -> WindowReportContract.verify(rows::cloneQueryable));
+    }
+
+    private void withSales(Consumer<EntityQueryable<ReportSaleProxy, ReportSale>> contract) throws SQLException {
         try (var schema = HanaTestDatabase.createSchema("WINDOW_REPORT")) {
             try (var statement = schema.connection().createStatement()) {
                 statement.execute("CREATE COLUMN TABLE " + schema.qualified("eqp_report_sale")
@@ -24,7 +31,7 @@ class HanaWindowReportIT {
             }
             var query = TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure);
             assertEquals(6L, query.insertable(WindowReportContract.sales()).asSchema(ignored -> schema.name()).executeRows());
-            WindowReportContract.verify(() -> query.queryable(ReportSale.class).asSchema(ignored -> schema.name()));
+            contract.accept(query.queryable(ReportSale.class).asSchema(ignored -> schema.name()));
         }
     }
 }
