@@ -69,7 +69,7 @@ class DslCompilationTest {
     @Test
     void postgresTypesSelectDifferentApisAndRetainBusinessMappings() throws IOException {
         compile(true, "PgJsonExpression<String> json = PgSqlDsl.of(p).value(JsonInput.encoded(\"{}\"), PgSqlTypes.json()); PgJsonbExpression<String> jsonb = json.toJsonb(); jsonb.containsJson(JsonInput.jsonNull()).eq(true);");
-        compile(true, "PgJsonbExpression<org.dpdns.zerodep.easyquery.pro.test.entity.PgJsonRecord.Payload> jsonb = PgSqlDsl.of(j).view(j.payload(), PgSqlTypes.jsonb()); j.payload().set(jsonb.setPath(java.util.List.of(\"name\"), JsonInput.encoded(\"\\\"new\\\"\"), true));");
+        compile(true, "PgJsonbExpression<org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload> jsonb = PgSqlDsl.of(j).view(j.payload(), PgSqlTypes.jsonb()); j.payload().set(jsonb.setPath(java.util.List.of(\"name\"), JsonInput.encoded(\"\\\"new\\\"\"), true));");
         compile(false, "PgSqlDsl.of(p).value(JsonInput.encoded(\"{}\"), PgSqlTypes.json()).containsJson(JsonInput.jsonNull());");
         compile(false, "PgSqlDsl.of(p).value(\"{}\", PgSqlTypes.jsonb());");
         compile(false, "PgJsonbExpression<String> jsonb = PgSqlDsl.of(p).value(JsonInput.encoded(\"{}\"), PgSqlTypes.jsonb()).asText();");

@@ -15,6 +15,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlExtensions;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlTypes;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.PgJsonPath;
 import org.dpdns.zerodep.easyquery.pro.test.entity.PgJsonRecord;
+import org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,7 +33,7 @@ class PostgresJsonDslIT {
     private String schema;
     private boolean created;
     private DefaultEasyEntityQuery query;
-    private PgJsonRecord.PayloadConverter converter;
+    private JsonPayload.Converter converter;
 
     @BeforeEach
     void createFixture() throws SQLException {
@@ -49,14 +50,14 @@ class PostgresJsonDslIT {
         source.setCurrentSchema(schema);
         query = TestClients.configured(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
         PgSqlExtensions.configureMappings(query.getRuntimeContext().getQueryConfiguration());
-        converter = new PgJsonRecord.PayloadConverter();
+        converter = new JsonPayload.Converter();
         query.getRuntimeContext().getQueryConfiguration().applyValueConverter(converter);
         var row = new PgJsonRecord();
         row.setId(1);
         row.setJson("{\"duplicate\":1,\"duplicate\":2}");
         row.setDocument("{\"tags\":[\"a\",\"b\"],\"nested\":{\"v\":1},\"empty\":null}");
         row.setPlain("ordinary text");
-        row.setPayload(new PgJsonRecord.Payload("O'Reilly 中😀", 3));
+        row.setPayload(new JsonPayload("O'Reilly 中😀", 3));
         assertEquals(1L, query.insertable(row).executeRows());
     }
 
@@ -75,7 +76,7 @@ class PostgresJsonDslIT {
         var row = query.queryable(PgJsonRecord.class).singleNotNull();
         assertEquals("{\"duplicate\":1,\"duplicate\":2}", row.getJson());
         assertEquals("ordinary text", row.getPlain());
-        assertEquals(new PgJsonRecord.Payload("O'Reilly 中😀", 3), row.getPayload());
+        assertEquals(new JsonPayload("O'Reilly 中😀", 3), row.getPayload());
         assertEquals(1, converter.writes());
         String converted = query.queryable(PgJsonRecord.class).selectColumn(p -> PgSqlDsl.of(p).view(p.json(), PgSqlTypes.json()).toJsonb().asText()).singleNotNull();
         assertEquals(2, ((JsonNumber) JsonParser.parseDoc(converted).get("duplicate")).getInteger());
@@ -133,11 +134,11 @@ class PostgresJsonDslIT {
         try (var transaction = query.getEasyQueryClient().beginTransaction()) {
             assertEquals(1L, query.updatable(PgJsonRecord.class).setColumns(p -> p.payload().set(PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb())
                     .setPath(List.of("name"), JsonInput.encoded("\"changed\""), true))).where(p -> p.id().eq(1)).executeRows());
-            assertEquals(new PgJsonRecord.Payload("changed", 3), query.queryable(PgJsonRecord.class).singleNotNull().getPayload());
+            assertEquals(new JsonPayload("changed", 3), query.queryable(PgJsonRecord.class).singleNotNull().getPayload());
             assertEquals(1, converter.writes());
             transaction.rollback();
         }
-        assertEquals(new PgJsonRecord.Payload("O'Reilly 中😀", 3), query.queryable(PgJsonRecord.class).singleNotNull().getPayload());
+        assertEquals(new JsonPayload("O'Reilly 中😀", 3), query.queryable(PgJsonRecord.class).singleNotNull().getPayload());
         var absent = new PgJsonRecord();
         absent.setId(2);
         absent.setDocument("null");

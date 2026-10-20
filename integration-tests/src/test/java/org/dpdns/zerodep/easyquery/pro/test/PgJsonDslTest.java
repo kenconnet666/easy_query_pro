@@ -9,6 +9,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlDsl;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlExtensions;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlTypes;
 import org.dpdns.zerodep.easyquery.pro.test.entity.PgJsonRecord;
+import org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload;
 import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 import org.junit.jupiter.api.Test;
@@ -50,7 +51,7 @@ class PgJsonDslTest {
         var original = handlers.getHandler(String.class);
         PgSqlExtensions.configureMappings(client.getRuntimeContext().getQueryConfiguration());
         assertSame(original, handlers.getHandler(String.class));
-        client.getRuntimeContext().getQueryConfiguration().applyValueConverter(new PgJsonRecord.PayloadConverter());
+        client.getRuntimeContext().getQueryConfiguration().applyValueConverter(new JsonPayload.Converter());
         return client;
     }
 }
