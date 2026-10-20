@@ -14,6 +14,11 @@ import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.JsonPathAccess;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.MySqlJsonColumnConverter;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationTypeHandler;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationMetadataManager;
+import com.easy.query.core.metadata.EntityMetadataManager;
+
+import java.time.Duration;
 
 public final class MySqlExtensions {
     private MySqlExtensions() {
@@ -24,6 +29,7 @@ public final class MySqlExtensions {
                 new NullSafeComparison("({0} <=> {1})", "(NOT ({0} <=> {1}))"));
         services.addService(TemporalTruncation.class, new MySqlTemporalTruncation());
         services.addService(JsonPathAccess.class, new MySqlJsonPathAccess());
+        services.addService(EntityMetadataManager.class, MySqlDurationMetadataManager.class);
     }
 
     public static void configureMappings(QueryConfiguration configuration) {
@@ -32,5 +38,6 @@ public final class MySqlExtensions {
 
     public static void configureTypeHandlers(JdbcTypeHandlerManager handlers) {
         handlers.appendHandler(BigInteger.class, new ExactBigIntegerTypeHandler(), false);
+        handlers.appendHandler(Duration.class, new MySqlDurationTypeHandler(), false);
     }
 }

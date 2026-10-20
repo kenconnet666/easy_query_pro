@@ -17,6 +17,11 @@ import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonInput;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonPath;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.MySqlJsonChange;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.MySqlJsonExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationType;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationExpressions;
+
+import java.time.Duration;
 
 import java.util.List;
 import java.util.Objects;
@@ -34,6 +39,18 @@ public final class MySqlDsl {
 
     public static MySqlDsl of(ProxyEntity<?, ?> entity) {
         return new MySqlDsl(entity);
+    }
+
+    public <T> MySqlDurationExpression<T> view(PropTypeColumn<T> source, MySqlDurationType type) {
+        return MySqlDurationExpressions.view(scope, source, type);
+    }
+
+    public MySqlDurationExpression<Duration> value(Duration value, MySqlDurationType type) {
+        return MySqlDurationExpressions.value(scope, value, type);
+    }
+
+    public MySqlDurationExpression<Duration> nativeCast(PropTypeColumn<?> source, MySqlDurationType type) {
+        return MySqlDurationExpressions.cast(scope, source, type);
     }
 
     public <N extends Number> NumberTypeExpression<N> value(N value, MySqlTypes.Unsigned<N> type) {

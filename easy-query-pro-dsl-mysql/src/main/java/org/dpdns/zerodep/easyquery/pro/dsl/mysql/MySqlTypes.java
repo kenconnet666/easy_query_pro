@@ -4,6 +4,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NativeJsonType;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.StorageType;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationType;
 
 import java.math.BigInteger;
 
@@ -20,6 +21,10 @@ public final class MySqlTypes {
 
     public static Json json() {
         return JSON;
+    }
+
+    public static MySqlDurationType durationTime(int fractionalPrecision) {
+        return new MySqlDurationType(fractionalPrecision);
     }
 
     public static Unsigned<Short> unsignedTinyint() {

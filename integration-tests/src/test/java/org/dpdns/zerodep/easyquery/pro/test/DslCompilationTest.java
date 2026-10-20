@@ -113,6 +113,14 @@ class DslCompilationTest {
         compile(false, "NumberTypeExpression<Long> n = d.value(java.math.BigInteger.ONE, MySqlTypes.unsignedBigint());");
     }
 
+    @Test
+    void mysqlDurationCannotBeConfusedWithClockTimeOrCalendarIntervals() throws IOException {
+        compile(true, "MySqlDurationExpression<java.time.Duration> elapsed = MySqlDsl.of(p).value(java.time.Duration.ofHours(27), MySqlTypes.durationTime(6)); NumberTypeExpression<BigDecimal> seconds = elapsed.toSeconds(); DateTimeTypeExpression<java.time.LocalDateTime> next = elapsed.addToDateTime(e.occurred());");
+        compile(false, "MySqlDsl.of(p).value(java.time.LocalTime.NOON, MySqlTypes.durationTime(6));");
+        compile(false, "MySqlDsl.of(p).value(PgInterval.of(1, 0, 0), MySqlTypes.durationTime(6));");
+        compile(false, "DateTimeTypeExpression<java.time.LocalTime> time = MySqlDsl.of(p).value(java.time.Duration.ZERO, MySqlTypes.durationTime(6));");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
@@ -127,6 +135,7 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.type.*;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;

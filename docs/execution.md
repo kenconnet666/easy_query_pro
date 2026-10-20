@@ -354,9 +354,23 @@ MySqlTypes 提供 TINYINT/SMALLINT/MEDIUMINT/INT/BIGINT 五种 unsigned 存储�
 
 IDEA 构建通过，MCP 确认 eqp_unsigned_* 表遗留为 0。IDEA 的新文件加入 Git 提示再次阻塞工具，已在界面取消重复提示，后续由显式 git add 管理暂存。JDBC 探测文件与本轮编译/原生日志记录后清理，标准报告和开发数据库保留。说明见 [MySQL unsigned](mysql-unsigned.md)。
 
+## 计算值投影映射与 MySQL TIME 时长
+
+提交 `774c0c801d3054c5532da58c0b5d918780c0f644` 的 [CI 39371105860](https://github.com/kenconnet666/easy_query_pro/actions/runs/39371105860) 已通过全部五个强制任务，包含 unsigned 和 PG fixture 整理。
+
+独立修复提交 `90e166f` 收拢完整值表达式的读取映射。EasyQuery Draft 仅为 SQLColumn 自动带入列读取器，计算表达式会走基础类型；同时 APT 的 Object.class 载体不能随意换成业务 record/List 类，否则 selectColumn 会错误尝试实例化新实体。MappedValueExpression 保留原载体，通过公开 ColumnReaderImpl/结果转换 SPI 为 Draft 恢复原列 handler 与 ValueConverter。PG JSON/数组/interval 共 14 个实库用例、MySQL JSON 四种模式和克隆已通过，未添加新的结果集执行器。
+
+MySqlTypes.durationTime(fsp) 与 MySqlDurationExpression 使用 Duration，保留负值、超过 24 小时和微秒。原生 plus/minus/negated、比较、日期时间组合以及精确 toSeconds 均复用现有表达式/绑定链；TIME_TO_SEC 的小数丢失与 div_precision_increment 的舍入通过带符号微秒乘法解决。输入容量/精度检查与原生计算饱和分别处理，LocalTime 的钟点映射不变。
+
+ORM 插入复现 Connector/J 9.7.0 客户端 Duration 编码残留 S 的问题；仅修零值不足以覆盖负微秒，因此客户端统一绑定规范 TIME 文本。独立探测也确认服务端 CAST 前把字符串参数转换成零，最终通过 JDBC wrapper API 识别实际 ServerPreparedStatement，保留其二进制 Duration 绑定。强制 String + Types.TIME 的替代方案在驱动内发生 ClassCastException，未采用。该判断不读取驱动私有字段。
+
+本地 MySqlDurationIT 扩展到两种预处理 × 直接/Hikari 两种连接，并开启批量重写，四组全部通过；同次 JSON/unsigned 合计 12 个实库用例及 4 个离线检查通过。随后新增精确秒数 SUM 的四组 Duration 用例单独通过。初期消费者编译检查通过，目前共 17 个正例、38 个负例。完整值 Draft、标量和业务对象转换的回归单独记录在前述修复提交中。
+
+独立整理提交 `5f3ce39` 将三组 MySQL fixture 的表生命周期收拢到 MySqlTestDatabase.Table。MCP 确认本轮三类 MySQL 表和 PG JSON/数组/interval schema 遗留均为 0。IDEA 构建通过；两份 Duration 探测源文件及本轮编译/原生/聚合/映射诊断日志记录后清理，标准报告保留。说明见 [MySQL TIME 时长](mysql-duration.md)。
+
 ## 下一步
 
-1. 检查 MySQL unsigned 提交的 CI，继续 MySQL TIME 时长和三库原生类型目录。
+1. 检查 MySQL TIME 与投影修复提交的 CI，继续 HANA 受限 LOB/JSON 文本视图及三库原生类型目录。
 2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
 3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
 4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。
