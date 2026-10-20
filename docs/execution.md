@@ -396,9 +396,19 @@ JsonPathAccess 的导航前置检查从 HANA 构造函数分离，保留 ProDsl 
 
 MCP 确认 EQP_DEFAULT_VALUES/EQP_EMPTY_TUPLE/EQP_NULL_ID 本轮 schema 遗留为 0；三份探测源文件清理。未更改生产翻译、数据库表结构或必交付范围。该项仍记录于 [HANA 写入说明](hana-writes.md)，继续执行独立的类型目录与组合任务。
 
+## 三库原生数值与 HANA 指数绑定
+
+提交 `f8783e42f6fe826805f2d4c666eba333e4cd0ff5` 的 [CI 39385043844](https://github.com/kenconnet666/easy_query_pro/actions/runs/39385043844) 已通过全部五个强制任务。独立整理提交 `d0a956a` 提取共同精确 decimal 输入校验，17 个既有离线测试和 IDEA 构建通过。
+
+新增 MySQL 65 位 decimal、PG 指定/未指定精度 numeric、HANA 38 位固定 decimal、SMALLDECIMAL/浮点 DECIMAL 和 Short 载体的 TINYINT。所有入口仍返回既有 NumberTypeExpression，错库在构造时拒绝；新建类型描述未引入平行数字运算体系。
+
+独立 JDBC 探测复现 ngdbc 2.30.11 对负 scale 的精度错误，以及 1E-6177 被错误编码为负的大指数值。HANA BigDecimal handler 对这些指数边界使用绑定文本，普通值沿用 setBigDecimal，并保留默认 handler 类别名。原生表验证覆盖最大/最小非零值、38 位固定小数、batch、完整实体、Draft、NULL、clone；typed value 拒绝损失，raw entity 保留服务端舍入/下溢。
+
+本地首轮 39 个离线/消费者检查、7 个三库实库用例通过；补充 HANA raw entity/回滚/失败写入后，7 个离线检查和 6 个 HANA 实库用例通过，包含原有转换器回归。消费者编译现在为 20 个正例、50 个负例。IDEA 构建通过，MCP 确认三库本轮表/schema 遗留均为 0。实现及边界见 [原生数值目录](native-numeric.md)。
+
 ## 下一步
 
-1. 检查 HANA JSON 文本提交的 CI，继续原生数值/字符目录，并关闭 HANA 核心写入未决项。
+1. 检查原生数值提交的 CI，继续原生字符目录，并关闭 HANA 核心写入未决项。
 2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
 3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
 4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。

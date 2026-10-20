@@ -1,12 +1,14 @@
 package org.dpdns.zerodep.easyquery.pro.dsl.mysql;
 
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.DecimalValues;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NativeJsonType;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.StorageType;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationType;
 
 import java.math.BigInteger;
+import java.math.BigDecimal;
 
 public final class MySqlTypes {
     private static final Json JSON = new Json();
@@ -21,6 +23,39 @@ public final class MySqlTypes {
 
     public static Json json() {
         return JSON;
+    }
+
+    public static NumericType<BigDecimal> decimal(int precision, int scale) {
+        return new Decimal(precision, scale);
+    }
+
+    private record Decimal(int precision, int scale) implements NumericType<BigDecimal> {
+        private Decimal {
+            if (precision < 1 || precision > 65 || scale < 0 || scale > 30 || scale > precision) {
+                throw new IllegalArgumentException("MySQL DECIMAL requires 1 <= precision <= 65 and 0 <= scale <= min(precision,30)");
+            }
+        }
+
+        @Override
+        public Class<BigDecimal> javaType() {
+            return BigDecimal.class;
+        }
+
+        @Override
+        public String ddlType(SqlDialect dialect) {
+            if (dialect != SqlDialect.MYSQL) throw new IllegalArgumentException("MySQL DECIMAL requires MySQL");
+            return "DECIMAL(" + precision + "," + scale + ")";
+        }
+
+        @Override
+        public String castTemplate(SqlDialect dialect) {
+            return "CAST({0} AS " + ddlType(dialect) + ")";
+        }
+
+        @Override
+        public BigDecimal prepareValue(BigDecimal value) {
+            return DecimalValues.prepare(value, precision, scale);
+        }
     }
 
     public static MySqlDurationType durationTime(int fractionalPrecision) {

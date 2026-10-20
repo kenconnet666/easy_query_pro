@@ -38,7 +38,7 @@
 | G4.1 | 用三库真实消费示例定型通用/专属类型、CAST 与列视图 API | G0.4、G2.5 | DECIMAL 原型已通过三库真实消费，原生差异显式标注；其余类型/列视图继续收敛 |
 | G4.2 | 通用类型参数、三库 DDL/CAST 分离、类型族重载、返回表达式静态类型 | G4.1 | DECIMAL、有界 Unicode 文本、typed value/NULL 和编译负例已落地；完整目录继续实施 |
 | G4.3 | NULL-safe/NULLIF/数据库日期截断，以及 JSON path/布尔结果组合桥接 | G4.2 | NULL-safe、NULLIF、常规日期截断与结构化 JSON path/布尔桥接已实现；历史历法及完整组合继续验收 |
-| G4.4 | 三库原生类型目录：unsigned、MySQL 时长、PG interval、HANA 受限文本等 | G4.2 | PG interval、MySQL unsigned/TIME、HANA LOB 视图已有实库证据；JSON 文本及其余目录继续实施 |
+| G4.4 | 三库原生类型目录：unsigned、MySQL 时长、PG interval、HANA 受限文本等 | G4.2 | PG interval、MySQL unsigned/TIME、HANA LOB/JSON 文本及三库原生数值已有实库证据；字符及其余目录继续实施 |
 | G4.5 | MySQL JSON、PG JSONB 与 PG SQL 数组的完整选定操作 | G4.2、G4.4 | MySQL JSON、PG JSON/JSONB 和一维数组选定操作已有实库证据；完整类型组合、分片及性能继续验收 |
 | G4.6 | 编译负例、跨 client/错库负例、组合、类型传播与资源释放 | G4.3–G4.5 | 待实施 |
 | G5.1 | 共同 ROWS 与 MySQL/PG RANGE，验证 HANA 拒绝行为，复用已有窗口函数 | G4.6 | 待实施 |

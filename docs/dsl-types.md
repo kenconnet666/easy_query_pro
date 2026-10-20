@@ -2,6 +2,8 @@
 
 当前已落地 DECIMAL 与有界 Unicode 文本路径，使用 EasyQuery 3.2.17 与 JDK 17。完整类型目录、列视图和方言类型仍按 [DSL 设计](dsl-design.md) 继续实施；本文只描述已经有实现的接口。
 
+更大的 decimal 容量、PG 特殊 scale、HANA SMALLDECIMAL/浮点 DECIMAL 与 TINYINT 见 [原生数值目录](native-numeric.md)，继续使用本文的共同数字表达式入口。
+
 ## 安装与使用
 
 在构建 client 前安装与数据库匹配的增强服务：

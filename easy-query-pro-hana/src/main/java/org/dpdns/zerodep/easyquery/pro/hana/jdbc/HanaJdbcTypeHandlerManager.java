@@ -2,6 +2,7 @@ package org.dpdns.zerodep.easyquery.pro.hana.jdbc;
 
 import com.easy.query.core.basic.jdbc.types.EasyJdbcTypeHandlerManager;
 import com.easy.query.core.basic.jdbc.types.handler.ByteTypeHandler;
+import com.easy.query.core.basic.jdbc.types.handler.BigDecimalTypeHandler;
 import com.easy.query.core.basic.jdbc.types.handler.JdbcTypeHandler;
 import com.easy.query.core.basic.jdbc.types.handler.LocalDateTypeHandler;
 import com.easy.query.core.basic.jdbc.types.handler.LocalDateTimeTypeHandler;
@@ -12,6 +13,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.sql.Blob;
+import java.math.BigDecimal;
 import java.sql.Clob;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -25,6 +27,7 @@ public final class HanaJdbcTypeHandlerManager extends EasyJdbcTypeHandlerManager
 
     public HanaJdbcTypeHandlerManager() {
         var byteHandler = new HanaByteTypeHandler();
+        var decimal = new HanaBigDecimalTypeHandler();
         var date = new HanaTemporalHandlers.Date();
         var time = new HanaTemporalHandlers.Time();
         var dateTime = new HanaTemporalHandlers.DateTime();
@@ -32,6 +35,7 @@ public final class HanaJdbcTypeHandlerManager extends EasyJdbcTypeHandlerManager
         var clob = lobBindings.new Characters();
         appendHandler(Byte.class, byteHandler, true);
         appendHandler(byte.class, byteHandler, true);
+        appendHandler(BigDecimal.class, decimal, true);
         appendHandler(LocalDate.class, date, true);
         appendHandler(LocalTime.class, time, true);
         appendHandler(LocalDateTime.class, dateTime, true);
@@ -40,7 +44,7 @@ public final class HanaJdbcTypeHandlerManager extends EasyJdbcTypeHandlerManager
         appendHandler(Clob.class, clob, true);
         aliases = Map.of(ByteTypeHandler.class, byteHandler, LocalDateTypeHandler.class, date,
                 LocalTimeTypeHandler.class, time, LocalDateTimeTypeHandler.class, dateTime,
-                BlobTypeHandler.class, blob, CLobTypeHandler.class, clob);
+                BlobTypeHandler.class, blob, CLobTypeHandler.class, clob, BigDecimalTypeHandler.class, decimal);
     }
 
     HanaLobBindings.Scope openLobBindings() {

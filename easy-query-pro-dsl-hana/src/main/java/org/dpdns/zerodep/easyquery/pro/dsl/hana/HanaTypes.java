@@ -1,10 +1,15 @@
 package org.dpdns.zerodep.easyquery.pro.dsl.hana;
 
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.DecimalValues;
+import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.numeric.HanaDecimalFloatType;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.UnicodeStrings;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.CastTarget;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.StorageType;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.HanaJsonTextType;
+
+import java.math.BigDecimal;
 
 public final class HanaTypes {
     private static final CharacterLob CLOB = new CharacterLob("CLOB");
@@ -13,6 +18,78 @@ public final class HanaTypes {
     private static final BinaryLob BLOB = new BinaryLob();
 
     private HanaTypes() {
+    }
+
+    public static NumericType<Short> tinyint() {
+        return Tinyint.INSTANCE;
+    }
+
+    public static NumericType<BigDecimal> decimal(int precision, int scale) {
+        return new Decimal(precision, scale);
+    }
+
+    public static NumericType<BigDecimal> floatingDecimal() {
+        return HanaDecimalFloatType.DECIMAL;
+    }
+
+    public static NumericType<BigDecimal> smallDecimal() {
+        return HanaDecimalFloatType.SMALLDECIMAL;
+    }
+
+    private enum Tinyint implements NumericType<Short> {
+        INSTANCE;
+
+        @Override
+        public Class<Short> javaType() {
+            return Short.class;
+        }
+
+        @Override
+        public String ddlType(SqlDialect dialect) {
+            if (dialect != SqlDialect.HANA) throw new IllegalArgumentException("HANA TINYINT requires HANA");
+            return "TINYINT";
+        }
+
+        @Override
+        public String castTemplate(SqlDialect dialect) {
+            return "CAST({0} AS " + ddlType(dialect) + ")";
+        }
+
+        @Override
+        public Short prepareValue(Short value) {
+            if (value != null && (value < 0 || value > 255))
+                throw new IllegalArgumentException("HANA TINYINT requires 0 <= value <= 255");
+            return value;
+        }
+    }
+
+    private record Decimal(int precision, int scale) implements NumericType<BigDecimal> {
+        private Decimal {
+            if (precision < 1 || precision > 38 || scale < 0 || scale > precision) {
+                throw new IllegalArgumentException("HANA DECIMAL requires 1 <= precision <= 38 and 0 <= scale <= precision");
+            }
+        }
+
+        @Override
+        public Class<BigDecimal> javaType() {
+            return BigDecimal.class;
+        }
+
+        @Override
+        public String ddlType(SqlDialect dialect) {
+            if (dialect != SqlDialect.HANA) throw new IllegalArgumentException("HANA DECIMAL requires HANA");
+            return "DECIMAL(" + precision + "," + scale + ")";
+        }
+
+        @Override
+        public String castTemplate(SqlDialect dialect) {
+            return "CAST({0} AS " + ddlType(dialect) + ")";
+        }
+
+        @Override
+        public BigDecimal prepareValue(BigDecimal value) {
+            return DecimalValues.prepare(value, precision, scale);
+        }
     }
 
     public static HanaJsonTextType jsonNclob() {

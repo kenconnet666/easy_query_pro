@@ -28,6 +28,15 @@ class DslCompilationTest {
     }
 
     @Test
+    void nativeNumericTypesStillUseTheCommonNumericExpressionFamily() throws IOException {
+        compile(true, "NumberTypeExpression<BigDecimal> mysql = d.value(BigDecimal.ONE, MySqlTypes.decimal(65, 30)); NumberTypeExpression<BigDecimal> pg = d.nullValue(PgSqlTypes.numeric(2, -3)); NumberTypeExpression<BigDecimal> hana = d.nativeCast(p.amount(), HanaTypes.smallDecimal()); NumberTypeExpression<Short> tiny = d.value((short)255, HanaTypes.tinyint()); tiny.add((short)1);");
+        compile(false, "d.value(255, HanaTypes.tinyint());");
+        compile(false, "NumberTypeExpression<Double> n = d.nullValue(HanaTypes.floatingDecimal());");
+        compile(false, "d.value(java.math.BigInteger.ONE, PgSqlTypes.numeric());");
+        compile(false, "StringTypeExpression<String> n = d.nullValue(MySqlTypes.decimal(65, 0));");
+    }
+
+    @Test
     void nullSafeComparisonRequiresCompatibleOperandsAndReturnsBoolean() throws IOException {
         compile(true, "var type = CommonTypes.decimal(9, 2); BooleanTypeExpression<Boolean> result = d.nullSafeEquals(d.value(BigDecimal.ONE, type), d.nullValue(type)); result.eq(true);");
         compile(true, "d.nullSafeEqualsValue(d.nullValue(CommonTypes.decimal(9, 2)), null).eq(true); d.isDistinctFromValue(d.nullValue(CommonTypes.decimal(9, 2)), BigDecimal.ONE).eq(false);");
