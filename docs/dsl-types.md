@@ -27,6 +27,8 @@ var absent = query.queryable(Product.class).selectColumn(p ->
 
 MySQL 使用上游 `MySQLDatabaseConfiguration` 和 `MySqlExtensions::configure`；PostgreSQL 使用上游 `PgSQLDatabaseConfiguration` 和 `PgSqlExtensions::configure`。增强安装不替换整个 SQLFunc，不打开数据库连接。相同增强重复安装幂等；混装与错误后端有明确异常。方言身份保存在当前 client 的服务中，不存在可变全局数据库设置。
 
+PostgreSQL 增强同时修复 LocalDateTime 的 JVM 夏令时缺口与分片内存读取，保留 UUID、显式处理器类名和自定义注册，详见 [PG 无时区时间映射](pgsql-temporal.md)。处理器必须在首次实体元数据加载之前安装。
+
 `ProDsl.of` 在已有查询/写入 lambda 内使用。结果是原有 `NumberTypeExpression<BigDecimal>`，继续使用既有比较、算术、排序、投影与 setter。参数都经过原有 JDBC 绑定，业务值不拼接进 SQL。
 
 ## 参数和转换的不同保证

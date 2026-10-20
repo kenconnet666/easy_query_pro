@@ -589,3 +589,15 @@ HanaHierarchy 增加不可变 descendantsOf/ancestorsOf 和有符号 distanceBet
 最初消费者编译暴露 Draft 的 Long 槽是 SQLAnyTypeColumn，按已有 API 显式 asLong 后聚合。最终使用指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana -Dtest=HanaHierarchyDslTest,DslCompilationTest#hanaHierarchyKeysRootsAndOutputRemainTyped -Dit.test=HanaHierarchyIT -Dsurefire.failIfNoSpecifiedTests=false`，8 个离线/消费者检查与 7 个实库用例通过。覆盖起点/距离参数顺序、类型负例、业务键、空来源、缺失起点、重复及重叠、CTE/count/page、SMART 展示和既有生成器回归。只读复审补充无事实根与集合语义说明后无阻塞问题；IDEA 格式与构建通过。
 
 本批仅使用常量关系，没有创建持久数据库对象；两份自有诊断日志记录后清理，标准报告保留。当前导航提交的完整 CI 将异步执行；接下来继续 A04 日历补桶/PG date_bin、全文和完整消费者/权限验收。
+
+## PostgreSQL 无时区时间与分片读取基础
+
+导航提交 `549a37bafc7cf49daffe586d8f143d69a09f2add` 已通过 [CI 39468072110](https://github.com/kenconnet666/easy_query_pro/actions/runs/39468072110)。准备 A04 时先以纽约 JVM 时区、prepareThreshold 0/-1 两模式复现：LocalDateTime `2024-03-10T02:30:00.123456` 绑定到数据库以及独立 server literal 读取都会变成 03:30。问题发生于上游 Timestamp.valueOf/getTimestamp 路径，不能在 date_bin 内部拼字符串绕过。
+
+PG 增强默认 handler 改用 JDBC 4.2 LocalDateTime，专用 manager 保留原 UUID 与显式 LocalDateTimeTypeHandler 类名别名，应用后注册的自定义处理器和子类仍优先。分片排序/分组会先缓存无类型 getObject，故在进入 merger 之前将真正 timestamp 的值保留为 LocalDateTime；同时检查真实 PG 类型名，timestamptz 不被误判。SQL 执行仍调用原 DefaultJdbcSQLExecutor，未复制查询、事务或绑定实现。
+
+复审进一步复现普通查询自定义 handler 将 getObject 强转 Timestamp 时的 ClassCastException。修复将规范化包装限于分片结果，普通查询保留原 pgJDBC 无类型值；默认 typed handler 仍能修正普通读取。再核对公开 StreamResultSet 已有 typed getter 后，删除不必要的 Statement 捕获与 ExecutorContext 代理，直接委托原对象，减少生命周期状态。
+
+使用指定 JBR 17，最初 8 个离线检查与 14 个实库用例通过；新增自定义兼容负例修复后，以 `mvnw.cmd --batch-mode verify -Ppostgres -Dtest=PgTemporalMappingTest -Dit.test=PostgresTemporalBindingIT -Dsurefire.failIfNoSpecifiedTests=false` 再通过 2 个离线与 8 个时间实库用例。本批唯一用例共 8 个离线、15 个实库，覆盖缺口/重叠/NULL、显式旧/自定义 handler、UUID、timestamptz、两分表排序/分组/去重，以及 interval 和单/双 DataSource 分片 DSL 回归。
+
+IDEA 格式与构建通过，MCP 确认本轮 temporal/interval/sharding schema 遗留为零。四份自有诊断日志记录后清理，标准报告保留；JVM 时区均在 finally 恢复，持久开发库未修改。此批先交付时间基础，PG date_bin 与日历补桶随后实现；完整当前提交 CI 异步执行。安装与兼容边界见 [PG 时间映射](pgsql-temporal.md)。

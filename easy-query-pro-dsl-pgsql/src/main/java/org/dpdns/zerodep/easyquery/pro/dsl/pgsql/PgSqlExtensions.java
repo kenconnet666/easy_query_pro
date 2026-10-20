@@ -15,6 +15,9 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.internal.PgScalarMetadataManage
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgInterval;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalTypeHandler;
 import com.easy.query.core.metadata.EntityMetadataManager;
+import com.easy.query.core.sql.JdbcSQLExecutor;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.jdbc.PgJdbcSQLExecutor;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.jdbc.PgJdbcTypeHandlerManager;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.PgJsonColumnConverter;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.PgJsonbColumnConverter;
 
@@ -28,6 +31,9 @@ public final class PgSqlExtensions {
         services.addService(TemporalTruncation.class, new PgSqlTemporalTruncation());
         services.addService(JsonPathAccess.class, new PgSqlJsonPathAccess());
         services.addService(EntityMetadataManager.class, PgScalarMetadataManager.class);
+        // 时间映射必须先于实体元数据缓存安装；应用自己的服务应在本方法之后覆写。
+        services.addService(JdbcTypeHandlerManager.class, PgJdbcTypeHandlerManager.class);
+        services.addService(JdbcSQLExecutor.class, PgJdbcSQLExecutor.class);
     }
 
     public static void configureMappings(QueryConfiguration configuration) {
