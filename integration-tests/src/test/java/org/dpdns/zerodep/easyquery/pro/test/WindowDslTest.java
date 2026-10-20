@@ -40,6 +40,63 @@ class WindowDslTest {
 
     @ParameterizedTest
     @MethodSource("clients")
+    void rankingReusesGlobalOrderingAndAddsNoSyntheticPartition(DefaultEasyEntityQuery query) {
+        var ranked = query.queryable(TestProduct.class).select(p -> {
+            var pro = ProDsl.of(p);
+            var peers = pro.window(ReportWindow::new).orderBy(p.amount(), false);
+            return Select.DRAFT.of(pro.rank(peers), pro.denseRank(peers), pro.rowNumber(peers.orderBy(p.id())));
+        });
+        String sql = ranked.toSQL();
+        assertTrue(sql.contains("RANK() OVER (ORDER BY"), sql);
+        assertTrue(sql.contains("DENSE_RANK() OVER (ORDER BY"), sql);
+        assertTrue(sql.contains("ROW_NUMBER() OVER (ORDER BY"), sql);
+        assertFalse(sql.contains("PARTITION BY"), sql);
+        assertEquals(sql, ranked.cloneQueryable().toSQL());
+        var sharded = ranked.cloneQueryable();
+        sharded.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().useSharding();
+        assertThrows(UnsupportedOperationException.class, sharded::toSQL);
+    }
+
+    @ParameterizedTest
+    @MethodSource("clients")
+    void rankingRequiresOrderingAndRejectsIgnoredFramesAndNestedWindows(DefaultEasyEntityQuery query) {
+        assertAll(
+                () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> ProDsl.of(p).rank(ProDsl.of(p).window()))),
+                () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> ProDsl.of(p).denseRank(ProDsl.of(p).window()))),
+                () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> ProDsl.of(p).rowNumber(ProDsl.of(p).window()))),
+                () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p ->
+                        ProDsl.of(p).rank(ProDsl.of(p).window().orderBy(p.id()).rowsBetween(RowBoundary.unboundedPreceding(), RowBoundary.currentRow())))),
+                () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> {
+                    var pro = ProDsl.of(p);
+                    return pro.rank(pro.window().orderBy(pro.rowNumber(pro.window().orderBy(p.id()))));
+                })),
+                () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> {
+                    var pro = ProDsl.of(p);
+                    return pro.over(pro.rank(pro.window().orderBy(p.id())).sum(), pro.window());
+                }).toSQL()));
+    }
+
+    @ParameterizedTest
+    @MethodSource("clients")
+    void rankingCannotUseAnotherClientsOrUnrelatedQueriesSpecification(DefaultEasyEntityQuery query) {
+        var captured = new java.util.concurrent.atomic.AtomicReference<org.dpdns.zerodep.easyquery.pro.dsl.window.RowsWindowSpec>();
+        var other = TestClients.offline(new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+        other.queryable(TestProduct.class).selectColumn(p -> {
+            captured.set(ProDsl.of(p).window().orderBy(p.id()));
+            return p.id();
+        });
+        assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class)
+                .selectColumn(p -> ProDsl.of(p).rank(captured.get())));
+        query.queryable(TestProduct.class).selectColumn(p -> {
+            captured.set(ProDsl.of(p).window().orderBy(p.id()));
+            return p.id();
+        });
+        assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class)
+                .selectColumn(p -> ProDsl.of(p).rank(captured.get())).toSQL());
+    }
+
+    @ParameterizedTest
+    @MethodSource("clients")
     void aggregatesReuseTheirFunctionsAndBindValuesOnce(DefaultEasyEntityQuery query) {
         var selected = query.queryable(TestProduct.class).select(p -> {
             var pro = ProDsl.of(p);

@@ -15,6 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PostgresReportingIT {
     @Test
+    void globalRankingPreservesPeersAndGroupedReportBoundaries() throws SQLException {
+        OrderReportContract.verifyRankingWindows(TestClients.configured(PostgresTestDatabase.dataSource(), new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure));
+    }
+
+    @Test
     void conditionalOrderMetricsAndTopRanks() throws SQLException {
         OrderReportContract.verify(TestClients.configured(PostgresTestDatabase.dataSource(), new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure));
     }

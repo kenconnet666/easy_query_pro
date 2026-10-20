@@ -15,6 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class HanaReportingIT {
     @Test
+    void globalRankingPreservesPeersAndGroupedReportBoundaries() throws SQLException {
+        OrderReportContract.verifyRankingWindows(TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure));
+    }
+
+    @Test
     void conditionalOrderMetricsAndTopRanks() throws SQLException {
         OrderReportContract.verify(TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure));
     }

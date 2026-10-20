@@ -33,6 +33,62 @@ final class OrderReportContract {
         verifyPromotionBeforeSumming(query);
     }
 
+    static void verifyRankingWindows(DefaultEasyEntityQuery query) {
+        var ranked = paidOrders(query).select(p -> {
+            var pro = ProDsl.of(p);
+            var global = pro.window().orderBy(p.amount(), false);
+            var department = global.partitionBy(p.region());
+            return Select.DRAFT.of(p.id(), p.region(), p.amount(), pro.rank(global), pro.denseRank(global),
+                    pro.rowNumber(global.orderBy(p.id())), pro.rank(department), pro.denseRank(department));
+        });
+        ranked.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().getBehavior().addBehavior(EasyBehaviorEnum.SMART_PREDICATE);
+        var all = ranked.cloneQueryable().orderBy(p -> p.value1().asc()).toList();
+        assertEquals(List.of(1, 2, 4, 7, 8, 9, 10), all.stream().map(row -> row.getValue1()).toList());
+        assertEquals(List.of(3L, 5L, 7L, 2L, 5L, 3L, 1L), all.stream().map(row -> row.getValue4()).toList());
+        assertEquals(List.of(3L, 4L, 5L, 2L, 4L, 3L, 1L), all.stream().map(row -> row.getValue5()).toList());
+        assertEquals(List.of(3L, 5L, 7L, 2L, 6L, 4L, 1L), all.stream().map(row -> row.getValue6()).toList());
+        assertEquals(List.of(1L, 3L, 1L, 1L, 2L, 1L, 1L), all.stream().map(row -> row.getValue7()).toList());
+        assertEquals(List.of(1L, 2L, 1L, 1L, 2L, 1L, 1L), all.stream().map(row -> row.getValue8()).toList());
+        // 先算全局排名再筛展示行；若 SMART 错误下推普通 id/region 条件，名次会重新从 1 开始。
+        var one = ranked.cloneQueryable().where(p -> p.value1().eq(8)).singleNotNull();
+        assertEquals(5L, one.getValue4());
+        assertEquals(6L, one.getValue6());
+        var department = ranked.cloneQueryable().where(p -> p.value2().eq("D")).orderBy(p -> p.value1().asc()).toList();
+        assertEquals(List.of(2L, 5L), department.stream().map(row -> row.getValue4()).toList());
+        var peers = ranked.cloneQueryable().where(p -> p.value4().eq(3L)).orderBy(p -> p.value1().asc());
+        assertEquals(2L, peers.cloneQueryable().count());
+        var page = peers.cloneQueryable().toPageResult(2, 1);
+        assertEquals(2L, page.getTotal());
+        assertEquals(9, page.getData().get(0).getValue1());
+        assertEquals(7L, ranked.cloneQueryable().count());
+        var sql = ranked.toSQLResult();
+        var copy = ranked.cloneQueryable().toSQLResult();
+        assertEquals(sql.getSQL(), copy.getSQL());
+        assertEquals(sql.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList(),
+                copy.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+
+        var grouped = paidOrders(query).groupBy(p -> GroupKeys.of(p.region()))
+                .select(g -> Select.DRAFT.of(g.key1(), g.groupTable().amount().sumBigDecimal()))
+                .select(p -> {
+                    var pro = ProDsl.of(p);
+                    var totals = pro.window().orderBy(p.value2(), false);
+                    return Select.DRAFT.of(p.value1(), p.value2(), pro.rank(totals), pro.denseRank(totals),
+                            pro.rowNumber(totals.orderBy(p.value1())));
+                }).toCteAs("ranked_departments");
+        grouped.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().getBehavior().addBehavior(EasyBehaviorEnum.SMART_PREDICATE);
+        var groups = grouped.cloneQueryable().orderBy(p -> p.value1().asc()).toList();
+        assertEquals(List.of("A", "B", "D", "E"), groups.stream().map(row -> row.getValue1()).toList());
+        assertEquals(List.of(1L, 4L, 2L, 2L), groups.stream().map(row -> row.getValue3()).toList());
+        assertEquals(List.of(1L, 3L, 2L, 2L), groups.stream().map(row -> row.getValue4()).toList());
+        assertEquals(List.of(1L, 4L, 2L, 3L), groups.stream().map(row -> row.getValue5()).toList());
+        assertEquals(4L, grouped.cloneQueryable().where(p -> p.value1().eq("B")).singleNotNull().getValue3());
+        assertEquals(4L, grouped.cloneQueryable().count());
+        assertEquals(List.of("D", "E"), grouped.cloneQueryable().orderBy(p -> p.value1().asc()).toPageResult(2, 2)
+                .getData().stream().map(row -> row.getValue1()).toList());
+        assertTrue(paidOrders(query).where(p -> p.id().lt(0)).selectColumn(p ->
+                ProDsl.of(p).rank(ProDsl.of(p).window().orderBy(p.id()))).toList().isEmpty());
+    }
+
     private static void verifyConditionalMetrics(DefaultEasyEntityQuery query) {
         var decimal = CommonTypes.decimal(19, 4);
         var grouped = rows(query, orders()).groupBy(p -> GroupKeys.of(p.region())).select(g -> {
@@ -95,10 +151,7 @@ final class OrderReportContract {
     }
 
     private static void verifyTopRanks(DefaultEasyEntityQuery query) {
-        var ranked = rows(query, orders()).where(p -> {
-                    p.status().eq("PAID");
-                    p.amount().isNotNull();
-                }).select(p -> Select.DRAFT.of(p.id(), p.region(), p.amount(),
+        var ranked = paidOrders(query).select(p -> Select.DRAFT.of(p.id(), p.region(), p.amount(),
                         p.expression().rankOver().partitionBy(p.region()).orderByDescending(p.amount()),
                         p.expression().denseRankOver().partitionBy(p.region()).orderByDescending(p.amount()),
                         p.expression().rowNumberOver().partitionBy(p.region()).orderByDescending(p.amount()).orderBy(p.id())))
@@ -118,6 +171,13 @@ final class OrderReportContract {
         assertEquals(6L, ranked.cloneQueryable().where(p -> p.value4().asLong().le(2L)).count());
         assertEquals(7L, ranked.cloneQueryable().where(p -> p.value5().asLong().le(2L)).count());
         assertEquals(ranked.toSQL(), ranked.cloneQueryable().toSQL());
+    }
+
+    private static EntityQueryable<ReportOrderProxy, ReportOrder> paidOrders(DefaultEasyEntityQuery query) {
+        return rows(query, orders()).where(p -> {
+            p.status().eq("PAID");
+            p.amount().isNotNull();
+        });
     }
 
     private static void verifyPromotionBeforeSumming(DefaultEasyEntityQuery query) {

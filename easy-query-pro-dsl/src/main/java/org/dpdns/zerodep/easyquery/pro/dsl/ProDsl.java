@@ -142,6 +142,30 @@ public class ProDsl {
     }
 
     /**
+     * 按完整排序键判断并列，后续名次保留跳号；不指定 partition 即为全局排名。
+     * 排序必须显式提供，不能附带 ROWS/RANGE 等 frame。NULL 顺序沿目标数据库规则。
+     */
+    public NumberTypeExpression<Long> rank(WindowSpec<?> window) {
+        return WindowFunctions.rank(scope, window);
+    }
+
+    /**
+     * 并列行名次相同，下一组继续连续编号。不要为了稳定输出而把唯一键加入该窗口排序，
+     * 否则会改变 peer 分组；输出顺序应在查询外层另外指定。
+     */
+    public NumberTypeExpression<Long> denseRank(WindowSpec<?> window) {
+        return WindowFunctions.denseRank(scope, window);
+    }
+
+    /**
+     * 从 1 开始为每行编号；若业务需要稳定选出一行，应给窗口补充唯一的次排序键。
+     * 与另两种排名共用 WindowSpec、Long 结果和窗口计算边界，不接受 frame。
+     */
+    public NumberTypeExpression<Long> rowNumber(WindowSpec<?> window) {
+        return WindowFunctions.rowNumber(scope, window);
+    }
+
+    /**
      * 将已有裸聚合挂到窗口，保留原数值/文本等表达式族；标量包装应在 OVER 之后追加。
      */
     public <T, C extends PropTypeColumn<T>> C over(ColumnObjectFunctionAvailable<T, C> aggregate, WindowSpec<?> window) {

@@ -42,11 +42,11 @@
 | G4.5 | MySQL JSON、PG JSONB 与 PG SQL 数组的完整选定操作 | G4.2、G4.4 | MySQL JSON、PG JSON/JSONB 和一维数组选定操作已有实库证据；完整类型组合、分片及性能继续验收 |
 | G4.6 | 编译负例、跨 client/错库负例、组合、类型传播与资源释放 | G4.3–G4.5 | 共同/原生逐行表达式、三库单/双 DataSource、Draft 分类、路由隔离和回滚已验证；clone 后外层晚加入分片的共同窗口保护已红绿验证，含 CTE/UNION/标量子查询/ON 与 count 正例；完整业务组合继续实施 |
 | G4.7 | C04 泛型挂载、开放 DSL/默认 SPI、同族表达式重建与 SELF、clone 保留定制 | G4.6 | facade/表达式泛型挂载、共同能力继承、selector/关系工厂、CTE 克隆及 MySQL JSON/PG interval SELF 已验证；其余同族和窗口规格继续实施 |
-| G5.1 | 共同 ROWS、无 partition 的全局窗口与 MySQL/PG RANGE；复用已有函数 | G4.6、G4.7 | 共同 ROWS/全局窗口已通过 CI；两库整数/精确小数及日期/微秒 RANGE 已通过实库和编译边界，待当前提交 CI 与完整报表组合 |
+| G5.1 | 共同 ROWS、无 partition 的全局窗口与 MySQL/PG RANGE；复用已有函数 | G4.6、G4.7 | 共同 ROWS/全局聚合及两库原生 RANGE 已验收；rank/denseRank/rowNumber 薄桥补齐空分区与共同规格，三库并列/分组后排名/SMART/分页已本地通过，当前候选 CI 待验收 |
 | G5.2 | 三库全文检索、索引 fixture、模式与评分作用域 | G4.6 | 三库原生全文来源已本地验证；PG 补齐 plain/web/encoded、rank/cover-density、GIN、事务与查询组合，保留各库索引/语言/评分差异；当前候选完整 CI 待验收 |
 | G5.3 | HANA 邻接树/森林、祖先/后代、深度、顺序、循环/孤儿策略 | G2.5、G4.6 | 构树、祖先/后代、有符号距离、重叠起点与事实汇总本地通过；当前导航提交 CI、完整类型/权限与业务组合继续验收 |
 | G5.4 | HANA 参数化计算视图与表函数的真实 fixture、查询、绑定和组合 | G0.3、G4.6 | 标量与 NVARCHAR/INTEGER 多值计算视图、标量输入表函数已接入原 EntityQueryable；真实 HDI 验证默认值/NULL/命名绑定/CTE/JOIN/分页/事务，完整权限/模型精度/消费者继续验收 |
-| G5.5 | A01 销售/订单报表：条件指标、加权均价、累计/占比、Top N、缺月同比/环比、分组分页 | G4.6、G5.1 | 三库订单条件指标/客户去重、DECIMAL加权均价/零分母、份额、部门TopN并列及13月同比环比已补实库验收；当前候选完整CI待验收，全局排名桥单列后续 |
+| G5.5 | A01 销售/订单报表：条件指标、加权均价、累计/占比、Top N、缺月同比/环比、分组分页 | G4.6、G5.1 | 三库订单条件指标/客户去重、DECIMAL加权均价/零分母、份额、部门及全局TopN并列、13月同比环比已有实库验收；当前候选完整CI待验收 |
 | G5.6 | A02 前缀 ROLLUP 与 PG/HANA GROUPING SETS、汇总标识；先验证公开分组 SPI | G4.6、G5.5 | 已实现并通过三库小计 NULL、空输入、HAVING、SMART 筛选、JOIN、参数键、CTE/count/page；当前提交完整 CI 异步验证 |
 | G5.7 | A03 总体/样本方差及标准差、返回精度与分片拒绝 | G4.6、G5.5 | 四个入口、FILTER/窗口、空值/精度/JDBC 类型及嵌套拒绝已本地通过；等待当前提交 CI 并继续完整报表组合 |
 | G5.8 | A04 日历补桶示例、PG date_bin；HANA 层级事实汇总 | G5.3、G5.5 | HANA 事实汇总、PG 固定微秒桶/负向边界/DST，以及三库补月→LAG→CTE/分页已本地通过；当前提交完整 CI 与时区时间点等独立边界继续验收 |

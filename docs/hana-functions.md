@@ -18,7 +18,7 @@
 
 ## 聚合、窗口与布尔投影
 
-COUNT/SUM/AVG/MIN/MAX、条件聚合、三种排名及五种聚合窗口继续使用上游实现。已有窗口的默认 peer frame、排序和分区已在 HANA 执行验证；增强的显式 ROWS 与 MySQL/PG RANGE 见 [窗口规格](dsl-windows.md)，HANA 当前基线拒绝 RANGE。现有排名 builder 仍要求非空分区，不能用已验证的全局聚合窗口替代全局排名入口的验收。
+COUNT/SUM/AVG/MIN/MAX、条件聚合、原分区排名及五种聚合窗口继续使用上游实现。已有窗口的默认 peer frame、排序和分区已在 HANA 执行验证；增强的显式 ROWS 与 MySQL/PG RANGE 见 [窗口规格](dsl-windows.md)，HANA 当前基线拒绝 RANGE。共同 `rank/denseRank/rowNumber(WindowSpec)` 薄桥补齐上游排名 builder 不支持空分区的缺口，复用原表达式类型族与查询执行链，并显式拒绝排名不使用的 frame。
 
 多列最大/最小值忽略 NULL，全 NULL 返回 NULL。HANA 原生 `GREATEST`/`LEAST` 传播 NULL，因此翻译时先以首个非空值填补空项。关联 UNION 子查询虽然单独可运行，revision 88 在当前组合 fixture 中触发 `ColDicVal ... not found` 优化器错误，故不采用该路径。当前标量翻译可能重复表达式，多列场景仍需纳入性能验收。
 

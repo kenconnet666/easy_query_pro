@@ -759,3 +759,15 @@ IDEA 格式与现有工程构建通过；独立示例以 Invoker 的实际编译
 指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana,mysql,postgres -Dtest=ShardingExpressionScopeTest,WindowDslTest,MySqlQueryContextTest -Dsurefire.failIfNoSpecifiedTests=false`，并定向三库 ReportingIT 的 windowFramesAndGroupedReports，40 个离线检查及 3 个实库用例通过。只读复审无新的必修项，IDEA 格式与构建通过。MCP 确认本轮三库窗口测试 schema/表遗留为零，两份自有根日志记录后清理。
 
 前一 A01 提交 `8f7adb546f8eb86c4a15d3496d95daffdc48b93c` 的 [CI 39506558426](https://github.com/kenconnet666/easy_query_pro/actions/runs/39506558426) 检查时为 cancelled，按真实状态保留且不等待。此共同修复独立提交，随后继续全局排名入口。
+
+## 共同全局排名与分组后排名
+
+对照上游 3.2.17 的三个 builder 及核心排名函数，均要求非空 partition，确认不是缺少消费示例。通过 Context7 resolve/query 核对 PostgreSQL 17、MySQL 8.4 和 HANA Platform 官方窗口规则后，只增加 ProDsl 的 rank/denseRank/rowNumber 三个薄入口：继续使用 WindowSpec 的分区和排序，返回原 NumberTypeExpression<Long>，并复用 ExpressionScope.window 的行数与计算层标记。
+
+排序必须明确提供，frame 直接拒绝，不接受一个会被数据库忽略的 ROWS/RANGE。规格子类的 SELF 链和已有 view(result, factory) 保留自定义能力，没有新增排名 AST、类型族或执行器。离线与消费者覆盖 Long 静态类型、全局无伪分区、不可变规格、缺少排序/frame/嵌套窗口、跨 client/查询来源、clone 与晚加入分片。
+
+三库实库沿现有订单 fixture 分别验证七行全局与部门排名。id 1/9 的 RANK 为 3、id 2/8 为 5，id 8 的稳定 ROW_NUMBER 为 6；直接外层 id/部门 EQ 和名次筛选保持全局结果。部门先合计得到 50/40/40/0 后，RANK 为 1/2/2/4，DENSE_RANK 为 1/2/2/3。明确 SMART、CTE、参数克隆、count/page 和空输入均通过，原有订单契约随 helper 复用回归。
+
+指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana,mysql,postgres -Dtest=WindowDslTest,DslCompilationTest#rankingWindowsKeepLongResultsAndCustomSpecificationTypes -Dsurefire.failIfNoSpecifiedTests=false`，failsafe 选择三库 ReportingIT 的 globalRankingPreservesPeersAndGroupedReportBoundaries 与 conditionalOrderMetricsAndTopRanks，29 个离线/消费者检查及 6 个实库用例通过。IDEA 格式与构建通过；小型常量来源没有创建数据库对象，单份本轮根日志记录后清理。
+
+前一共同修复 `00fe3433f63b4656f4fbfebbdd967e450e39eaa5` 的 [CI 39508054652](https://github.com/kenconnet666/easy_query_pro/actions/runs/39508054652) 检查时仍 in_progress，没有阻塞等待。调用与边界见 [窗口规格](dsl-windows.md) 和 [订单报表](reporting-orders.md)，后续继续 G6 资源与权限验收。

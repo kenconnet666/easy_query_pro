@@ -8,6 +8,8 @@ import com.easy.query.core.func.SQLFunc;
 import com.easy.query.core.func.SQLFunction;
 import com.easy.query.core.proxy.PropTypeColumn;
 import com.easy.query.core.proxy.extension.functions.ColumnObjectFunctionAvailable;
+import com.easy.query.core.proxy.extension.functions.type.NumberTypeExpression;
+import com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl;
 import com.easy.query.core.proxy.predicate.aggregate.DSLSQLFunctionAvailable;
 import com.easy.query.core.util.EasyClassUtil;
 import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionFactory;
@@ -17,7 +19,7 @@ import java.util.Objects;
 import java.util.function.Function;
 
 /**
- * 将既有聚合或值表达式挂到窗口规格上，复用上游函数及其返回类型族。
+ * 将聚合、值与排名函数挂到共同窗口规格，复用上游表达式返回类型族。
  *
  * <p>聚合窗口接收单个非 DISTINCT 裸聚合。应先应用 OVER，再追加 CAST/NULLIF 等标量操作；
  * CAST(SUM(...)) 不能作为可直接接 OVER 的函数。同层窗口先投影到派生关系后才能继续作为窗口输入。
@@ -27,6 +29,29 @@ import java.util.function.Function;
  */
 public final class WindowFunctions {
     private WindowFunctions() {
+    }
+
+    public static NumberTypeExpression<Long> rank(ExpressionScope scope, WindowSpec<?> spec) {
+        return ranking(scope, spec, "RANK()");
+    }
+
+    public static NumberTypeExpression<Long> denseRank(ExpressionScope scope, WindowSpec<?> spec) {
+        return ranking(scope, spec, "DENSE_RANK()");
+    }
+
+    public static NumberTypeExpression<Long> rowNumber(ExpressionScope scope, WindowSpec<?> spec) {
+        return ranking(scope, spec, "ROW_NUMBER()");
+    }
+
+    private static NumberTypeExpression<Long> ranking(ExpressionScope scope, WindowSpec<?> spec, String function) {
+        Objects.requireNonNull(spec, "spec");
+        // 排名由整个分区的排序决定；接受一个被数据库忽略的 frame 会误导调用方。
+        if (spec.state.frame() != null)
+            throw new IllegalArgumentException("Ranking windows do not accept a frame");
+        spec.validate(scope, true);
+        return new NumberTypeExpressionImpl<>(scope.context(), scope.anchor(), null, factory ->
+                scope.window(spec.apply(factory, factory.anySQLFunction(function, ignored -> {
+                })), scope.anchor()), Long.class);
     }
 
     public static <T, C extends PropTypeColumn<T>> C aggregate(ExpressionScope scope, ColumnObjectFunctionAvailable<T, C> aggregate, WindowSpec<?> spec) {

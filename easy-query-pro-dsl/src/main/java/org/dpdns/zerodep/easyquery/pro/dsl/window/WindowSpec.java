@@ -93,14 +93,14 @@ public abstract class WindowSpec<S extends WindowSpec<S>> {
         return recreate(new State(state.partitions(), state.ordering(), Objects.requireNonNull(frame, "frame")));
     }
 
-    void validate(ExpressionScope target, boolean valueWindow) {
+    void validate(ExpressionScope target, boolean requiresOrdering) {
         // 放在挂接函数时校验，允许调用方先指定 frame 再补充排序，不约束链式方法的书写顺序。
         if (target.runtime() != scope.runtime())
             throw new IllegalArgumentException("A window cannot use another client's specification");
         for (var column : state.partitions()) validateKey(column);
         for (var order : state.ordering()) validateKey(order.column());
-        if (valueWindow && state.ordering().isEmpty())
-            throw new IllegalArgumentException("Value windows require an explicit ordering");
+        if (requiresOrdering && state.ordering().isEmpty())
+            throw new IllegalArgumentException("This window function requires an explicit ordering");
         if (state.frame() != null) state.frame().validate(scope.dialect(), state.ordering());
     }
 

@@ -23,6 +23,25 @@ var report = query.queryable(ReportSale.class).select(p -> {
 
 `over` 接收裸聚合。先 `over(sum, spec)` 再 CAST/NULLIF，不能把 `CAST(SUM(...))` 当作可直接接 OVER 的函数。同层窗口嵌套也必须先经派生表/CTE。值窗口及窗口键只接受已知逐行表达式；无法证明其语义的上游复合表达式先投影成派生列，避免 UNKNOWN 隐藏聚合后错误承诺保留原行数。
 
+## 全局与分区排名
+
+EasyQuery 3.2.17 的原排名 builder 要求非空 partition。`pro.rank(spec)`、`denseRank(spec)`、`rowNumber(spec)` 补齐空 partition 和共同规格的挂载，返回 `NumberTypeExpression<Long>`；保留原入口，不加入人为常量分区。
+
+```java
+var ranked = orders.select(order -> {
+    var pro = ProDsl.of(order);
+    var peers = pro.window().orderBy(order.amount(), false);
+    return Select.DRAFT.of(order.id(), pro.rank(peers), pro.denseRank(peers),
+        pro.rowNumber(peers.orderBy(order.id())));
+});
+```
+
+三种入口都要求显式排序，拒绝 ROWS/RANGE 等 frame。排名按整个分区的排序确定，frame 不能限制“参与排名的最近几行”；例如 [MySQL 明确会忽略这些函数的 frame](https://dev.mysql.com/doc/refman/8.4/en/window-functions-frames.html)。要限制输入，应先筛选事实或建立派生关系。
+
+RANK 对并列留跳号，DENSE_RANK 不留跳号，ROW_NUMBER 每行唯一；它们采用 Long 结果，见 [PostgreSQL 17 窗口函数](https://www.postgresql.org/docs/17/functions-window.html) 与 [HANA 排名示例](https://help.sap.com/docs/SAP_HANA_PLATFORM/4fe29514fd584807ac9f2a04f6754767/20a353327519101495dfd0a87060a0d3.html)。只有需要稳定行号时才给 ROW_NUMBER 添加唯一键；给 RANK/DENSE_RANK 添加同一唯一键会消除业务并列。窗口的排序也不等于最终输出顺序，分页前仍应对查询排序。
+
+规格仍可派生 `peers.partitionBy(order.region())`，不会改变原全局规格。自定义 WindowSpec 子类继续保留具体类型，结果需要自定义表达式时复用 `pro.view(result, factory)`。排名携带共同窗口标记，支持分组后排名、外层 SMART 筛选、CTE/count/page 和 clone，并拒绝未支持的跨分片合并。NULL 排序仍遵循各数据库规则，不默认统一为 NULLS FIRST 或 LAST。
+
 ## 复杂查询的边界
 
 分组→派生表→窗口→外层筛选继续使用原 EntityQueryable。启用 SMART_PREDICATE 时，Pro 窗口层外的筛选不会被推入分区输入；即使筛选普通日期或地区，也可能改变其他全局窗口，因此整个窗口层都保留筛选边界。普通非窗口查询继续委托上游优化器。

@@ -181,6 +181,14 @@ class DslCompilationTest {
         compile(false, "NumberTypeExpression<Integer> invalid = d.overValue(p.name(), d.window().orderBy(p.id())).firstValue();");
     }
 
+    @Test
+    void rankingWindowsKeepLongResultsAndCustomSpecificationTypes() throws IOException {
+        compile(true, "ReportWindow ordered = d.window(ReportWindow::new).orderBy(p.amount(), false); NumberTypeExpression<Long> rank = d.rank(ordered); NumberTypeExpression<Long> dense = d.denseRank(ordered); NumberTypeExpression<Long> row = d.rowNumber(ordered.orderBy(p.id()));");
+        compile(true, "NumberTypeExpression<Long> custom = d.view(d.rank(d.window().orderBy(p.id())), (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl<Long>(scope.context(), source.getTable(), source.getValue(), function, Long.class));");
+        compile(false, "NumberTypeExpression<Integer> rank = d.rank(d.window().orderBy(p.id()));");
+        compile(false, "StringTypeExpression<String> row = d.rowNumber(d.window().orderBy(p.id()));");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """

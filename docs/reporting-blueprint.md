@@ -47,7 +47,7 @@
 
 | 查询组合 | 支持目标与验收 |
 | --- | --- |
-| ROW_NUMBER/RANK/DENSE_RANK、LAG/LEAD、FIRST/LAST/NTH_VALUE | 复用上游入口；排序/并列/边界/default/NULL，明确哪些函数受 frame 影响 |
+| ROW_NUMBER/RANK/DENSE_RANK、LAG/LEAD、FIRST/LAST/NTH_VALUE | 原入口继续复用；排名只补空 partition/共同 WindowSpec 薄桥，拒绝被忽略的 frame；排序/并列/边界/default/NULL 各自验收 |
 | SUM/AVG/COUNT/MIN/MAX OVER | 分区和无分区、ROWS 起止、累计和整组窗口；输入与结果类型分别验证 |
 | 多表 JOIN 与外连接 | ON 与 WHERE 的过滤差别、未匹配 NULL、同名列、跨 schema、避免重复计数 |
 | 相关 EXISTS/NOT EXISTS、标量子查询 | 关联表归属、NULL 与空结果、参数绑定、嵌套与 clone |
@@ -99,7 +99,7 @@ PG date_bin 已使用 LocalDateTime、正且精确到微秒的 Duration、显式
 
 三库日历补月直接复用日期截断、LEFT JOIN、SUM/COUNT 与上游 LAG。共同验收区分无记录月份、NULL 金额记录、空事实集与展示零值；补齐后 CTE 固定窗口边界，SMART 筛选与分页不跳过空月。具体 API、结果表和源代码入口见 [时间分桶与缺月报表](reporting-time-series.md)，不新建日历/报表执行引擎。
 
-A01 的三库订单契约已补付款/退款 COUNT 与 SUM.filter、付款客户去重、金额非 NULL 计数、DECIMAL 输入提升后的加权均价、零/NULL 分母与分组后全局份额。保留上游 SUM.filter 的 ELSE 0 语义，不能把非空组无匹配和空输入都写成 NULL。部门 Top N 对照 RANK/DENSE_RANK 与带 id 次排序的 ROW_NUMBER；13 月稠密日历继续复用 LAG(1)/LAG(12) 验证环比/同比和真实零基数。固定结果和调用方式见 [订单报表](reporting-orders.md)；此进展不替代尚未实现的无 partition 排名桥，也不改变直接 distinct 字符串聚合的开放边界。
+A01 的三库订单契约已补付款/退款 COUNT 与 SUM.filter、付款客户去重、金额非 NULL 计数、DECIMAL 输入提升后的加权均价、零/NULL 分母与分组后全局份额。保留上游 SUM.filter 的 ELSE 0 语义，不能把非空组无匹配和空输入都写成 NULL。部门 Top N 对照 RANK/DENSE_RANK 与带 id 次排序的 ROW_NUMBER；13 月稠密日历继续复用 LAG(1)/LAG(12) 验证环比/同比和真实零基数。全局排名桥沿共同 WindowSpec 实现，仅补原 builder 空分区限制与窗口语义标记，不增加排名执行器。固定结果和调用方式见 [订单报表](reporting-orders.md)；此进展不改变直接 distinct 字符串聚合的开放边界。
 
 ### 官方规则链接
 

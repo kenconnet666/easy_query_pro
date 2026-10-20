@@ -86,6 +86,8 @@ RANK 和 DENSE_RANK 不追加 id，否则并列记录会被拆成不同名次。
 
 按部门取第一名时，RANK 返回 5 行，ROW_NUMBER 返回 4 行。取前两名时，RANK 为 6 行，DENSE_RANK 为 7 行。窗口结果在外层 CTE 上筛选，启用 SMART 后仍验证 count/page 与稳定排序，不能把窗口表达式塞进同层 WHERE。
 
-本节是已有分区排名的消费示例。上游 builder 不支持空 partition 的缺口另行处理，不用人为常量分区冒充新的全局排名入口。
+上面保留已有分区排名的消费示例。需要全局排名或统一 WindowSpec 时，使用 `pro.rank(spec)`、`denseRank(spec)`、`rowNumber(spec)`，规格不写 partition 即为全局，见 [窗口入口](dsl-windows.md)。这三个入口要求排序且拒绝 frame，也带有 Pro 的窗口计算边界。
+
+同一 fixture 的七条已付款、金额已知订单，按金额降序，id 1/9 的全局 RANK 都为 3，id 2/8 都为 5，金额为零的 id 4 为 7。ROW_NUMBER 在金额排序后增加 id，id 8 为 6；直接在外层筛选 id 8 仍保持 RANK 5 / ROW_NUMBER 6，而不是从 1 重新计算。部门先合计再全局排名时，A=50、D/E=40、B=0，对应 RANK 1/2/2/4 和 DENSE_RANK 1/2/2/3，分组层与展示筛选层继续分开。
 
 13 个月的同比/环比组合见 [时间序列报表](reporting-time-series.md)。对应测试按 clone 后执行各终端操作，参数和 SQL 重复渲染保持稳定，真实执行证据见 [执行记录](execution.md)。

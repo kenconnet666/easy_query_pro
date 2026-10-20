@@ -15,6 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class MySqlReportingIT {
     @Test
+    void globalRankingPreservesPeersAndGroupedReportBoundaries() throws SQLException {
+        OrderReportContract.verifyRankingWindows(TestClients.configured(MySqlTestDatabase.dataSource(), new MySQLDatabaseConfiguration(), MySqlExtensions::configure));
+    }
+
+    @Test
     void conditionalOrderMetricsAndTopRanks() throws SQLException {
         OrderReportContract.verify(TestClients.configured(MySqlTestDatabase.dataSource(), new MySQLDatabaseConfiguration(), MySqlExtensions::configure));
     }
