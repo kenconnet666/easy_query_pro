@@ -18,7 +18,6 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.SQLException;
 import java.util.List;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -31,56 +30,45 @@ class MySqlUnsignedIT {
         var source = MySqlTestDatabase.dataSource();
         source.setUseServerPrepStmts(serverPrepared);
         source.setSessionVariables("sql_mode='STRICT_ALL_TABLES" + (signedSubtraction ? ",NO_UNSIGNED_SUBTRACTION" : "") + "'");
-        String table = "eqp_unsigned_" + UUID.randomUUID().toString().replace("-", "");
-        try (var owner = source.getConnection()) {
-            boolean created = false;
-            try {
-                try (var statement = owner.createStatement()) {
-                    statement.execute("CREATE TABLE `" + table + "` (id INTEGER PRIMARY KEY, tiny_value " + MySqlTypes.unsignedTinyint().ddlType(SqlDialect.MYSQL)
-                            + ", small_value " + MySqlTypes.unsignedSmallint().ddlType(SqlDialect.MYSQL) + ", medium_value " + MySqlTypes.unsignedMediumint().ddlType(SqlDialect.MYSQL)
-                            + ", int_value " + MySqlTypes.unsignedInt().ddlType(SqlDialect.MYSQL) + ", big_value " + MySqlTypes.unsignedBigint().ddlType(SqlDialect.MYSQL) + ")");
-                    created = true;
-                }
-                var query = TestClients.configured(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
-                MySqlExtensions.configureTypeHandlers(query.getRuntimeContext().getJdbcTypeHandlerManager());
-                var full = new MySqlUnsignedRecord();
-                full.setId(1);
-                full.setTinyValue((short) 255);
-                full.setSmallValue(65535);
-                full.setMediumValue(16777215);
-                full.setIntValue(4294967295L);
-                full.setBigValue(MAX);
-                var empty = new MySqlUnsignedRecord();
-                empty.setId(2);
-                empty.setTinyValue((short) 0);
-                empty.setSmallValue(0);
-                empty.setMediumValue(0);
-                empty.setIntValue(0L);
-                empty.setBigValue(BigInteger.ZERO);
-                var absent = new MySqlUnsignedRecord();
-                absent.setId(3);
-                assertEquals(3L, query.insertable(List.of(full, empty, absent)).asTable(table).setSQLStrategy(SQLExecuteStrategyEnum.ALL_COLUMNS).executeRows());
-                var row = query.queryable(MySqlUnsignedRecord.class).asTable(table).where(p -> p.id().eq(1)).singleNotNull();
-                assertEquals(full.getTinyValue(), row.getTinyValue());
-                assertEquals(full.getSmallValue(), row.getSmallValue());
-                assertEquals(full.getMediumValue(), row.getMediumValue());
-                assertEquals(full.getIntValue(), row.getIntValue());
-                assertEquals(MAX, row.getBigValue());
-                assertNull(query.queryable(MySqlUnsignedRecord.class).asTable(table).where(p -> p.id().eq(3)).singleNotNull().getBigValue());
-                verifyExpressions(query, table, signedSubtraction);
-                assertThrows(RuntimeException.class, () -> query.updatable(MySqlUnsignedRecord.class).asTable(table).setColumns(p -> p.intValue().set(4294967296L)).where(p -> p.id().eq(1)).executeRows());
-                assertEquals(4294967295L, query.queryable(MySqlUnsignedRecord.class).asTable(table).where(p -> p.id().eq(1)).singleNotNull().getIntValue());
-                String aggregateSql = "SELECT SUM(big_value) FROM `" + table + "`";
-                var baseline = TestClients.configured(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
-                List<?> raw = baseline.getEasyQueryClient().sqlQuery(aggregateSql, BigInteger.class);
-                assertInstanceOf(BigDecimal.class, raw.get(0), "3.2.17 has no exact BigInteger result handler");
-                assertEquals(MAX, query.getEasyQueryClient().sqlQuery(aggregateSql, BigInteger.class).get(0));
-                assertThrows(RuntimeException.class, () -> query.getEasyQueryClient().sqlQuery("SELECT 1.5", BigInteger.class));
-            } finally {
-                if (created) try (var statement = owner.createStatement()) {
-                    statement.execute("DROP TABLE `" + table + "`");
-                }
-            }
+        try (var fixture = MySqlTestDatabase.createTable(source, "eqp_unsigned_", "id INTEGER PRIMARY KEY, tiny_value " + MySqlTypes.unsignedTinyint().ddlType(SqlDialect.MYSQL)
+                + ", small_value " + MySqlTypes.unsignedSmallint().ddlType(SqlDialect.MYSQL) + ", medium_value " + MySqlTypes.unsignedMediumint().ddlType(SqlDialect.MYSQL)
+                + ", int_value " + MySqlTypes.unsignedInt().ddlType(SqlDialect.MYSQL) + ", big_value " + MySqlTypes.unsignedBigint().ddlType(SqlDialect.MYSQL))) {
+            String table = fixture.name();
+            var query = TestClients.configured(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+            MySqlExtensions.configureTypeHandlers(query.getRuntimeContext().getJdbcTypeHandlerManager());
+            var full = new MySqlUnsignedRecord();
+            full.setId(1);
+            full.setTinyValue((short) 255);
+            full.setSmallValue(65535);
+            full.setMediumValue(16777215);
+            full.setIntValue(4294967295L);
+            full.setBigValue(MAX);
+            var empty = new MySqlUnsignedRecord();
+            empty.setId(2);
+            empty.setTinyValue((short) 0);
+            empty.setSmallValue(0);
+            empty.setMediumValue(0);
+            empty.setIntValue(0L);
+            empty.setBigValue(BigInteger.ZERO);
+            var absent = new MySqlUnsignedRecord();
+            absent.setId(3);
+            assertEquals(3L, query.insertable(List.of(full, empty, absent)).asTable(table).setSQLStrategy(SQLExecuteStrategyEnum.ALL_COLUMNS).executeRows());
+            var row = query.queryable(MySqlUnsignedRecord.class).asTable(table).where(p -> p.id().eq(1)).singleNotNull();
+            assertEquals(full.getTinyValue(), row.getTinyValue());
+            assertEquals(full.getSmallValue(), row.getSmallValue());
+            assertEquals(full.getMediumValue(), row.getMediumValue());
+            assertEquals(full.getIntValue(), row.getIntValue());
+            assertEquals(MAX, row.getBigValue());
+            assertNull(query.queryable(MySqlUnsignedRecord.class).asTable(table).where(p -> p.id().eq(3)).singleNotNull().getBigValue());
+            verifyExpressions(query, table, signedSubtraction);
+            assertThrows(RuntimeException.class, () -> query.updatable(MySqlUnsignedRecord.class).asTable(table).setColumns(p -> p.intValue().set(4294967296L)).where(p -> p.id().eq(1)).executeRows());
+            assertEquals(4294967295L, query.queryable(MySqlUnsignedRecord.class).asTable(table).where(p -> p.id().eq(1)).singleNotNull().getIntValue());
+            String aggregateSql = "SELECT SUM(big_value) FROM `" + table + "`";
+            var baseline = TestClients.configured(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+            List<?> raw = baseline.getEasyQueryClient().sqlQuery(aggregateSql, BigInteger.class);
+            assertInstanceOf(BigDecimal.class, raw.get(0), "3.2.17 has no exact BigInteger result handler");
+            assertEquals(MAX, query.getEasyQueryClient().sqlQuery(aggregateSql, BigInteger.class).get(0));
+            assertThrows(RuntimeException.class, () -> query.getEasyQueryClient().sqlQuery("SELECT 1.5", BigInteger.class));
         }
     }
 

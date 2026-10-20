@@ -17,7 +17,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 import java.sql.SQLException;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,38 +27,27 @@ class MySqlJsonDslIT {
         var source = MySqlTestDatabase.dataSource();
         source.setUseServerPrepStmts(serverPrepared);
         if (noBackslashEscapes) source.setSessionVariables("sql_mode='NO_BACKSLASH_ESCAPES'");
-        String table = "eqp_mysql_json_" + UUID.randomUUID().toString().replace("-", "");
-        try (var owner = source.getConnection()) {
-            boolean created = false;
-            try {
-                try (var statement = owner.createStatement()) {
-                    statement.execute("CREATE TABLE `" + table + "` (id INTEGER PRIMARY KEY, document "
-                            + MySqlTypes.json().ddlType(SqlDialect.MYSQL) + ", plain TEXT, payload JSON) CHARACTER SET utf8mb4");
-                    created = true;
-                }
-                var query = TestClients.configured(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
-                MySqlExtensions.configureMappings(query.getRuntimeContext().getQueryConfiguration());
-                var converter = new JsonPayload.Converter();
-                query.getRuntimeContext().getQueryConfiguration().applyValueConverter(converter);
-                var row = new MySqlJsonRecord();
-                row.setId(1);
-                row.setDocument("{\"tags\":[\"a\",\"b\",\"c\"],\"nested\":{\"v\":1},\"empty\":null}");
-                row.setPlain("ordinary O'Reilly \\ 中😀");
-                row.setPayload(new JsonPayload("O'Reilly \\ 中😀", 3));
-                assertEquals(1L, query.insertable(row).asTable(table).executeRows());
-                var read = query.queryable(MySqlJsonRecord.class).asTable(table).singleNotNull();
-                assertEquals(row.getPlain(), read.getPlain());
-                assertEquals(row.getPayload(), read.getPayload());
-                assertEquals(1, converter.writes());
-                verifyPredicates(query, table);
-                verifyMutations(query, table);
-                verifyBusinessMappingAndRollback(query, table, converter, row.getPayload());
-                verifyNulls(query, table);
-            } finally {
-                if (created) try (var statement = owner.createStatement()) {
-                    statement.execute("DROP TABLE `" + table + "`");
-                }
-            }
+        try (var fixture = MySqlTestDatabase.createTable(source, "eqp_mysql_json_", "id INTEGER PRIMARY KEY, document "
+                + MySqlTypes.json().ddlType(SqlDialect.MYSQL) + ", plain TEXT, payload JSON")) {
+            String table = fixture.name();
+            var query = TestClients.configured(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+            MySqlExtensions.configureMappings(query.getRuntimeContext().getQueryConfiguration());
+            var converter = new JsonPayload.Converter();
+            query.getRuntimeContext().getQueryConfiguration().applyValueConverter(converter);
+            var row = new MySqlJsonRecord();
+            row.setId(1);
+            row.setDocument("{\"tags\":[\"a\",\"b\",\"c\"],\"nested\":{\"v\":1},\"empty\":null}");
+            row.setPlain("ordinary O'Reilly \\ 中😀");
+            row.setPayload(new JsonPayload("O'Reilly \\ 中😀", 3));
+            assertEquals(1L, query.insertable(row).asTable(table).executeRows());
+            var read = query.queryable(MySqlJsonRecord.class).asTable(table).singleNotNull();
+            assertEquals(row.getPlain(), read.getPlain());
+            assertEquals(row.getPayload(), read.getPayload());
+            assertEquals(1, converter.writes());
+            verifyPredicates(query, table);
+            verifyMutations(query, table);
+            verifyBusinessMappingAndRollback(query, table, converter, row.getPayload());
+            verifyNulls(query, table);
         }
     }
 
