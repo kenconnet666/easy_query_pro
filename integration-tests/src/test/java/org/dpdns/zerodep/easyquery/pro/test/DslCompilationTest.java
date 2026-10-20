@@ -85,6 +85,17 @@ class DslCompilationTest {
         compile(false, "MySqlDsl.of(p).value(JsonInput.jsonNull(), PgSqlTypes.jsonb());");
     }
 
+    @Test
+    void sqlArrayOperationsKeepElementsDistinctFromTheirWholeColumnMapping() throws IOException {
+        compile(true, "var pg = PgSqlDsl.of(p); PgArrayExpression<Integer, PgArrayValue<Integer>> a = pg.value(java.util.List.of(1, 2), PgSqlTypes.array(Integer.class)); AnyTypeExpression<Integer> element = a.elementAtSqlIndex(1); BooleanTypeExpression<Boolean> matched = a.anyEq(p.id()); NumberTypeExpression<Integer> total = a.cardinality();");
+        compile(true, "PgArrayExpression<String, java.util.List<String>> a = PgSqlDsl.of(aRecord).view(aRecord.labels(), PgSqlTypes.array(String.class)); a.overlapsValues(java.util.List.of(\"one\")).eq(true); aRecord.labels().set(a);");
+        compile(false, "PgSqlDsl.of(p).value(java.util.List.of(\"wrong\"), PgSqlTypes.array(Integer.class));");
+        compile(false, "PgSqlDsl.of(p).value(java.util.List.of(1), PgSqlTypes.array(Integer.class)).anyEqValue(\"wrong\");");
+        compile(false, "PgSqlDsl.of(p).value(java.util.List.of(1), PgSqlTypes.array(Integer.class)).overlaps(PgSqlDsl.of(p).value(java.util.List.of(\"wrong\"), PgSqlTypes.array(String.class)));");
+        compile(false, "AnyTypeExpression<String> element = PgSqlDsl.of(p).value(java.util.List.of(1), PgSqlTypes.array(Integer.class)).elementAtSqlIndex(1);");
+        compile(false, "PgSqlDsl.of(p).value(java.util.List.of(1), PgSqlTypes.array(Integer.class)).anyEq(p.name());");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
@@ -95,6 +106,7 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.dsl.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.type.*;
@@ -102,7 +114,8 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgJsonRecordProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.MySqlJsonRecordProxy;
-                final class Consumer { void use(ProDsl d, TestProductProxy p, TestEventProxy e, PgJsonRecordProxy j, MySqlJsonRecordProxy m) { %s } }
+                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgArrayRecordProxy;
+                final class Consumer { void use(ProDsl d, TestProductProxy p, TestEventProxy e, PgJsonRecordProxy j, MySqlJsonRecordProxy m, PgArrayRecordProxy aRecord) { %s } }
                 """.formatted(body));
         var compiler = ToolProvider.getSystemJavaCompiler();
         assertNotNull(compiler, "Consumer compilation requires a JDK");

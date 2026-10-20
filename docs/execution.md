@@ -316,9 +316,21 @@ IDEA 格式化和构建通过；批量格式化曾被 IDE 的新增文件 Git �
 
 使用与限制见 [MySQL JSON](mysql-json.md)。继续由 CI 执行三库与平台完整回归，PG 数组/interval 和后续 G4–G7 尚未完成。
 
+## PostgreSQL 一维 SQL 数组
+
+提交 `3de6c2e4b79bbae214807c3b9b49a5edc399faec` 的 [CI 39366533402](https://github.com/kenconnet666/easy_query_pro/actions/runs/39366533402) 已通过全部五个强制任务，包含 MySQL JSON 的四种模式、测试设施整理和完整三库回归。
+
+新增 PgArrayType/PgArrayValue 与 pgJDBC 专用 handler，仅注册显式包装类，不改变普通 List/String/byte[]。支持规划中的八种元素类型、一维和默认下界。PgArrayExpression<E,T> 保留元素与整列映射的两个类型；ANY、包含/被包含、重叠、cardinality、维度长度和 SQL 下标访问回到准确的上游表达式族。
+
+核查 42.7.14 源码后发现 getArray/getResultSet，以及二进制 PgArray.toString 会丢弃下界，因此读取先检查公开二进制头或文本前缀，拒绝多维/非默认下界。没有解析完整数组文本或读取私有字段。时间参数复用 pgJDBC TimestampUtils，真实验证包含公元前、1500 年日期、补充字符、NULL 元素和 infinity。EasyQuery 不把自定义包装类当作基础类型，使用公开 EntityMetadataManager 扩展点补充精确的 PgArrayValue 标量元数据。
+
+本地先通过 5 项数组映射/批处理/维度边界实库用例，然后通过含 DSL 的 8 项组合。最后新增 GIN 可用性及显式 int4[] → int8[] 转换后，PostgresArrayDslIT 共 4 项通过。另有 15 个选定离线/编译用例通过，包括读取/绑定主异常与 cleanup 异常的保留、跨 client 拒绝，以及 14 个消费者正例、28 个负例。GIN 只证明包含/重叠 operator 能匹配索引，不作为性能结论。
+
+IDEA 构建通过，MCP 确认 eqp_array_* fixture schema 遗留为 0；临时表随所属连接关闭，开发数据库保留。MySQL Draft 投影的 IDE 泛型提示整理为独立提交 `5eaa032`。本轮数组编译/原生/离线/索引诊断日志在记录证据后清理，标准报告保留。使用说明见 [PostgreSQL 数组](pgsql-arrays.md)。
+
 ## 下一步
 
-1. 检查 MySQL JSON 提交的 CI，继续 PostgreSQL 数组的元素类型、绑定/读取、下界和资源释放。
+1. 检查 PostgreSQL 数组提交的 CI，继续 PostgreSQL interval 与三库原生类型目录。
 2. 推进三库原生类型目录与 HANA 受限类型视图，保留通用标量表达式。
 3. 继续关闭 HANA 历史历法、无显式列插入、distinct 聚合及完整查询源等已有问题。
 4. 按依赖完成窗口、全文、HANA 层级/计算视图、干净消费者和完整成熟度验收。

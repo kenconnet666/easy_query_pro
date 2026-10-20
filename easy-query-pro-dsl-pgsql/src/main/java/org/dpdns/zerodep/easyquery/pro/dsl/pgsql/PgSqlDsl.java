@@ -14,6 +14,10 @@ import org.dpdns.zerodep.easyquery.pro.dsl.internal.UnicodeStrings;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonInput;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.*;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NativeJsonType;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayExpressions;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayType;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayValue;
 
 import java.util.Arrays;
 import java.util.List;
@@ -34,6 +38,18 @@ public final class PgSqlDsl {
 
     public static PgSqlDsl of(ProxyEntity<?, ?> entity) {
         return new PgSqlDsl(entity);
+    }
+
+    public <E, T> PgArrayExpression<E, T> view(PropTypeColumn<T> source, PgArrayType<E> type) {
+        return PgArrayExpressions.view(scope, source, type);
+    }
+
+    public <E> PgArrayExpression<E, PgArrayValue<E>> value(List<? extends E> values, PgArrayType<E> type) {
+        return PgArrayExpressions.value(scope, values, type);
+    }
+
+    public <E> PgArrayExpression<E, PgArrayValue<E>> nativeCast(PropTypeColumn<?> source, PgArrayType<E> type) {
+        return PgArrayExpressions.cast(scope, source, type);
     }
 
     public <T> PgJsonExpression<T> view(PropTypeColumn<T> source, PgSqlTypes.Json type) {

@@ -2,6 +2,7 @@ package org.dpdns.zerodep.easyquery.pro.dsl.pgsql;
 
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.NativeJsonType;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayType;
 
 public final class PgSqlTypes {
     private static final Json JSON = new Json();
@@ -16,6 +17,10 @@ public final class PgSqlTypes {
 
     public static Jsonb jsonb() {
         return JSONB;
+    }
+
+    public static <E> PgArrayType<E> array(Class<E> elementType) {
+        return PgArrayType.of(elementType);
     }
 
     public static final class Json extends NativeJsonType {
