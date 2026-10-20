@@ -555,3 +555,11 @@ JOIN 原型还确认 EasyQuery 3.2.17 的两个同源 clone 共享 Proxy，ON �
 本地正常 verify 路径通过 8 个离线/消费者检查与 1 个真实 HDI 生命周期用例。随后补 nullable 编码保留断言，7 个 HanaSourceDslTest 通过。只读复审无阻塞问题，收尾增加编码调用次数、clone 不重编码、显式 NULL 不调用编码器及列表编码快照检查；使用指定 JBR 17 执行 `mvnw.cmd --batch-mode test -Phana -Dtest=HanaSourceDslTest -Dsurefire.failIfNoSpecifiedTests=false`，7 个检查再次通过。IDEA 构建已通过，MCP 确认 EQP_HDI schema 遗留为零；本轮三份诊断日志记录后清理，标准测试报告与持久开发实例保留。
 
 2026-10-21 用户调整分工，Java 实现交由指定代理继续，主线程串行提交、推送并推进独立的 TypeScript 方向。当前多值批次的完整 CI 留给新提交执行；下一步接入标量输入表函数，共享声明校验和 fresh Proxy 生命周期，保留计算视图 API，不另建执行器。
+
+## HANA 标量输入表函数
+
+多值批次 `5f8af9e083e11ff8260a1545aa39b097ff810011` 已通过 [CI 39459057577](https://github.com/kenconnet666/easy_query_pro/actions/runs/39459057577)，提交交接前核对运行 SHA 与结论一致。H11 新增 HanaTableFunction，与原 HanaCalculationView 通过包内 HanaQuerySource 组合共享声明/赋值校验、编码、方言检查及 fresh Proxy 生命周期。两个公开入口保留各自 protected 构造器和清晰语义；表函数统一使用命名实参，零实参仍有调用括号，不引入额外执行器或目录查询。
+
+在现有 HDI 生命周期内加入 EQP_FUNCTION.hdbfunction，真实验证 HANA 2.00.088 支持 `"P_NAME" => ?`，省略中间参数仍正确使用 DEFAULT，显式 NULL 不等于缺省。文本、空字符串、注入样式文本和 BigDecimal 均走 JDBC。外层参数顺序、Draft 聚合、独立来源 JOIN、CTE/count/page 和原 client 事务回滚全部通过；计算视图单值/多值回归同轮执行。函数采用 SQL SECURITY INVOKER，测试容器额外授予 EXECUTE，未扩大已有持久 schema 权限。
+
+使用指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Phana -Dtest=HanaSourceDslTest,DslCompilationTest#hanaSourceInputsAndOutputProxyStayTyped -Dit.test=HanaHdiIT -Dsurefire.failIfNoSpecifiedTests=false`，12 个离线/消费者检查和 1 个真实 HDI 生命周期用例通过。只读复审未发现阻塞缺陷，补充说明列表声明用于函数时仍为协议字符串，不代表 SQL 数组或表参数。IDEA 格式与构建成功；MCP 查询 SYS.SCHEMAS 确认 EQP_HDI schema 遗留为零，诊断日志记录后清理。表函数完整 CI 将随本批提交异步执行，完整 H11/G6 的非管理员、更多模型精度及干净产物消费仍继续验收。

@@ -1,6 +1,6 @@
 # HANA 参数化查询来源
 
-`HanaCalculationView<P,T>` 将已部署的计算视图接入原 EntityQueryable。它负责对象名称引用、输入参数声明和绑定；部署、权限、连接池、事务、执行器与结果映射继续使用既有组件。
+`HanaCalculationView<P,T>` 与 `HanaTableFunction<P,T>` 将已部署的计算视图、标量输入表函数接入原 EntityQueryable。它们负责对象名称引用、输入参数声明和绑定；部署、权限、连接池、事务、执行器与结果映射继续使用既有组件。两者通过包内组合基础共享校验和代理生命周期，表函数不继承计算视图的 PLACEHOLDER 语义。
 
 ## 声明输入和输出
 
@@ -52,7 +52,7 @@ HANA 2.00.088 的真实 HDI fixture 已分别验证：省略 P_NAME 使用模型
 
 实库测试还验证了原 client 的同一事务：写入未提交行后通过计算视图读取可见，回滚后该行消失。来源类不自行提交、切换连接或创建另一个事务上下文。
 
-实际 fixture 沿用[HDI 部署测试](hana-hdi.md)，先证明对象类型是 CALC，再验证正式查询入口。不会用普通 SQL view 或表函数替代计算视图验证。当前入口覆盖标量与下述多值模型输入；选定表函数仍是 H11 后续交付项。
+实际 fixture 沿用[HDI 部署测试](hana-hdi.md)，先证明对象类型是 CALC，再验证正式查询入口。计算视图与表函数使用各自真实工件，分别验证，不相互替代。
 
 ## 模型多值输入
 
@@ -74,3 +74,34 @@ var rows = view.query(client, names.bind(List.of("O'Reilly, 中文", "A\"B")));
 多值 XML 的 selection/SQL 过滤形态参考固定 [SAP Cloud 教学样例](https://github.com/SAP-samples/hana-cloud-learning/blob/1f536fc4c256cfefedc8acde6efd62892abf8f8b/calculationViewTraining/inputParameters/db/src/1_solution/calcviews/CV_PRODUCT_DATA_MVIP.hdbcalculationview)，已在本项目 HANA 2.0 HDI 实际部署和查询。模型使用 `multiLine="true"` 与 `IN ($$P_NAMES$$)`，占位符外不包单引号。绑定层协议参见 [SAP 多值赋值说明](https://help.sap.com/docs/SAP_HANA_PLATFORM/88fe5f56472e40cca6ef3c3dcab4855b/a3dcbde19bdc4c7380fb6aabb48c4589.html)；官方直接 SQL 示例的外层字符串引号不能再原样加给 JDBC。
 
 参数名语法与模型默认值依据 [SAP Column View Parameter Binding](https://help.sap.com/docs/SAP_HANA_PLATFORM/de2486ee947e43e684d39702027f8a94/f1c17eb3a5b04f8b82d5908218e3fa68.html) 和 [CS_VIEW_PARAMETERS](https://help.sap.com/docs/SAP_HANA_PLATFORM/4fe29514fd584807ac9f2a04f6754767/3abb2714091d495b9eb277ce6f9daa07.html)。本包不自动反查目录推断 API 类型；支持范围以版本固定的实库测试为准。
+
+## 标量输入表函数
+
+```java
+var name = HanaInput.optional("P_NAME", String.class).nullable();
+var minId = HanaInput.optional("P_MIN_ID", Integer.class);
+var minAmount = HanaInput.optional("P_MIN_AMOUNT", BigDecimal.class);
+var function = HanaTableFunction.of(
+        "REPORT_SCHEMA", "SALES_FUNCTION", SaleViewProxy::createTable,
+        name, minId, minAmount);
+
+var report = function.query(client,
+                minAmount.bind(new BigDecimal("100")),
+                name.bind("O'Reilly 中文"))
+        .where(row -> row.id().gt(0))
+        .toCteAs("selected_sales")
+        .orderBy(row -> row.id().asc())
+        .toPageResult(1, 20);
+```
+
+实参统一使用形参名，例如 `"P_NAME" => ?`，不使用 PLACEHOLDER。按声明顺序生成 SQL 和参数，即使调用方先传 minAmount，仍正确对应函数形参。上例省略中间的 P_MIN_ID，由数据库函数的 DEFAULT 决定它的值。零实参保留 `FUNCTION ()`，不是普通表引用；接口不提供位置/命名混用、SQL DEFAULT token、表参数、SQL 数组或关联外层列的实参协议。
+
+若复用列表声明传入表函数，编码结果仍只是一个字符串实参；只有函数自行接收并处理同一模型协议时才有意义，不会自动变成 SQL 数组或表参数。
+
+形参名按模型实际名称精确引用；未带引号声明的名字在 HANA 中通常保存为大写，因此应使用目录中的实际名称。required/optional 仍是应用契约，不自动读取 SYS.FUNCTION_PARAMETERS 来猜测数据库声明。允许显式 NULL 的参数会绑定一个真正的 SQL NULL，而不会被删除并触发默认值。NULL 如何影响结果由函数体决定。
+
+HANA 2.00.088 的 HDI `EQP_FUNCTION.hdbfunction` 已验证命名 JDBC 绑定、缺省中间参数、全部缺省、NULL、字符串与 BigDecimal、外层条件参数顺序、聚合、独立来源 JOIN、CTE/count/page 及原 client 事务。fixture 的省略 P_NAME 命中 `other`，显式 NULL 则解除名称过滤；这与计算视图 fixture 的 NULL 过滤结果不同，来源层不替应用改写这种语义。
+
+函数工件由应用或 HDI 部署，查询入口不会自动创建或授权。使用 `SQL SECURITY INVOKER` 时应用身份需要函数 EXECUTE 及函数体访问对象所需权限；本包不提升权限。HDI 测试注册 `com.sap.hana.di.function` 并使用独立容器授权，结束时回收全部工件。
+
+命名和默认值依据 [HANA 2.0 SQLScript 默认参数说明](https://help.sap.com/docs/SAP_HANA_PLATFORM/de2486ee947e43e684d39702027f8a94/9a0f61afbca947ae85938194b63aba23.html?locale=en-us)，`.hdbfunction` 结构参考固定 [SAP SHINE 表函数](https://github.com/SAP-samples/hana-shine-xsa/blob/0cfd539e629edee37942ee3acc54de25f811c9d3/core-db/src/functions/get_buyer_city.hdbfunction)。本项目的标量绑定与查询组合由自己的实库 fixture 验收。

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.HanaExtensions;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaCalculationView;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaInput;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaTableFunction;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaViewRowProxy;
 import com.easy.query.core.proxy.sql.Select;
@@ -26,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HanaHdiIT {
     @Test
-    void deploysAndQueriesARealParameterizedCalculationView() throws SQLException, IOException {
+    void deploysAndQueriesRealParameterizedSources() throws SQLException, IOException {
         // HDI 容器名称比普通带引号的 schema 更严格，只接受大写字母、数字和下划线。
         String container = HanaTestDatabase.uniqueName("HDI").toUpperCase(Locale.ROOT);
         try (var connection = HanaTestDatabase.connect(); var setup = connection.createStatement()) {
@@ -48,6 +49,7 @@ class HanaHdiIT {
                 verifyCalculationView(connection, container);
                 verifyQueryableSource(container);
                 verifyMultiValueSources(connection, container);
+                verifyTableFunctionSource(container);
             } finally {
                 invoke(connection, "CALL _SYS_DI.DROP_CONTAINER('" + container
                         + "', #EQP_HDI_DROP_PARAMETERS, ?, ?, ?)");
@@ -63,7 +65,7 @@ class HanaHdiIT {
         try (var files = connection.prepareStatement("INSERT INTO #EQP_HDI_FILES (PATH,CONTENT) VALUES (?,?)");
              var paths = connection.prepareStatement("INSERT INTO #EQP_HDI_PATHS (PATH) VALUES (?)")) {
             for (String path : List.of(".hdiconfig", "EQP_SOURCE.hdbtable", "EQP_CALC.hdbcalculationview",
-                    "EQP_CALC_NAMES.hdbcalculationview", "EQP_CALC_IDS.hdbcalculationview")) {
+                    "EQP_CALC_NAMES.hdbcalculationview", "EQP_CALC_IDS.hdbcalculationview", "EQP_FUNCTION.hdbfunction")) {
                 try (var resource = HanaHdiIT.class.getResourceAsStream("/hana/hdi/" + path)) {
                     assertNotNull(resource, path);
                     files.setString(1, path);
@@ -84,6 +86,7 @@ class HanaHdiIT {
             statement.execute("CREATE LOCAL TEMPORARY COLUMN TABLE #EQP_HDI_SCHEMA_PRIVILEGES LIKE _SYS_DI.TT_SCHEMA_PRIVILEGES");
             statement.execute("INSERT INTO #EQP_HDI_SCHEMA_PRIVILEGES SELECT 'SELECT','',CURRENT_USER FROM DUMMY");
             statement.execute("INSERT INTO #EQP_HDI_SCHEMA_PRIVILEGES SELECT 'INSERT','',CURRENT_USER FROM DUMMY");
+            statement.execute("INSERT INTO #EQP_HDI_SCHEMA_PRIVILEGES SELECT 'EXECUTE','',CURRENT_USER FROM DUMMY");
         }
         invoke(connection, "CALL _SYS_DI.GRANT_CONTAINER_SCHEMA_PRIVILEGES('" + container
                 + "', #EQP_HDI_SCHEMA_PRIVILEGES, _SYS_DI.T_NO_PARAMETERS, ?, ?, ?)");
@@ -196,6 +199,48 @@ class HanaHdiIT {
         assertEquals(List.of(1, 4), numeric.cloneQueryable().toList().stream().map(r -> r.getId()).toList());
         assertEquals("4,1", numeric.cloneQueryable().toSQLResult().getSqlContext().getParameters().get(0).getValue());
         assertTrue(numericView.query(client, ids.bind(List.of(-1))).toList().isEmpty());
+    }
+
+    private static void verifyTableFunctionSource(String schema) throws SQLException {
+        var client = TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure).getEasyQueryClient();
+        var name = HanaInput.optional("P_NAME", String.class).nullable();
+        var minId = HanaInput.optional("P_MIN_ID", Integer.class);
+        var minAmount = HanaInput.optional("P_MIN_AMOUNT", BigDecimal.class);
+        var function = HanaTableFunction.of(schema, "EQP_FUNCTION", HanaViewRowProxy::createTable, name, minId, minAmount);
+
+        assertEquals(2, function.query(client).singleNotNull().getId());
+        assertEquals(6L, function.query(client, name.bind(null)).count());
+        // 跳过中间的 P_MIN_ID，仅按名称绑定末项；实库证明 => ? 和默认值可以一起使用。
+        var matching = function.query(client, minAmount.bind(new BigDecimal("100.0000")), name.bind("O'Reilly 中文"));
+        var row = matching.cloneQueryable().singleNotNull();
+        assertEquals(1, row.getId());
+        assertEquals("O'Reilly 中文", row.getName());
+        assertEquals(new BigDecimal("123.4500"), row.getAmount());
+        var filtered = matching.cloneQueryable().where(r -> r.id().gt(0));
+        assertEquals(List.of("O'Reilly 中文", new BigDecimal("100.0000"), 0),
+                filtered.cloneQueryable().toSQLResult().getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(1L, filtered.cloneQueryable().toCteAs("function_rows").orderBy(r -> r.id().asc()).toPageResult(1, 2).getTotal());
+        var total = matching.cloneQueryable().groupBy(r -> GroupKeys.of(r.name()))
+                .select(g -> Select.DRAFT.of(g.key1(), g.groupTable().amount().sumBigDecimal())).singleNotNull();
+        assertEquals(0, new BigDecimal("123.4500").compareTo(total.getValue2()));
+        assertTrue(function.query(client, name.bind("not-there') OR 1=1 --")).toList().isEmpty());
+        assertEquals(6, function.query(client, name.bind("x') OR 1=1 --")).singleNotNull().getId());
+        assertEquals(5, function.query(client, name.bind("")).singleNotNull().getId());
+        assertEquals(3L, function.query(client, name.bind(null), minId.bind(4)).count());
+
+        var joined = function.query(client, name.bind("O'Reilly 中文"))
+                .leftJoin(function.query(client), (left, right) -> left.id().eq(right.id()))
+                .select((left, right) -> Select.DRAFT.of(left.id(), right.name())).singleNotNull();
+        assertEquals(1, joined.getValue1());
+        org.junit.jupiter.api.Assertions.assertNull(joined.getValue2());
+        // 表函数继续使用原 client 的事务，不能在来源包装中提前执行或换一条连接。
+        try (var transaction = client.beginTransaction()) {
+            assertEquals(1L, client.sqlExecute("INSERT INTO \"" + schema + "\".\"EQP_SOURCE\" VALUES (?,?,?)",
+                    List.of(99, "function transaction", new BigDecimal("9.0000"))));
+            assertEquals(99, function.query(client, name.bind("function transaction")).singleNotNull().getId());
+            transaction.rollback();
+        }
+        assertTrue(function.query(client, name.bind("function transaction")).toList().isEmpty());
     }
 
     private static void invoke(Connection connection, String call) throws SQLException {

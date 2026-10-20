@@ -4,6 +4,7 @@ import com.easy.query.core.basic.jdbc.parameter.SQLParameter;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaCalculationView;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaInput;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.HanaTableFunction;
 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaViewRowProxy;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.api.Test;
@@ -141,5 +142,51 @@ class HanaSourceDslTest {
         var explicit = view.query(client, name.bind(null)).toSQLResult();
         assertTrue(explicit.getSQL().contains("PLACEHOLDER"));
         assertEquals(Arrays.asList((Object) null), explicit.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+    }
+
+    @ParameterizedTest
+    @MethodSource("org.dpdns.zerodep.easyquery.pro.test.DecimalDslTest#backends")
+    void tableFunctionUsesNamedBindingsAndKeepsMissingMiddleParameters(DecimalDslTest.Backend backend) {
+        var name = HanaInput.required("P_NAME", String.class);
+        var middle = HanaInput.optional("P_MIN_ID", Integer.class);
+        var amount = HanaInput.optional("P_MIN_AMOUNT", BigDecimal.class);
+        var function = HanaTableFunction.of("report schema", "FUNCTION\"quoted",
+                HanaViewRowProxy::createTable, name, middle, amount);
+        var client = backend.client().getEasyQueryClient();
+        if (backend.dialect() != SqlDialect.HANA) {
+            assertThrows(IllegalArgumentException.class, () -> function.query(client, name.bind("value")));
+            return;
+        }
+        var query = function.query(client, amount.bind(BigDecimal.TEN), name.bind("O'Reilly"))
+                .where(r -> r.id().gt(0));
+        var result = query.cloneQueryable().toSQLResult();
+        assertTrue(result.getSQL().contains("\"report schema\".\"FUNCTION\"\"quoted\" (\"P_NAME\" => ?,\"P_MIN_AMOUNT\" => ?)"), result.getSQL());
+        assertFalse(result.getSQL().contains("PLACEHOLDER"));
+        assertFalse(result.getSQL().contains("O'Reilly"));
+        assertEquals(List.of("O'Reilly", BigDecimal.TEN, 0),
+                result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(result.getSQL(), query.cloneQueryable().toSQL());
+        assertThrows(IllegalArgumentException.class, () -> function.query(client));
+        assertThrows(IllegalArgumentException.class, () -> function.query(client, name.bind("a"), name.bind("b")));
+        assertThrows(IllegalArgumentException.class, () -> function.query(client, HanaInput.required("P_NAME", String.class).bind("a")));
+    }
+
+    @ParameterizedTest
+    @MethodSource("hana")
+    void tableFunctionPreservesEmptyInvocationNullAndProxyOwnership(DecimalDslTest.Backend backend) {
+        var name = HanaInput.optional("P_NAME", String.class).nullable();
+        var function = HanaTableFunction.of("REPORT", "FUNCTION", HanaViewRowProxy::createTable, name);
+        var client = backend.client().getEasyQueryClient();
+        var omitted = function.query(client).toSQLResult();
+        assertTrue(omitted.getSQL().contains("\"REPORT\".\"FUNCTION\" ()"), omitted.getSQL());
+        assertTrue(omitted.getSqlContext().getParameters().isEmpty());
+        var explicit = function.query(client, name.bind(null)).toSQLResult();
+        assertTrue(explicit.getSQL().contains("\"P_NAME\" => ?"));
+        assertEquals(Arrays.asList((Object) null), explicit.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        var proxy = HanaViewRowProxy.createTable();
+        var reused = HanaTableFunction.of("REPORT", "FUNCTION", () -> proxy, name);
+        reused.query(client);
+        assertThrows(IllegalArgumentException.class, () -> reused.query(client));
+        assertThrows(IllegalArgumentException.class, () -> HanaTableFunction.of("REPORT", "FUNCTION", HanaViewRowProxy::createTable, name, name));
     }
 }

@@ -264,5 +264,7 @@ class DslCompilationTest {
         compile(true, "var names = HanaInput.requiredTextList(\"P_NAMES\"); names.bind(java.util.List.of(\"a\", \"b\")); var ids = HanaInput.requiredNumericList(\"P_IDS\", Integer.class); ids.bind(java.util.List.of(1, 2));");
         compile(false, "HanaInput.requiredTextList(\"P_NAMES\").bind(java.util.List.of(1,2));");
         compile(false, "HanaInput.requiredNumericList(\"P_IDS\", Integer.class).bind(java.util.List.of(1L));");
+        compile(true, "var amount = HanaInput.optional(\"P_MIN_AMOUNT\", BigDecimal.class); var function = HanaTableFunction.of(\"REPORT\", \"FUNCTION\", HanaViewRowProxy::createTable, amount); BigDecimal value = function.query(null, amount.bind(BigDecimal.ONE)).singleNotNull().getAmount();");
+        compile(false, "var function = HanaTableFunction.of(\"REPORT\", \"FUNCTION\", HanaViewRowProxy::createTable); String wrong = function.query(null).singleNotNull().getAmount();");
     }
 }

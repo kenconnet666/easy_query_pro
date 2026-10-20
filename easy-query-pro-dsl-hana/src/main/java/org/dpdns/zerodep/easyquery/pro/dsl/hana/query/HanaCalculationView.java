@@ -1,18 +1,10 @@
 package org.dpdns.zerodep.easyquery.pro.dsl.hana.query;
 
 import com.easy.query.api.proxy.entity.select.EntityQueryable;
-import com.easy.query.api.proxy.entity.select.impl.EasyEntityQueryable;
 import com.easy.query.core.api.client.EasyQueryClient;
 import com.easy.query.core.proxy.ProxyEntity;
-import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
-import org.dpdns.zerodep.easyquery.pro.hana.config.HanaSQLKeyword;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -28,21 +20,10 @@ import java.util.function.Supplier;
  * @param <T> 输出实体或 DTO 类型
  */
 public class HanaCalculationView<P extends ProxyEntity<P, T>, T> {
-    private static final HanaSQLKeyword KEYWORDS = new HanaSQLKeyword();
-    private final String qualifiedName;
-    private final Supplier<P> proxyFactory;
-    private final Map<String, HanaInput<?>> inputs;
+    private final HanaQuerySource<P, T> source;
 
     protected HanaCalculationView(String schema, String view, Supplier<P> proxyFactory, List<HanaInput<?>> inputs) {
-        qualifiedName = KEYWORDS.quoteUnquotedName(schema) + "." + KEYWORDS.quoteUnquotedName(view);
-        this.proxyFactory = Objects.requireNonNull(proxyFactory, "proxyFactory");
-        var declarations = new LinkedHashMap<String, HanaInput<?>>();
-        for (var input : inputs) {
-            Objects.requireNonNull(input, "input");
-            if (declarations.putIfAbsent(input.name(), input) != null)
-                throw new IllegalArgumentException("Duplicate HANA input declaration: " + input.name());
-        }
-        this.inputs = Collections.unmodifiableMap(declarations);
+        source = new HanaQuerySource<>(HanaQuerySource.Kind.CALCULATION_VIEW, schema, view, proxyFactory, inputs);
     }
 
     /**
@@ -61,45 +42,6 @@ public class HanaCalculationView<P extends ProxyEntity<P, T>, T> {
      * 后续 where/order/group/CTE/count/page 与事务继续使用同一个 EasyQuery client。
      */
     public EntityQueryable<P, T> query(EasyQueryClient client, HanaInput.Binding<?>... bindings) {
-        Objects.requireNonNull(client, "client");
-        SqlDialect dialect;
-        try {
-            dialect = client.getRuntimeContext().getService(SqlDialect.class);
-        } catch (IllegalArgumentException absent) {
-            throw new IllegalStateException("Install HanaExtensions before querying a calculation view", absent);
-        }
-        if (dialect != SqlDialect.HANA)
-            throw new IllegalArgumentException("HANA calculation views require a HANA client");
-
-        var supplied = new LinkedHashMap<String, HanaInput.Binding<?>>();
-        for (var binding : Objects.requireNonNull(bindings, "bindings")) {
-            Objects.requireNonNull(binding, "binding");
-            var declaration = inputs.get(binding.input().name());
-            if (declaration != binding.input())
-                throw new IllegalArgumentException("Use the declared input of " + qualifiedName + ": " + binding.input().name());
-            if (supplied.putIfAbsent(declaration.name(), binding) != null)
-                throw new IllegalArgumentException("Duplicate HANA input binding: " + declaration.name());
-        }
-
-        var placeholders = new ArrayList<String>();
-        var values = new ArrayList<Object>();
-        for (var input : inputs.values()) {
-            var binding = supplied.get(input.name());
-            if (binding == null) {
-                if (input.isRequired())
-                    throw new IllegalArgumentException("Missing required input of " + qualifiedName + ": " + input.name());
-                continue;
-            }
-            placeholders.add("PLACEHOLDER." + KEYWORDS.quoteUnquotedName("$$" + input.name() + "$$") + " => ?");
-            values.add(binding.jdbcValue());
-        }
-        String arguments = placeholders.isEmpty() ? "" : " (" + String.join(",", placeholders) + ")";
-        String sql = "SELECT * FROM " + qualifiedName + arguments;
-        var proxy = Objects.requireNonNull(proxyFactory.get(), "proxyFactory result");
-        if (proxy.getTableOrNull() != null)
-            throw new IllegalArgumentException("The calculation view factory must return a fresh unbound proxy");
-        // NULL 是合法的显式输入，不能用 List.copyOf；列表冻结后交给上游匿名来源与参数机制。
-        var parameters = Collections.unmodifiableList(values);
-        return new EasyEntityQueryable<>(proxy, client.queryable(sql, proxy.getEntityClass(), parameters));
+        return source.query(client, bindings);
     }
 }
