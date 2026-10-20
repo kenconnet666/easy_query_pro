@@ -40,6 +40,7 @@
                     <projectsDirectory>${project.basedir}/..</projectsDirectory>
                     <pomIncludes>
                         <pomInclude>examples/java-client/pom.xml</pomInclude>
+                        <pomInclude>examples/spring-client/pom.xml</pomInclude>
                         <pomInclude>consumer-tests/src/it/missing-module/pom.xml</pomInclude>
                         <pomInclude>consumer-tests/src/it/wrong-version/pom.xml</pomInclude>
                     </pomIncludes>

@@ -50,7 +50,7 @@
 | G5.6 | A02 前缀 ROLLUP 与 PG/HANA GROUPING SETS、汇总标识；先验证公开分组 SPI | G4.6、G5.5 | 已实现并通过三库小计 NULL、空输入、HAVING、SMART 筛选、JOIN、参数键、CTE/count/page；当前提交完整 CI 异步验证 |
 | G5.7 | A03 总体/样本方差及标准差、返回精度与分片拒绝 | G4.6、G5.5 | 四个入口、FILTER/窗口、空值/精度/JDBC 类型及嵌套拒绝已本地通过；等待当前提交 CI 并继续完整报表组合 |
 | G5.8 | A04 日历补桶示例、PG date_bin；HANA 层级事实汇总 | G5.3、G5.5 | HANA 事实汇总、PG 固定微秒桶/负向边界/DST，以及三库补月→LAG→CTE/分页已本地通过；当前提交完整 CI 与时区时间点等独立边界继续验收 |
-| G6.1 | 独立 Java 与 Spring 接入示例，验证安装顺序和选项生命周期 | G3、G4、G5 | 独立 Java JAR/POM/APT 消费者及三库真实 CRUD/回滚/连接恢复本地通过；Spring 中性扩展入口与组件时序继续实施 |
+| G6.1 | 独立 Java 与 Spring 接入示例，验证安装顺序和选项生命周期 | G3、G4、G5 | Java 与 Boot 3.5.16 独立 JAR/POM/APT 消费者本地通过；三库 Spring 共用事务、选项/组件顺序、启动失败清理和关闭已验证，当前候选 CI 待验收 |
 | G6.2 | 三库真实组合、并发、非管理员、失败路径与长结果集回归 | G6.1 | 待实施 |
 | G6.3 | 可复现性能/资源基准及报告，检查额外 SQL 与泄漏 | G6.2 | 待实施 |
 | G6.4 | 发行 JAR/POM/processor 的干净消费者验证 | G6.2 | 已建立隔离 repository/子 Maven 构建，正例及漏模块/错误版本负例本地通过；独立 Windows/Linux 与原三库 CI 接入，当前候选待验收 |

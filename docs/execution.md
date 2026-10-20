@@ -715,3 +715,15 @@ Spring 接入复审发现上游按具体类拒绝重复 ColumnValueSQLConverter�
 将三个默认映射的注册收敛到既有 ExtensionInstaller 的小型 installDefaultMapping 方法，通过上游公开 get/apply API 检查并补缺。MySqlExtensions/PgSqlExtensions.configureMappings 现为幂等默认安装，已注册的同类实例保持；没有改变上游主动重复注册的错误行为，没有删除或反射改写应用注册表。
 
 指定 JBR 17 执行 `mvnw.cmd --batch-mode test -Dtest=MySqlJsonDslTest,PgJsonDslTest -Dsurefire.failIfNoSpecifiedTests=false`，两个新红测与四个已有 JSON 契约全部通过。IDEA 格式与构建通过；只涉及初始化注册，未重复无关实库测试，两个自有诊断日志记录后清理。公共契约修复独立于后续 Spring 示例提交。前一消费者提交 `70098e247dadeccc673c02e7df16b20af5d59ae4` 的 [CI 39495405959](https://github.com/kenconnet666/easy_query_pro/actions/runs/39495405959) 检查时 cancelled，按原状态保留，不视为当前候选成功。
+
+## 独立 Spring 接入、事务与启动失败清理
+
+新增独立 `examples/spring-client`，锁定 Boot 3.5.16 / Framework 6.2.19、JDK 17 与原 sql-springboot-starter 3.2.17。通过 Context7 resolve/query 与 [官方配置测试说明](https://docs.spring.io/spring-boot/3.5/reference/features/developing-auto-configuration.html) 核对 ApplicationContextRunner、条件 Bean 与 [Java 版本要求](https://docs.spring.io/spring-boot/3.5/system-requirements.html)，再对照上游 starter 的真实源码时序。
+
+SQL92 对应空 DefaultDatabaseConfiguration，作为 HANA 完整配置的中性入口；UNKNOWN 会在 StarterConfigurer 之前被拒绝，专门负例确认钩子没有执行。显式 EasyQueryClient Bean 仍调用原 SpringBootStarterBuilder，没有复制其 options 或连接实现；EasyEntityQuery 继续由上游自动配置产生。先注册默认 handler，再调用原应用组件初始化器，最后用已独立修复的 configureMappings 补缺。标准组件/route 注册不主动加载实体 metadata，真实带 @Table 的 JSON 字段元数据断言应用 JSONB 与默认 JSON 均使用正确实例。
+
+初版正常路径已在三库各通过 5 项。只读复审随后发现两项初始化问题并做红测：普通 PgJsonbColumnConverter Bean 引发重复注册，client 未返回成 Spring Bean 时的组件异常没有销毁回调接管后台任务。后者使用 start-time-job=true 的真实定时线程，并分别注入正常清理与清理再次抛错；红测 finally 也主动关闭线程，未靠进程退出掩盖泄漏。公共 converter 修复单独提交后，示例调整注册顺序，并在 build 后失败时停止本 client 的 jobs/executor。原配置异常身份保留，清理异常以 suppressed 附加；timer 清理失败也继续关闭 executor。
+
+最终指定 JBR 17 执行 `mvnw.cmd --batch-mode verify -Pconsumers -pl consumer-tests -am -Dinvoker.test=examples/spring-client -Dconsumer.database=<mysql|postgres|hana>`，三库独立构建各 8 项全部通过、零跳过（7 个离线/初始化检查与各库 1 个实库契约）。@Transactional 用例先由 JdbcTemplate 插入未提交行，立即由 EasyQuery 读取，再由 EasyQuery 写入并统一回滚；最大两连接且 fixture owner 占一连接，另以 TransactionTemplate 验证共同提交。测试同时检查原 schema/结果上限、应用 handler、HanaOptions 身份、APT/JAR、归还/autoCommit、Spring 关闭池及 worker。
+
+IDEA 格式与现有工程构建通过；独立示例以 Invoker 的实际编译/运行验收。MCP 确认三库 `EQP_SPRING_%` 表遗留为零，九份本轮根诊断日志记录后清理，target 中标准报告与隔离缓存继续复用。consumer-tests 已纳入新示例，既有独立消费者和三库 CI 步骤会自动执行它，无需新容器。前一公共修复 `731cc9561355218c1c277d35780cdaace34c2b33` 的 [CI 39498305188](https://github.com/kenconnet666/easy_query_pro/actions/runs/39498305188) 检查时仍 in_progress，未等待。使用约束见 [Spring 消费者](../examples/spring-client/README.md)；其他 Spring 主版本、JTA 与多事务管理器不自动列入兼容声明。

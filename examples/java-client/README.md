@@ -39,4 +39,4 @@ mvn --batch-mode clean verify -Deasyquerypro.version=<published-version>
 
 URL必须指向专用测试库。该测试只操作本次创建的 `EQP_CONSUMER_...` 表，不运行 identity/default 的风险探测、不修改用户表或持久开发容器。用户名需要在当前 schema 建表与删表的权限；完全只读用户的应用接入会在后续权限契约中单独验证。
 
-本示例的普通 Java 事务由 EasyQuery 管理。Spring 应用应使用经过验证的 Spring 连接/事务集成，不能仅把这里的 client 放进 Spring 容器就假定 `@Transactional` 生效。
+本示例的普通 Java 事务由 EasyQuery 管理。Spring 应用应参考 [独立 Spring 消费者](../spring-client/README.md) 的连接/事务集成，不能仅把这里的 client 放进 Spring 容器就假定 `@Transactional` 生效。
