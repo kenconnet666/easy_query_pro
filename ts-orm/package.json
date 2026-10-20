@@ -13,7 +13,7 @@
     "test": "pnpm run build:test && node --test dist-test/test/unit/*.test.js",
     "build:test": "tsc -p tsconfig.test.json",
     "test:integration": "pnpm run build:test && node --test dist-test/test/integration/*.test.js",
-    "format": "prettier --write . --ignore-unknown",
+    "format": "node tools/format.mjs",
     "format:check": "prettier --check . --ignore-unknown"
   },
   "exports": {
