@@ -39,7 +39,7 @@
 | G4.2 | 通用类型参数、三库 DDL/CAST 分离、类型族重载、返回表达式静态类型 | G4.1 | DECIMAL、有界 Unicode 文本、typed value/NULL 和编译负例已落地；完整目录继续实施 |
 | G4.3 | NULL-safe/NULLIF/数据库日期截断，以及 JSON path/布尔结果组合桥接 | G4.2 | NULL-safe、NULLIF、常规日期截断与结构化 JSON path/布尔桥接已实现；历史历法及完整组合继续验收 |
 | G4.4 | 三库原生类型目录：unsigned、MySQL 时长、PG interval、HANA 受限文本等 | G4.2 | 待实施 |
-| G4.5 | MySQL JSON、PG JSONB 与 PG SQL 数组的完整选定操作 | G4.2、G4.4 | 待实施 |
+| G4.5 | MySQL JSON、PG JSONB 与 PG SQL 数组的完整选定操作 | G4.2、G4.4 | PG JSON/JSONB 类型区分、原生操作及业务映射已有本地证据；MySQL JSON、PG 数组和完整组合继续实施 |
 | G4.6 | 编译负例、跨 client/错库负例、组合、类型传播与资源释放 | G4.3–G4.5 | 待实施 |
 | G5.1 | 共同 ROWS 与 MySQL/PG RANGE，验证 HANA 拒绝行为，复用已有窗口函数 | G4.6 | 待实施 |
 | G5.2 | 三库全文检索、索引 fixture、模式与评分作用域 | G4.6 | 待实施 |

@@ -6,7 +6,6 @@ import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonPath;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.PgSqlExtensions;
 import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import org.junit.jupiter.api.Test;
-import org.postgresql.ds.PGSimpleDataSource;
 
 import java.util.List;
 
@@ -15,12 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PostgresJsonPathIT {
     @Test
     void jsonbScalarRootsDoNotAcquireArrayIndexSemanticsInPortablePaths() {
-        var dataSource = new PGSimpleDataSource();
-        dataSource.setURL(TestEnvironment.required("EQP_PG_JDBC_URL"));
-        dataSource.setUser(TestEnvironment.required("EQP_PG_USER"));
-        dataSource.setPassword(TestEnvironment.required("EQP_PG_PASSWORD"));
-        dataSource.setConnectTimeout(10);
-        dataSource.setSocketTimeout(30);
+        var dataSource = PostgresTestDatabase.dataSource();
         var query = TestClients.configured(dataSource, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
         String source = "SELECT CAST(? AS JSONB) AS name";
         for (String doc : List.of("1", "null", "\"text\"", "{}", "[]", "[null]")) {

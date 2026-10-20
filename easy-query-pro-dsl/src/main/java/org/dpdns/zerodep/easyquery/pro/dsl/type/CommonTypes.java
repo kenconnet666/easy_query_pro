@@ -1,6 +1,7 @@
 package org.dpdns.zerodep.easyquery.pro.dsl.type;
 
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.UnicodeStrings;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -49,19 +50,7 @@ public final class CommonTypes {
             if (value == null) return null;
             if (value.length() > maxUtf16Length)
                 throw new IllegalArgumentException("Text exceeds " + maxUtf16Length + " UTF-16 code units");
-            for (int i = 0; i < value.length(); i++) {
-                char unit = value.charAt(i);
-                // PG 字符串不支持 NUL；不把非法 UTF-16 交给驱动静默替换成问号。
-                if (unit == 0) throw new IllegalArgumentException("Portable Unicode text cannot contain NUL");
-                if (Character.isHighSurrogate(unit)) {
-                    if (++i == value.length() || !Character.isLowSurrogate(value.charAt(i))) {
-                        throw new IllegalArgumentException("Text contains an unpaired high surrogate");
-                    }
-                } else if (Character.isLowSurrogate(unit)) {
-                    throw new IllegalArgumentException("Text contains an unpaired low surrogate");
-                }
-            }
-            return value;
+            return UnicodeStrings.requirePortable(value, "Text");
         }
     }
 

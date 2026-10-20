@@ -66,6 +66,15 @@ class DslCompilationTest {
         compile(false, "NumberTypeExpression<Integer> number = d.jsonAt(p.name(), JsonPath.root());");
     }
 
+    @Test
+    void postgresTypesSelectDifferentApisAndRetainBusinessMappings() throws IOException {
+        compile(true, "PgJsonExpression<String> json = PgSqlDsl.of(p).value(JsonInput.encoded(\"{}\"), PgSqlTypes.json()); PgJsonbExpression<String> jsonb = json.toJsonb(); jsonb.containsJson(JsonInput.jsonNull()).eq(true);");
+        compile(true, "PgJsonbExpression<org.dpdns.zerodep.easyquery.pro.test.entity.PgJsonRecord.Payload> jsonb = PgSqlDsl.of(j).view(j.payload(), PgSqlTypes.jsonb()); j.payload().set(jsonb.setPath(java.util.List.of(\"name\"), JsonInput.encoded(\"\\\"new\\\"\"), true));");
+        compile(false, "PgSqlDsl.of(p).value(JsonInput.encoded(\"{}\"), PgSqlTypes.json()).containsJson(JsonInput.jsonNull());");
+        compile(false, "PgSqlDsl.of(p).value(\"{}\", PgSqlTypes.jsonb());");
+        compile(false, "PgJsonbExpression<String> jsonb = PgSqlDsl.of(p).value(JsonInput.encoded(\"{}\"), PgSqlTypes.jsonb()).asText();");
+    }
+
     private void compile(boolean expected, String body) throws IOException {
         var source = directory.resolve("Consumer.java");
         Files.writeString(source, """
@@ -74,10 +83,13 @@ class DslCompilationTest {
                 import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
                 import org.dpdns.zerodep.easyquery.pro.dsl.TruncationUnit;
                 import org.dpdns.zerodep.easyquery.pro.dsl.json.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.*;
+                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.*;
                 import org.dpdns.zerodep.easyquery.pro.dsl.type.*;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
                 import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;
-                final class Consumer { void use(ProDsl d, TestProductProxy p, TestEventProxy e) { %s } }
+                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgJsonRecordProxy;
+                final class Consumer { void use(ProDsl d, TestProductProxy p, TestEventProxy e, PgJsonRecordProxy j) { %s } }
                 """.formatted(body));
         var compiler = ToolProvider.getSystemJavaCompiler();
         assertNotNull(compiler, "Consumer compilation requires a JDK");

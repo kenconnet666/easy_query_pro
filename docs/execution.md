@@ -290,6 +290,18 @@ IDEA 格式化、编译和关键文件检查通过；MCP 确认本轮 HANA JSON 
 
 将 client 身份、原有 SQL 属性/参数转换、最终表归属和派生分片保护移入内部 ExpressionScope，公共 ProDsl 保留操作入口和返回类型。后续原生类型视图直接复用这层规则，避免各模块重新实现自己的上下文检查。47 个相关离线 SQL 契约通过，IDEA 格式化和编译通过；本次诊断日志清理，未创建数据库资源。
 
+## PostgreSQL JSON/JSONB 原生类型
+
+JSON 与 JSONB 使用不同的描述和返回接口；JSON 通过显式 toJsonb 才获得 JSONB 方法。加入 JsonInput 区分已编码 JSON、JSON null 与 SQL NULL。NativeJsonColumnConverter、JsonExpression 和 Unicode 检查复用共同基础，PG 没有另建执行器、事务或序列化框架。
+
+已实现包含、key/任意 key/全部 key、原生 jsonpath、jsonb_set、key/path 删除；数组路径使用原生 text[] 语义。业务值对象在 view 与 SQL 修改后保留原 Java 类型。known 内置声明冲突在构造时拒绝；未知 domain/计算表达式不伪称已经查过真实 schema。
+
+实库集成复现并澄清了上游绑定边界：列注解的 JdbcTypeHandler 不决定 3.2.17 的写入 handler，写入实际按序列化后的 Java Class 选择。删除了无效的专用 handler，改用列 SQL 转换 SPI 为 JSON/JSONB 参数生成 CAST，保留原 ValueConverter 与 String handler。配置注册在首次实体元数据使用前显式执行，普通 String 字段不受影响。
+
+本地 PostgresJsonDslIT 的 4 个存储/转换/原生操作/业务对象与回滚用例通过，同次 14 个选定离线测试通过。之后新增 GIN 检查单独通过，同时 9 个离线/消费者编译用例通过；其中 EXPLAIN 暂时关闭单连接顺序扫描，仅验证包含、key、jsonpath operator 能用 GIN，不作为性能结论。消费者检查现为 10 个正例、19 个负例。
+
+IDEA 格式化、编译和关键文件检查通过；MCP 确认 eqp_json_* fixture schema 遗留为 0。三份诊断日志清理，保留标准报告与开发实例。说明见 [PostgreSQL JSON/JSONB](pgsql-json.md)。本次与此前独立的 ExpressionScope 整理提交一起推送，完整三库/平台回归交给当前 CI；MySQL 原生 JSON 与 PG 数组/interval 等继续推进。
+
 ## 下一步
 
 1. 检查新提交的文本类型 CI，继续结构化 JSON path 与三库原生类型 DSL，并保持 HANA 未关闭项的跟踪。

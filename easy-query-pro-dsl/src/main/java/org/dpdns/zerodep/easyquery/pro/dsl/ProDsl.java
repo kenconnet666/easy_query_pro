@@ -33,6 +33,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.internal.JsonPathAccess;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.ExpressionScope;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonPath;
 import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonFragmentExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.json.JsonExpression;
 
 import java.util.Objects;
 import java.util.function.Function;
@@ -273,7 +274,7 @@ public final class ProDsl {
     private BooleanTypeExpression<Boolean> comparison(PropTypeColumn<?> left, PropTypeColumn<?> right, boolean distinct) {
         scope.requireSource(left);
         scope.requireSource(right);
-        if (left instanceof JsonFragmentExpression || right instanceof JsonFragmentExpression) {
+        if (left instanceof JsonFragmentExpression || right instanceof JsonFragmentExpression || left instanceof JsonExpression<?> || right instanceof JsonExpression<?>) {
             throw new IllegalArgumentException("JSON values require explicit text comparison or native JSON operators");
         }
         var templates = runtime.getService(NullSafeComparison.class);

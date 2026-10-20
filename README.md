@@ -37,6 +37,7 @@ HANA 使用独立 Docker 部署和持久卷，内存上限 12 GiB、无额外 sw
 - [NULL-safe 比较、NULLIF 与业务值绑定](docs/dsl-comparison.md)
 - [数据库端日期截断及历法边界](docs/dsl-temporal.md)
 - [结构化 JSON 路径、结果类型与 HANA 部署](docs/dsl-json.md)
+- [PostgreSQL JSON/JSONB 原生视图与列映射](docs/pgsql-json.md)
 - [开发环境与运行方式](docs/development.md)
 - [分包与设计方案](docs/architecture.md)
 - [实施计划与验证条件](docs/plan.md)

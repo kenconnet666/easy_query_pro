@@ -1,6 +1,7 @@
 package org.dpdns.zerodep.easyquery.pro.dsl.json;
 
-import java.nio.charset.StandardCharsets;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.UnicodeStrings;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -84,9 +85,7 @@ public final class JsonPath {
     public record Key(String name) implements Segment {
         public Key {
             Objects.requireNonNull(name, "name");
-            if (name.indexOf('\0') >= 0 || !StandardCharsets.UTF_8.newEncoder().canEncode(name)) {
-                throw new IllegalArgumentException("JSON keys must be valid Unicode without NUL");
-            }
+            UnicodeStrings.requirePortable(name, "JSON key");
         }
     }
 
