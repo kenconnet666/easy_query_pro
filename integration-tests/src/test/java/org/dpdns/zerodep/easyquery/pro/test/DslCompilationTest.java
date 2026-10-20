@@ -223,4 +223,11 @@ class DslCompilationTest {
                 assertTrue(diagnostics.getDiagnostics().stream().anyMatch(d -> d.getKind() == Diagnostic.Kind.ERROR));
         }
     }
+
+    @Test
+    void statisticsRequireNumericSamplesAndReturnDoubleExpressions() throws IOException {
+        compile(true, "com.easy.query.core.proxy.extension.functions.type.filter.NumberFilterTypeExpression<Double> population = d.variancePopulation(p.amount()); NumberTypeExpression<Double> filtered = population.filter(() -> p.id().gt(0)); NumberTypeExpression<Double> window = d.over(d.standardDeviationSample(p.amount()), d.window().orderBy(p.id()));");
+        compile(false, "d.variancePopulation(p.name());");
+        compile(false, "NumberTypeExpression<BigDecimal> invalid = d.standardDeviationPopulation(p.amount());");
+    }
 }

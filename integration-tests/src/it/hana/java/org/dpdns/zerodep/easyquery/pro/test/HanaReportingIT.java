@@ -8,7 +8,8 @@ import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.ReportSaleProxy;
 import org.junit.jupiter.api.Test;
 
 import java.sql.SQLException;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
+import javax.sql.DataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -20,18 +21,24 @@ class HanaReportingIT {
 
     @Test
     void windowFramesAndGroupedReports() throws SQLException {
-        withSales(rows -> WindowReportContract.verify(rows::cloneQueryable));
+        withSales((rows, ignored) -> WindowReportContract.verify(rows::cloneQueryable));
     }
 
-    private void withSales(Consumer<EntityQueryable<ReportSaleProxy, ReportSale>> contract) throws SQLException {
+    private void withSales(BiConsumer<EntityQueryable<ReportSaleProxy, ReportSale>, DataSource> contract) throws SQLException {
         try (var schema = HanaTestDatabase.createSchema("WINDOW_REPORT")) {
             try (var statement = schema.connection().createStatement()) {
                 statement.execute("CREATE COLUMN TABLE " + schema.qualified("eqp_report_sale")
                         + " (\"id\" INTEGER PRIMARY KEY, \"region\" NVARCHAR(20), \"report_day\" DATE, \"amount\" DECIMAL(19,4))");
             }
-            var query = TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure);
+            var source = HanaTestDatabase.dataSource();
+            var query = TestClients.configured(source, new HanaDatabaseConfiguration(), HanaExtensions::configure);
             assertEquals(6L, query.insertable(WindowReportContract.sales()).asSchema(ignored -> schema.name()).executeRows());
-            contract.accept(query.queryable(ReportSale.class).asSchema(ignored -> schema.name()));
+            contract.accept(query.queryable(ReportSale.class).asSchema(ignored -> schema.name()), source);
         }
+    }
+
+    @Test
+    void populationAndSampleStatisticsComposeWithReports() throws SQLException {
+        withSales((rows, source) -> StatisticsContract.verify(rows::cloneQueryable, source));
     }
 }

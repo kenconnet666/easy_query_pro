@@ -35,6 +35,7 @@ HANA 使用独立 Docker 部署和持久卷，内存上限 12 GiB、无额外 sw
 - [通用 DSL 核心、数据库类型与方言清单](docs/dsl-design.md)
 - [统计、报表、开窗与复杂查询蓝图](docs/reporting-blueprint.md)
 - [窗口规格、ROWS 与报表查询边界](docs/dsl-windows.md)
+- [总体／样本方差、标准差与近似精度契约](docs/dsl-statistics.md)
 - [已实现的精确类型表达式及三库转换边界](docs/dsl-types.md)
 - [三库原生数值目录、指数与精度边界](docs/native-numeric.md)
 - [DSL 投影分类、三库分片与组合边界](docs/dsl-sharding.md)

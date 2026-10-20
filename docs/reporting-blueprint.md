@@ -87,11 +87,21 @@ HANA 的 DECIMAL(19,2) 输入 1、2，STDDEV_SAMP 原生结果为 0.70；DECIMAL
 
 DOUBLE 也不能表示任意精确整数差值：相邻整数 9007199254740992、9007199254740993 转为 DOUBLE 后三库统计结果均为 0。文档和测试必须说明近似精度，并用相对/绝对误差判断常规浮点结果；不将金额等精确业务默认改成浮点存储。
 
-四个入口复用上游 NumberFilterTypeExpression 的 filter/CASE 链。原生别名 STDDEV/VARIANCE 在不同数据库含义不一致，只用显式 POP/SAMP 语义。非有限值、超出 DOUBLE 范围、未证明算法的跨分片聚合不宣称跨库等价。官方返回类型依据为 [MySQL 聚合函数](https://dev.mysql.com/doc/refman/8.4/en/aggregate-functions.html)、[PG 统计聚合](https://www.postgresql.org/docs/17/functions-aggregate.html) 和下文 HANA 函数页；MCP CSV 结果不当作 JDBC ResultSetMetaData 的验证。
+四个入口复用上游 NumberFilterTypeExpression 的 filter/CASE 链。原生别名 STDDEV/VARIANCE 在不同数据库含义不一致，只用显式 POP/SAMP 语义。非有限值、超出 DOUBLE 范围、未证明算法的跨分片聚合不宣称跨库等价。官方返回类型依据为 [MySQL 聚合函数](https://dev.mysql.com/doc/refman/8.4/en/aggregate-functions.html)、[PG 统计聚合](https://www.postgresql.org/docs/17/functions-aggregate.html) 和下文 HANA 函数页；原生 MCP 探测不替代本包 JDBC 验收。
+
+### 原生 RANGE 与固定步长分桶的后续约束
+
+MySQL/PG 的 RANGE 规格沿用 WindowSpec 的 SELF/recreate 和 WindowFrame，不复制 partition/order。偏移边界保留 PRECEDING(0)/FOLLOWING(0) 类别；同类倒序偏移允许产生空 frame，不能套共同 ROWS 的位置比较。存在有限 offset 时只允许一个实际排序项；将 NULL 排序模拟为 CASE 加第二键会破坏这一条件。
+
+PG 整数排序键不能一律绑定 BigDecimal offset，需保留整数/精确小数类型；时间 offset 复用非负 PgInterval.Finite 的月、日、微秒，不将月折算成 Duration。MySQL 时间 offset 是 `INTERVAL ? unit` 语法，与 SQL TIME/Duration 存储无关；数量绑定、单位受控。客户端/服务端 prepare 必须分别验证，原生常量 SELECT 不是 JDBC 参数验收。首批不引入 GROUPS/EXCLUDE、复合 interval、NaN/Infinity 或跨 DST 的 timestamptz 规则。
+
+PG date_bin 确认是上游缺失能力，可表达固定 15 分钟与非零 origin。拟先使用 LocalDateTime、正且精确到微秒的 Duration、显式 origin，复用 PgInterval handler。只读查询已经确认 origin 之前的时间向下归桶；无时区 TIMESTAMP 不代表现实时间线上的固定自然日。上游 Timestamp.valueOf/setTimestamp 路径还需 JVM DST gap/overlap 的 JDBC 回归；若复现，优先在现有 PG handler 层用 JDBC 4.2 LocalDateTime 修正，不靠日期字符串绕行。
+
+### 官方规则链接
 
 ROWS 用物理行位置定义 frame，排名与偏移函数并非都受 frame 影响，见 [MySQL 8.4 frame 规则](https://dev.mysql.com/doc/refman/8.4/en/window-functions-frames.html) 和 [PostgreSQL 17 窗口调用](https://www.postgresql.org/docs/17/sql-expressions.html#SYNTAX-WINDOW-FUNCTIONS)。HANA 当前范围按 [2.0 SPS 08 SQL Reference 的窗口规范](https://help.sap.com/doc/9b40bf74f8644b898fb07dabdd2a36ad/2.0.08/en-US/SAP_HANA_SQL_Reference_Guide_en.pdf#page=433) 核实，不把 Cloud 或其他 revision 自动视为已测试。
 
-小计与分组集合参考 [MySQL ROLLUP/GROUPING](https://dev.mysql.com/doc/refman/8.4/en/group-by-modifiers.html)、[PostgreSQL grouping sets](https://www.postgresql.org/docs/17/queries-table-expressions.html#QUERIES-GROUPING-SETS) 与 [HANA GROUPING_ID](https://help.sap.com/docs/SAP_HANA_PLATFORM/4fe29514fd584807ac9f2a04f6754767/20e21cfd75191014a5cbbea031962073.html)。汇总标识在目标 HANA revision 上仍需实测后冻结。
+小计与分组集合参考 [MySQL ROLLUP/GROUPING](https://dev.mysql.com/doc/refman/8.4/en/group-by-modifiers.html)、[PostgreSQL grouping sets](https://www.postgresql.org/docs/17/queries-table-expressions.html#QUERIES-GROUPING-SETS) 与 [HANA GROUPING_ID](https://help.sap.com/docs/SAP_HANA_PLATFORM/4fe29514fd584807ac9f2a04f6754767/20e21cfd75191014a5cbbea031962073.html)。汇总标识的原生探测已完成，增强查询组合仍需验收。
 
 固定间隔分桶参考 [PostgreSQL date_bin](https://www.postgresql.org/docs/17/functions-datetime.html#FUNCTIONS-DATETIME-BIN)：步长必须为正，不能含月或更大单位。自然日与固定 24 小时在时区/DST 环境下分别验证。
 

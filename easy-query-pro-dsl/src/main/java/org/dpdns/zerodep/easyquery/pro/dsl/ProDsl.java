@@ -24,6 +24,8 @@ import org.dpdns.zerodep.easyquery.pro.dsl.type.TextType;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.CastTarget;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.StatisticalAggregates;
+import com.easy.query.core.proxy.extension.functions.type.filter.NumberFilterTypeExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.JsonPathAccess;
 import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionScope;
 import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionFactory;
@@ -79,6 +81,25 @@ public class ProDsl {
      */
     public static <D extends ProDsl> D of(ProxyEntity<?, ?> entity, Function<? super ExpressionScope, ? extends D> factory) {
         return Objects.requireNonNull(Objects.requireNonNull(factory, "factory").apply(new ExpressionScope(entity)), "factory result");
+    }
+
+    /**
+     * Samples are converted to DOUBLE before aggregation to avoid dialect-dependent DECIMAL truncation.
+     */
+    public NumberFilterTypeExpression<Double> variancePopulation(PropTypeColumn<? extends Number> source) {
+        return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.VAR_POP);
+    }
+
+    public NumberFilterTypeExpression<Double> varianceSample(PropTypeColumn<? extends Number> source) {
+        return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.VAR_SAMP);
+    }
+
+    public NumberFilterTypeExpression<Double> standardDeviationPopulation(PropTypeColumn<? extends Number> source) {
+        return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.STDDEV_POP);
+    }
+
+    public NumberFilterTypeExpression<Double> standardDeviationSample(PropTypeColumn<? extends Number> source) {
+        return StatisticalAggregates.create(scope, source, StatisticalAggregates.Kind.STDDEV_SAMP);
     }
 
     public RowsWindowSpec window() {

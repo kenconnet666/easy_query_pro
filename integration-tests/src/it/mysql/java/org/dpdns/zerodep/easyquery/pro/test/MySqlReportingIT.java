@@ -8,7 +8,8 @@ import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.ReportSaleProxy;
 import org.junit.jupiter.api.Test;
 
 import java.sql.SQLException;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
+import javax.sql.DataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -20,15 +21,20 @@ class MySqlReportingIT {
 
     @Test
     void windowFramesAndGroupedReports() throws SQLException {
-        withSales(rows -> WindowReportContract.verify(rows::cloneQueryable));
+        withSales((rows, ignored) -> WindowReportContract.verify(rows::cloneQueryable));
     }
 
-    private void withSales(Consumer<EntityQueryable<ReportSaleProxy, ReportSale>> contract) throws SQLException {
+    private void withSales(BiConsumer<EntityQueryable<ReportSaleProxy, ReportSale>, DataSource> contract) throws SQLException {
         var source = MySqlTestDatabase.dataSource();
         try (var table = MySqlTestDatabase.createTable(source, "eqp_window_", "id INTEGER PRIMARY KEY, region VARCHAR(20), report_day DATE, amount DECIMAL(19,4)")) {
             var query = TestClients.configured(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
             assertEquals(6L, query.insertable(WindowReportContract.sales()).asTable(table.name()).executeRows());
-            contract.accept(query.queryable(ReportSale.class).asTable(table.name()));
+            contract.accept(query.queryable(ReportSale.class).asTable(table.name()), source);
         }
+    }
+
+    @Test
+    void populationAndSampleStatisticsComposeWithReports() throws SQLException {
+        withSales((rows, source) -> StatisticsContract.verify(rows::cloneQueryable, source));
     }
 }

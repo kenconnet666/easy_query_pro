@@ -33,7 +33,7 @@
 | MySQL | Docker 8.4.11，Connector/J 9.7.0，内存上限 2 GiB |
 | PostgreSQL | Docker 17.11，JDBC 42.7.14，内存上限 1 GiB |
 | HANA | 官方 Express 镜像 2.00.088.00.20251110.1；实际数据库 2.00.088.00.1760424921；ngdbc 2.30.11；12 GiB、4 CPU；本地持久化实例 healthy |
-| 最近核实 CI | `fc72da2f1ec01b3d93726f4d70f24f1b7cda19cd` 的 [39419792747](https://github.com/kenconnet666/easy_query_pro/actions/runs/39419792747) 已通过 Windows/Linux、MySQL、PostgreSQL、HANA Docker 五个强制任务；此证据不覆盖后续窗口改动 |
+| 最近核实 CI | `7000c56cb2bafdcef6cf5d1cf4d6e51c73391222` 的 [39433617617](https://github.com/kenconnet666/easy_query_pro/actions/runs/39433617617) 已通过 Windows/Linux、MySQL、PostgreSQL、HANA Docker 五个强制任务；此证据覆盖共同窗口，不覆盖后续统计改动 |
 
 上述数据库版本是可复现的验证基线。完整交付必须明确最低支持版本、已验证版本和功能限制；未测试的 HANA revision 不能因为同属 2.0 就写成已认证。扩大版本矩阵要有真实环境和回归证据，不在无人值守过程中自行扩大到其他数据库或 HANA Cloud。
 

@@ -497,3 +497,13 @@ IDEA 构建通过；MySQL/PG MCP 确认本轮 JSON、interval 与分片 fixture 
 只读方言核查另确认：共同 ROWS 的位置顺序规则需兼容 HANA；MySQL/PG 原生 RANGE 要保留零边界类别。MySQL 8.4.11 常量单行查询的空窗口存在数据库预执行优化差异，原生 COUNT 同样返回 1；以非恒定数据验收框架，没有加入 SQL 补偿。上游部分已有 offset 窗口缺少 metadata，使用显式 CTE 边界，不通过扫描 SQL 伪造完整检测。详见 [窗口说明](dsl-windows.md)。
 
 G5.1 的 MySQL/PG RANGE、A03 四个近似统计入口与 A02 分组汇总继续实施。子代理已经核查实际增量与公开 SPI；ROLLUP 的空输入差异、date_bin 的 origin/微秒语义和 JDBC 时间绑定风险进入后续验证清单，尚未标为实现完成。
+
+## 近似统计与报表 fixture 复用
+
+共同窗口提交之后的 `7000c56cb2bafdcef6cf5d1cf4d6e51c73391222` 已通过 [CI 39433617617](https://github.com/kenconnet666/easy_query_pro/actions/runs/39433617617) 的五个强制任务。三库窗口 IT 收纳为 ReportingIT，销售 fixture 的创建与关闭单独整理，随后加入统计契约；没有新建数据库实例或额外持久对象。
+
+A03 新增总体/样本方差及标准差四个入口，复用 NumberFilterTypeExpression、CASE 筛选、既有窗口和 Double handler。HANA/PG 复用原 CAST；MySQL 在统计内部显式 CAST AS DOUBLE，避免上游 Double CAST 实际变成 DECIMAL。三库验证真实 NULL、空集、单样本、微小小数、2^53 精度边界、条件样本、HAVING、分组 count/page、累计及全局窗口，JDBC 元数据均为 DOUBLE/java.lang.Double。
+
+只读审查指出统计自身的 UNKNOWN 枚举和 FILTER 的 CASE 可以掩盖非法嵌套。新增负例在三库离线客户端复现后，将原输入校验放到 FILTER 包装之前，并识别明确声明的 Pro 聚合；不扫描最终 SQL 或重写上游未知包装。普通计算样本继续交原 SQL 表达式链，跨分片拒绝保留。
+
+32 个离线/消费者检查和 9 个三库报表用例通过；补充 HAVING 后，12 个统计离线检查和 3 个统计 IT 再次通过。IDEA 构建成功，三库本轮表/schema 遗留为 0，失败探测日志在记录证据后清理。当前统计提交的完整 CI 异步执行，继续推进原生 RANGE，结果见 [统计说明](dsl-statistics.md)。

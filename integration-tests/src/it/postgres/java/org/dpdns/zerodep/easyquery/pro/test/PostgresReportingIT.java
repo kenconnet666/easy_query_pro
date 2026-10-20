@@ -8,7 +8,8 @@ import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.ReportSaleProxy;
 import org.junit.jupiter.api.Test;
 
 import java.sql.SQLException;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
+import javax.sql.DataSource;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -20,10 +21,10 @@ class PostgresReportingIT {
 
     @Test
     void windowFramesAndGroupedReports() throws SQLException {
-        withSales(rows -> WindowReportContract.verify(rows::cloneQueryable));
+        withSales((rows, ignored) -> WindowReportContract.verify(rows::cloneQueryable));
     }
 
-    private void withSales(Consumer<EntityQueryable<ReportSaleProxy, ReportSale>> contract) throws SQLException {
+    private void withSales(BiConsumer<EntityQueryable<ReportSaleProxy, ReportSale>, DataSource> contract) throws SQLException {
         var source = PostgresTestDatabase.dataSource();
         try (var schema = PostgresTestDatabase.createSchema(source, "eqp_window_")) {
             try (var statement = schema.connection().createStatement()) {
@@ -31,7 +32,12 @@ class PostgresReportingIT {
             }
             var query = TestClients.configured(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
             assertEquals(6L, query.insertable(WindowReportContract.sales()).executeRows());
-            contract.accept(query.queryable(ReportSale.class));
+            contract.accept(query.queryable(ReportSale.class), source);
         }
+    }
+
+    @Test
+    void populationAndSampleStatisticsComposeWithReports() throws SQLException {
+        withSales((rows, source) -> StatisticsContract.verify(rows::cloneQueryable, source));
     }
 }
