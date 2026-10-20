@@ -48,6 +48,8 @@
 | U04 | NULL-safe equality/distinct | 两端 NULL 视为相等；只一端 NULL 视为不等；结果为二值而不是 UNKNOWN | 当前 `equalsWith` 使用 simple CASE，不等于这个契约 |
 | U05 | NULLIF | 相等时返回带正确类型的 SQL NULL，不等时返回左值；NULL 与数值类型规则明确 | 当前未找到公开 SQL DSL 方法，上游测试存在手写 `nullif(...)` |
 | U06 | 数据库端日期截断 | LocalDate/LocalDateTime 的年、季度、月、ISO 周、日及适用的时/分/秒起点 | `EasyUtil.getDayStart/getMonthStart` 是 Java 计算，不是列上的数据库表达式 |
+| U07 | 前缀 ROLLUP 与汇总行标识 | 多维汇总与真实 NULL 区分，复用 GroupingN 结果模型 | 上游缺少多级汇总入口，详细范围见 A02 |
+| U08 | 总体/样本方差和标准差 | 四种统计语义与明确结果精度，未验证的分片合并拒绝 | 上游缺少对应统计入口，详细范围见 A03 |
 
 U04–U06 对应蓝图新增的 C03。它们是这次细化后明确补入的通用增量，不把所有可以用原接口完成的操作重新包装成新方法。
 
@@ -277,15 +279,17 @@ MySQL/PG 的 RANGE 可以共享底层构造逻辑，但公开为对应方言的�
 
 ## 10 模块依赖与安装方式
 
+扩展点遵循 EasyQuery 的类型与工厂模式。DSL facade 开放受保护构造和上下文挂载，数据库 facade 复用共同能力；facade 没有返回自身的链式方法时不强加 SELF 泛型。JSON/interval/duration 等保持同族的链式操作按泛型自身类型和可覆写创建钩子演进，类型变化仍返回准确的标量族。工厂允许替换单个 selector/provider/表达式构造，不要求复制完整工厂；clone/recreate 也必须保留扩展实现。新增扩展点用实际消费者编译与运行验证，不通过未经约束的 `<E> E` 猜测结果类型。
+
 必须避免一个隐蔽的循环：通用 DSL 不能依赖 HANA 模块，而只依赖 sql-core 的 HANA 适配器也不能反过来引用 Proxy DSL 类型。
 
 | 代码 | 所在模块 |
 | --- | --- |
 | 上游已有函数的 HANA 翻译 | `easy-query-pro-hana` |
-| U01–U06 的公共 API、规格、桥接 | `easy-query-pro-dsl` |
-| U01–U06 的 MySQL 实现与 MySQL 专属 API | `easy-query-pro-dsl-mysql` |
-| U01–U06 的 PG 实现与 PG 专属 API | `easy-query-pro-dsl-pgsql` |
-| U01–U06 的 HANA 实现与 HANA 专属 API | `easy-query-pro-dsl-hana` |
+| U01–U08 的公共 API、规格、桥接 | `easy-query-pro-dsl` |
+| U01–U08 的 MySQL 实现与 MySQL 专属 API | `easy-query-pro-dsl-mysql` |
+| U01–U08 的 PG 实现与 PG 专属 API | `easy-query-pro-dsl-pgsql` |
+| U01–U08 的 HANA 实现与 HANA 专属 API | `easy-query-pro-dsl-hana` |
 
 允许增加一个小的公共函数工厂/翻译契约，例如 `ProSqlFunctions`，由三库实现并返回上游 SQLFunction。它只覆盖本项目新增操作，不继承并转发整套 SQLFunc，不创建新执行器。原有 SQLFunc 保持由当前数据库适配器管理。
 
@@ -308,28 +312,30 @@ MySQL/PG 使用上游配置和各自增强安装入口。注册要校验方言�
 推荐新公共标量能力通过 `ProDsl.of(entity)` 取得上下文，专属能力使用 `MySqlDsl/PgSqlDsl/HanaDsl.of(entity)`。无列常量也因此有明确上下文，不需要线程全局当前查询。
 
 ```java
-// Planned API shapes; these examples are not implemented yet.
+// Current scalar and JSON entry points; order represents an application's generated proxy.
 var pro = ProDsl.of(order);
-var amount = pro.cast(order.amount(), CommonTypes.decimal(19, 4));
-var denominator = pro.nullIf(order.quantity(), 0);
-var month = pro.truncate(order.createdAt(), DateBucket.MONTH);
+var amount = pro.nativeCast(order.amount(), CommonTypes.decimal(19, 4));
+var denominator = pro.nullIfValue(order.quantity(), 0);
+var month = pro.truncateDateTime(order.createdAt(), TruncationUnit.MONTH);
 var sameOwner = pro.isNotDistinctFrom(order.ownerId(), order.reviewerId());
 
 var pg = PgSqlDsl.of(order);
 var attributes = pg.view(order.attributes(), PgSqlTypes.jsonb());
-var matched = attributes.containsJson(JsonDocument.text("{\"active\":true}"));
-var changed = attributes.setPath(JsonPath.key("active"), JsonDocument.text("true"));
+var matched = attributes.containsJson(JsonInput.encoded("{\"active\":true}"));
+var changed = attributes.setPath(List.of("active"), JsonInput.encoded("true"), true);
 ```
 
 所有新值方法先构造表达式。需要把布尔表达式加入 WHERE 时，通过上游明确的条件操作，例如 `matched.eq(true)`；用于 SELECT 时直接参与投影。不能让同一个 contains 方法一会儿修改条件、一会儿仅返回函数，造成漏条件或重复条件。
 
-`view(column, type)` 采用类型族重载，使 JSONB、数组、数字等获得正确接口。`pg.jsonb(column)` 一类简写只作为上述入口的薄别名；两者不能维护不同实现。是否提供简写按使用样例决定，完整能力由显式类型入口保证。
+`view(column, type)` 采用类型族重载，使 JSONB、数组等获得正确接口。当前没有新增 `pg.jsonb(column)` 一类重复入口；普通数字和字符转换继续返回上游表达式族。
 
-`JsonDocument.text` 是 JSON 绑定语义包装，不是假装完成语法解析。实体序列化继续使用现有转换器；JSON 文本合法性、SQL NULL/JSON null 和错误信息须有清晰契约。
+`JsonInput.encoded` 表达已编码 JSON，合法性由数据库解析；`sqlNull` 与 `jsonNull` 明确区分。实体序列化继续使用现有转换器，不全局改变 String 的含义。
 
 APT 仍生成原有列类型。注册 JDBC handler 不会改变生成代码的方法集合。当前方案通过显式类型视图实现专属 DSL，不隐式要求修改每个实体；若以后要求 `entity.payload()` 直接返回 PG 专属列，必须单独设计真实的 APT SPI。
 
 ## 12 哪些不进入确定范围
+
+统计与报表新增能力按 [专门蓝图](reporting-blueprint.md) 分到通用内部基础、共同分析规格、原生查询和组合验证；不增加 sumIf/countIf/percentage 等已有表达式的同义 API。
 
 | 内容 | 决定 |
 | --- | --- |
@@ -386,6 +392,6 @@ FROM (SELECT 1 AS v FROM DUMMY UNION ALL SELECT 2 AS v FROM DUMMY) x;
 - C03：NULL-safe equality/distinct、NULLIF、数据库端日期截断。
 - H01–H10：普通 HANA 适配器职责；H11/H12：HANA 专属查询入口与底层配合。
 
-执行顺序为：既有能力审计 → 基础 HANA 适配 → 类型/安装/桥接原型 → 通用 U01–U06 → 三库专属类型与操作 → 查询级高级能力 → 完整组合、消费者与成熟度验收。高风险边界提前验证，不以大量空接口代替实现。
+执行顺序为：既有能力审计 → 基础 HANA 适配 → 类型/安装/桥接原型 → 共同标量与三库原生类型 → 泛型扩展点和窗口/报表 → U07/U08 汇总统计与查询级高级能力 → 完整组合、消费者与成熟度验收。高风险边界提前验证，不以大量空接口代替实现。
 
 参考资料：[EasyQuery JSON 文档](https://github.com/xuejmnet/easy-query-doc/blob/main/src/en/prop/json-prop.md)、[MySQL 类型](https://dev.mysql.com/doc/refman/8.4/en/data-types.html)、[PG 类型](https://www.postgresql.org/docs/17/datatype.html)、[PG NULL 比较](https://www.postgresql.org/docs/17/functions-comparison.html)、[MySQL 比较运算](https://dev.mysql.com/doc/refman/8.4/en/comparison-operators.html)、[PG 文本检索](https://www.postgresql.org/docs/17/functions-textsearch.html)。

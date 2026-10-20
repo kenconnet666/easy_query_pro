@@ -1,6 +1,6 @@
 # EasyQuery Pro 完整交付蓝图
 
-状态：完整目标的规划提案，待范围确认后用于无人值守实施。阶段表示依赖顺序，不表示可以在中途把项目宣布为完成。
+状态：完整范围已获确认，正在无人值守实施；2026-10-20 根据统计与报表需求扩充分析能力和组合验收。阶段表示依赖顺序，不表示可以在中途把项目宣布为完成。
 
 目标是交付一个基于 EasyQuery 3.2.17、使用 Java 17、面向 MySQL、PostgreSQL 和 SAP HANA 的成熟增强包。HANA 适配是核心交付；通用查询继续沿用 EasyQuery，确有差异的数据库类型和操作通过显式、可组合的 DSL 表达。完成条件包括功能、错误行为、类型安全、实际数据库验证、应用接入、性能证据、文档和可消费产物。
 
@@ -22,18 +22,18 @@
 
 ## 2 当前事实与目标边界
 
-2026-10-19 核对的代码基线如下：
+当前实现状态与最初工程基线分开记录；具体功能证据见 [执行记录](execution.md)。
 
 | 项目 | 已核实状态 |
 | --- | --- |
 | EasyQuery 上游 | 本地 3.2.17，commit `2b25e9510868b4f9071365510393b0b02a451cda`；源码远端为 dromara/easy-query 的 Gitee 仓库 |
-| 增强包工程 | commit `7b9d96089327f035a9ee9baa542fd74b2fe75ea5`；五个生产模块与一个测试模块已建成，生产模块当前只有包声明 |
+| 增强包工程 | `7b9d96089327f035a9ee9baa542fd74b2fe75ea5` 是分包基线；HANA 适配、通用 DSL、三库类型/JSON/数组/时长和分片组合已持续实现，完整目标尚未完成 |
 | JDK | 本机 `C:\Users\lionheart\.jdks\jbr-17.0.14`；编译和测试实际使用 Java 17，`release=17` |
 | 工具链 | Maven Wrapper 3.9.16；IDEA MCP、APT 和独立重建已验证；DebugTools 5.3.0 可用 |
 | MySQL | Docker 8.4.11，Connector/J 9.7.0，内存上限 2 GiB |
 | PostgreSQL | Docker 17.11，JDBC 42.7.14，内存上限 1 GiB |
 | HANA | 官方 Express 镜像 2.00.088.00.20251110.1；实际数据库 2.00.088.00.1760424921；ngdbc 2.30.11；12 GiB、4 CPU；本地持久化实例 healthy |
-| 已有 CI | Windows/Linux 构建、MySQL/PostgreSQL 基础契约和 HANA 原生 JDBC 检查通过；这不是 HANA EasyQuery 适配验收 |
+| 最近核实 CI | `03f1b9ef1425b364648602cdacc8804b675deea2` 的 [39403295050](https://github.com/kenconnet666/easy_query_pro/actions/runs/39403295050) 已通过 Windows/Linux、MySQL、PostgreSQL、HANA Docker 五个强制任务；此证据不覆盖后续改动 |
 
 上述数据库版本是可复现的验证基线。完整交付必须明确最低支持版本、已验证版本和功能限制；未测试的 HANA revision 不能因为同属 2.0 就写成已认证。扩大版本矩阵要有真实环境和回归证据，不在无人值守过程中自行扩大到其他数据库或 HANA Cloud。
 
@@ -78,7 +78,7 @@ HANA 适配覆盖数据库层。SAP 应用自身的业务模型、ABAP 语义、
 | H09 | 上游业务机制兼容 | 必交付；导航/自动关联、DTO、过滤器、逻辑删除、乐观锁、值转换、拦截器及同方言多数据源的代表性场景 | 不破坏上游生命周期，不新增 N+1，不丢过滤条件 |
 | H10 | HANA 元数据与 Code First | 有边界的必交付；检查、创建、索引/主外键、注释、identity、受控增量变更和命令预览 | schema 隔离、幂等、失败不冒充不存在；具体边界见第 9 节 |
 | H11 | HANA 普通视图、参数化计算视图和选定表函数查询 | 必交付；面向读取、参数绑定与实体/DTO 映射 | 真计算视图 fixture、参数顺序/类型、外层组合；不能用普通表函数冒充计算视图验收 |
-| H12 | HANA 层级查询 | 有边界的必交付；邻接树/森林、根集合、深度、兄弟顺序、祖先/后代，明确循环与孤儿策略 | 与既有树查询可等价的部分复用入口，专属能力显式表达 |
+| H12 | HANA 层级查询 | 有边界的必交付；邻接树/森林、根集合、深度、兄弟顺序、祖先/后代及选定事实汇总，明确循环与孤儿策略 | 与既有树查询可等价的部分复用入口，专属能力显式表达；展示筛选不误改总额 |
 | D01 | 通用 SQL 类型描述与精确 CAST | 必交付；长度、precision/scale、表达式返回类型 | 普通需求不强制选方言；DDL 与 CAST 分别渲染 |
 | D02 | 三库方言类型与列视图 | 必交付；按 DSL 设计中的完整类型目录处理，区分 storage/cast/view/绑定角色 | 编译负例、运行时错库、查询上下文隔离、无隐式元数据修改；包含 unsigned、时长/interval 和 LOB 等边界 |
 | D03 | JSON 的完整选定能力 | 必交付；上游通用 JSON 能力、MySQL JSON/PG JSONB 的包含、路径判断及选定路径更新/删除 | 缺失键、JSON null、SQL NULL、数组、转义、布尔返回、绑定与更新组合 |
@@ -87,6 +87,11 @@ HANA 适配覆盖数据库层。SAP 应用自身的业务模型、ABAP 语义、
 | C01 | 共同与原生窗口 frame | 必交付；三库完整选定 ROWS，MySQL/PG 原生 RANGE，HANA 当前基线明确拒绝不支持的 RANGE | 分组/排序/同值行、默认 frame、首末值、NULL、非法边界；不能以 ROWS 代替 RANGE |
 | C02 | 组合与错误契约 | 必交付；所有增强表达式可进入受支持的原生查询位置 | 函数嵌套、别名、相关子查询、复制、参数计数、聚合类型；明确限制而非错误 SQL |
 | C03 | 缺失的通用标量能力 | 必交付；NULL-safe equality/distinct、NULLIF、数据库端日期截断 | 与既有 equalsWith、nullOrDefault、Java 日期工具的语义区别；三库一致的定义域和结果 |
+| C04 | 类型安全的框架扩展点 | 必交付；DSL 泛型挂载、同族表达式 SELF/重建、工厂局部替换、克隆保留实现 | 自定义 DSL/JSON/interval/window 消费者编译；公共扩展位置不被 final/private 创建链封闭 |
+| A01 | 统计报表组合契约 | 必交付；条件指标、加权均价、累计/移动指标、排名/占比、缺月环比与同比 | 复用已有 API，检查中间类型、分母为零、并列值、NULL、分组 count/page |
+| A02 | 多级汇总与汇总行标识 | 有边界的必交付；共同前缀 ROLLUP，PG/HANA 显式 GROUPING SETS | 公开 SPI 原型先行，区分真实 NULL 与汇总 NULL，不复制 GroupingN 类型族 |
+| A03 | 总体/样本统计 | 有边界的必交付；总体/样本方差和标准差 | 明确结果精度、空集/单行/全 NULL；未证明合并算法前拒绝跨分片聚合 |
+| A04 | 时间序列报表 | 有边界的必交付；共同日历表补桶示例，PG 固定间隔 date_bin | origin、正步长、时区、自然日与固定时长分别验证；不建立报表执行引擎 |
 | I01 | Java/Spring 接入与独立消费者 | 必交付 | 使用发行 JAR 而非 reactor 源码替代；文档示例实际编译运行 |
 | Q01 | 稳定性、性能、诊断与维护 | 必交付 | 资源释放、并发隔离、代表性压力/性能报告、异常上下文和依赖升级流程 |
 | R01 | 可交付产物、完整文档与最终 CI | 必交付 | 当前 commit 的全部强制检查、源码包/API 文档/二进制包、兼容表、迁移与使用说明 |
@@ -103,6 +108,7 @@ HANA 没有通用递归 WITH 的支持，不能删掉 `RECURSIVE` 后继续执�
 | 精确类型与 CAST 独立建模 | Java Class 不能完整描述长度、精度和原生类型；精确类型能增加能力，同时保留普通实体和通用调用 |
 | JSON、PG 数组和全文纳入完整目标 | 这些能力在目标数据库中有明确操作和索引语义，可减少业务层手写 SQL；用方言入口表达差异比伪造统一语义更可靠 |
 | 窗口重点补 frame 和组合 | 排名和偏移等基础函数已存在，新增价值在累计、区间分析和 peer group 的准确语义，而不是重新命名已有函数 |
+| 统计报表按业务结果验收 | 缺失的窗口规格、汇总和统计补入公共/方言层；条件聚合、排名和日期截断复用，避免用 API 数量代替完整报表可用性 |
 | Code First 与应用接入一并完成 | 查询、类型与 DDL 不一致会把问题推给使用者；成熟交付需要正确元数据、可审阅迁移和可运行消费者 |
 | 正确性之后继续做性能、文档和产物验收 | 无人值守执行必须覆盖实际交付成本，不能在内部测试通过时把剩余工作交回给用户 |
 
@@ -146,12 +152,12 @@ MySQL/PG 的适配器继续使用上游实现；需要安装增强服务时采�
 order.name().contains(keyword);
 
 // Proposed precise, portable conversion.
-ProDsl.of(order).cast(order.amount(), CommonTypes.decimal(19, 4));
+ProDsl.of(order).nativeCast(order.amount(), CommonTypes.decimal(19, 4));
 
 // Proposed explicit dialect operations.
-HanaDsl.of(order).cast(order.name(), HanaTypes.nvarchar(200));
-MySqlDsl.of(order).json(order.attributes()).containsJson(jsonText);
-PgSqlDsl.of(order).jsonb(order.attributes()).containsJson(jsonText);
+HanaDsl.of(order).nativeCast(order.name(), HanaTypes.nvarchar(200));
+MySqlDsl.of(order).view(order.attributes(), MySqlTypes.json()).containsJson(JsonInput.encoded(jsonText));
+PgSqlDsl.of(order).view(order.attributes(), PgSqlTypes.jsonb()).containsJson(JsonInput.encoded(jsonText));
 ```
 
 设计必须满足：
@@ -245,6 +251,8 @@ PG SQL 数组支持 String、Integer、Long、BigDecimal、Boolean、UUID、Loca
 必须准备真实的参数化计算视图 fixture。若现有容器无法创建所需对象，应查官方部署途径并提供可复现 fixture；需要额外授权环境时记为必交付阻塞，不能用表函数测试替代后宣布 H11 完成。
 
 ## 11 从其他 ORM 借鉴什么
+
+统计报表的能力归属、依赖、取舍和验收矩阵见 [统计与报表蓝图](reporting-blueprint.md)。该扩充与 HANA 基础适配、全文检索、发行产物等原有必交付项同时成立。
 
 | 参考 | 采用的思想 | 不搬入的体系 |
 | --- | --- | --- |
