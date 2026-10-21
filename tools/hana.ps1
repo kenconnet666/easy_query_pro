@@ -11,6 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $repoRoot = Split-Path $PSScriptRoot -Parent
+Import-Module (Join-Path $PSScriptRoot 'EqpCompose.psm1') -Force
 $names = @('EQP_HANA_PASSWORD', 'EQP_HANA_JDBC_URL', 'EQP_HANA_USER', 'WSLENV')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
@@ -37,11 +38,10 @@ try {
     switch ($Action) {
         'start' {
             & wsl @compose up --detach --wait --wait-timeout 900
+            $memory = Assert-ComposeMemoryLimit -Compose $compose -Distribution $Distribution -Service hana
             $container = (& wsl @compose ps -q hana).Trim()
-            $limits = (wsl -d $Distribution --exec docker inspect --format '{{json .HostConfig}}' $container) | ConvertFrom-Json
-            if ($limits.Memory -ne 12GB -or $limits.MemorySwap -ne 12GB) { throw 'HANA memory limits do not match 12 GiB.' }
-            wsl -d $Distribution --exec docker exec $container /bin/bash /eqp/enable-hdi.sh
-            Write-Host 'HANA HXE started on localhost:39041; SYSTEMDB uses localhost:39017. Memory limit: 12 GiB, no additional swap.'
+            wsl -d $Distribution --exec docker exec $container /bin/bash /eqp/configure.sh
+            Write-Host "HANA HXE started on localhost:39041; SYSTEMDB uses localhost:39017. Memory limit: $($memory / 1GB) GiB, no additional swap."
         }
         'test' {
             $ports = (wsl -d $Distribution --exec docker inspect --format '{{json .NetworkSettings.Ports}}' $container) | ConvertFrom-Json

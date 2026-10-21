@@ -119,8 +119,7 @@ jobs:
       - name: Start databases with memory limits
         run: |
           docker compose up --detach --wait --wait-timeout 120
-          expected=1073741824
-          if [ "$TEST_DATABASE" = mysql ]; then expected=2147483648; fi
+          expected=$(docker compose config --format json | jq --arg service "$TEST_DATABASE" '.services[$service].mem_limit | tonumber')
           container=$(docker compose ps -q "$TEST_DATABASE")
           docker inspect "$container" | jq -e --argjson expected "$expected" \
             '.[0].HostConfig | .Memory == $expected and .MemorySwap == $expected'
@@ -173,18 +172,19 @@ jobs:
       - name: Prepare the dedicated HANA runner
         run: |
           available_kib=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
-          test "$available_kib" -ge 14000000
+          test "$available_kib" -ge 10485760
           sudo sysctl -w fs.aio-max-nr=262144 vm.max_map_count=135217728 vm.memory_failure_early_kill=1
           password="E9a$(openssl rand -hex 24)"
           echo "::add-mask::$password"
           echo "EQP_HANA_PASSWORD=$password" >> "$GITHUB_ENV"
-      - name: Start HANA with a 12 GiB limit
+      - name: Start HANA with its declared memory limit
         run: |
           docker compose up --detach --wait --wait-timeout 900
+          expected=$(docker compose config --format json | jq '.services.hana.mem_limit | tonumber')
           container=$(docker compose ps -q hana)
-          docker inspect "$container" | jq -e \
-            '.[0].HostConfig | .Memory == 12884901888 and .MemorySwap == 12884901888'
-          docker exec "$container" /bin/bash /eqp/enable-hdi.sh
+          docker inspect "$container" | jq -e --argjson expected "$expected" \
+            '.[0].HostConfig | .Memory == $expected and .MemorySwap == $expected'
+          docker exec "$container" /bin/bash /eqp/configure.sh
       - name: Verify HANA adapter and HDI contracts
         run: ./mvnw --batch-mode clean verify -Phana
       - name: Verify the packaged Java client against HANA

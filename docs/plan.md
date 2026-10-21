@@ -12,8 +12,8 @@
 | --- | --- |
 | 分包、依赖、Maven Wrapper 和 JDK 17 | 工程基线 `7b9d96089327f035a9ee9baa542fd74b2fe75ea5` |
 | IDEA MCP、APT 和独立重建 | 已清理生成文件后通过 IDEA 重建，使用指定 JBR 17 |
-| MySQL/PostgreSQL 基础契约 | CI 中真实数据库执行 CRUD、绑定和事务；配置内存为 2 GiB/1 GiB |
-| HANA Docker 和原生 JDBC | 12 GiB/4 CPU，认证 SQL 健康检查，真实版本 2.00.088.00.1760424921；参数与事务检查通过 |
+| MySQL/PostgreSQL 基础契约 | CI 中真实数据库执行 CRUD、绑定和事务；配置内存为 1 GiB/512 MiB |
+| HANA Docker 和原生 JDBC | 8 GiB/4 CPU，认证 SQL 健康检查，真实版本 2.00.088.00.1760424921；参数与事务检查通过 |
 | Windows/Linux 和三库基础 CI | [基线运行 39255071676](https://github.com/kenconnet666/easy_query_pro/actions/runs/39255071676) 通过 |
 
 这些证据不代表 HANA EasyQuery 适配器、类型 DSL 或高级功能已经完成。

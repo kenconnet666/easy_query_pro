@@ -30,9 +30,9 @@
 | 增强包工程 | `7b9d96089327f035a9ee9baa542fd74b2fe75ea5` 是分包基线；HANA 适配、通用 DSL、三库类型/JSON/数组/时长和分片组合已持续实现，完整目标尚未完成 |
 | JDK | 本机 `C:\Users\lionheart\.jdks\jbr-17.0.14`；编译和测试实际使用 Java 17，`release=17` |
 | 工具链 | Maven Wrapper 3.9.16；IDEA MCP、APT 和独立重建已验证；DebugTools 5.3.0 可用 |
-| MySQL | Docker 8.4.11，Connector/J 9.7.0，内存上限 2 GiB |
-| PostgreSQL | Docker 17.11，JDBC 42.7.14，内存上限 1 GiB |
-| HANA | 官方 Express 镜像 2.00.088.00.20251110.1；实际数据库 2.00.088.00.1760424921；ngdbc 2.30.11；12 GiB、4 CPU；本地持久化实例 healthy |
+| MySQL | Docker 8.4.11，Connector/J 9.7.0，内存上限 1 GiB |
+| PostgreSQL | Docker 17.11，JDBC 42.7.14，内存上限 512 MiB |
+| HANA | 官方 Express 镜像 2.00.088.00.20251110.1；实际数据库 2.00.088.00.1760424921；ngdbc 2.30.11；8 GiB（关闭 web dispatcher）、4 CPU；本地持久化实例 healthy |
 | 最近核实 CI | `5ffebe2c771e80540dcca910b766fb2113a44fd9` 的 [39437039654](https://github.com/kenconnet666/easy_query_pro/actions/runs/39437039654) 已通过 Windows/Linux、MySQL、PostgreSQL、HANA Docker 五个强制任务；此证据覆盖共同窗口与统计，不覆盖后续原生 RANGE 改动 |
 
 上述数据库版本是可复现的验证基线。完整交付必须明确最低支持版本、已验证版本和功能限制；未测试的 HANA revision 不能因为同属 2.0 就写成已认证。扩大版本矩阵要有真实环境和回归证据，不在无人值守过程中自行扩大到其他数据库或 HANA Cloud。
@@ -290,7 +290,7 @@ PG SQL 数组支持 String、Integer、Long、BigDecimal、Boolean、UUID、Loca
 
 保留本地快速检查和 GitHub 完整验证的分工。本地优先编译、IDEA 诊断、单个 SQL/类型用例和必要的真实问题复现；完整数据库组合、并发和回归交给 GitHub Actions。
 
-Windows/Linux 使用 JBR 17。MySQL 2 GiB、PG 1 GiB；HANA 12 GiB、4 CPU，均保持明确 swap 限制。HANA CI 是强制任务，不得以手动外部实例任务或 H2 等替代。进一步扩大矩阵时，控制并发与资源，不解除限制来隐藏问题。
+Windows/Linux 使用 JBR 17。MySQL 1 GiB、PG 512 MiB；HANA 8 GiB、4 CPU，均保持明确 swap 限制。HANA CI 是强制任务，不得以手动外部实例任务或 H2 等替代。进一步扩大矩阵时，控制并发与资源，不解除限制来隐藏问题。
 
 CI 应从当前基础检查扩展到 API 编译、完整数据库契约、非管理员用户、消费者工程、迁移和必要性能/稳定性用例。长测可以单独分组按阶段执行，但最终验收要求同一候选 commit 的完整必需集合通过。
 

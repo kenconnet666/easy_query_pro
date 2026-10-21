@@ -3,7 +3,7 @@ set -euo pipefail
 
 hdbsql=/usr/sap/HXE/HDB90/exe/hdbsql
 credentials=(-u SYSTEM -p "${EQP_HANA_PASSWORD:?Set EQP_HANA_PASSWORD}")
-"$hdbsql" -n 127.0.0.1:39017 "${credentials[@]}" -E 1 -I /eqp/enable-hdi.sql
+"$hdbsql" -n 127.0.0.1:39017 "${credentials[@]}" -E 1 -I /eqp/configure.sql
 
 for ((attempt = 0; attempt < 30; attempt++)); do
   ready=$("$hdbsql" -n 127.0.0.1:39041 "${credentials[@]}" -x -a -quiet -nocmdstats -E 1 \

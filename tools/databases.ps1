@@ -9,6 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $repoRoot = Split-Path $PSScriptRoot -Parent
+Import-Module (Join-Path $PSScriptRoot 'EqpCompose.psm1') -Force
 $names = @('EQP_DB_PASSWORD', 'WSLENV')
 $previous = @{}
 foreach ($name in $names) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
@@ -42,13 +43,11 @@ try {
     switch ($Action) {
         'start' {
             & wsl @compose up --detach --wait --wait-timeout 180
+            $limits = @{}
             foreach ($service in @('mysql', 'postgres')) {
-                $container = (& wsl @compose ps -q $service).Trim()
-                $limits = (wsl -d $Distribution --exec docker inspect --format '{{json .HostConfig}}' $container) | ConvertFrom-Json
-                $expected = if ($service -eq 'mysql') { 2GB } else { 1GB }
-                if ($limits.Memory -ne $expected -or $limits.MemorySwap -ne $expected) { throw "Unexpected memory limits for $service." }
+                $limits[$service] = (Assert-ComposeMemoryLimit -Compose $compose -Distribution $Distribution -Service $service) / 1MB
             }
-            Write-Host 'Development databases ready: MySQL localhost:53306 (2 GiB), PostgreSQL localhost:55432 (1 GiB).'
+            Write-Host "Development databases ready: MySQL localhost:53306 ($($limits.mysql) MiB), PostgreSQL localhost:55432 ($($limits.postgres) MiB)."
             Write-Host 'Database/user: eqp. Use tools/database-password.ps1 to copy a credential without printing it.'
         }
         'stop' { & wsl @compose stop }

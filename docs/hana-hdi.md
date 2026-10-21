@@ -4,7 +4,7 @@
 
 ## 服务与权限
 
-官方 Express 镜像中的 SYSTEMDB 使用 39017，HXE 租户使用 39041。数据库服务版没有为 HXE 自动启用 HDI，需要在 SYSTEMDB 添加租户的 diserver。`infra/hana/enable-hdi.sql` 只针对固定的测试租户 HXE，已存在时不重复添加；配套 shell 检查 HXE 的 `_SYS_DI.CREATE_CONTAINER` API 是否就绪。本地 `tools/hana.ps1 start` 和 HANA CI job 都执行同一入口。
+官方 Express 镜像中的 SYSTEMDB 使用 39017，HXE 租户使用 39041。数据库服务版没有为 HXE 自动启用 HDI，需要在 SYSTEMDB 添加租户的 diserver。`infra/hana/configure.sql` 只针对固定的测试租户 HXE，已存在时不重复添加；配套 shell 检查 HXE 的 `_SYS_DI.CREATE_CONTAINER` API 是否就绪。本地 `tools/hana.ps1 start` 和 HANA CI job 都执行同一入口。
 
 这一步来自 [SAP HANA Platform 的租户 HDI 启用说明](https://help.sap.com/docs/SAP_HANA_PLATFORM/3823b0f33420468ba5f1cf7f59bd6bd9/6df24edbef3a4e039a7b0a7bf4acd6c8.html)。只启动计算视图必需的 diserver，不启动 scriptserver、dpserver 或 XS 应用服务。
 

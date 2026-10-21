@@ -853,3 +853,27 @@ MySqlExtensions 构建时安装专属默认 Float manager，只覆盖 Float/floa
 指定 JBR 17 执行 `mvnw.cmd --batch-mode test -Dtest=HanaTypeMappingTest,PgTemporalMappingTest,MySqlNumericMappingTest -Dsurefire.failIfNoSpecifiedTests=false`，15 个离线用例于 2026-10-21 08:25:30 全部通过，包含七类 HANA、PG 与已交付 MySQL 的一致性回归。IDEA 格式与构建通过；本批没有创建数据库对象，两份红绿诊断日志记录后清理。
 
 前一基础数值 `15d06c7b033612af415cfb28c2bab7cd53f17cbe` 的 [CI 39520937577](https://github.com/kenconnet666/easy_query_pro/actions/runs/39520937577) 检查时仍 in_progress；d7dcad0 的依赖下载失败重跑继续后台执行，下一步继续 H11 DECIMAL 多值模型实证。
+
+## 新工作站环境：收紧容器内存、端口改为 0.0.0.0、准备 Java 8
+
+迁到新工作站（Windows 用户 `Administrator`，WSL Debian 13 + Docker 29.9 / Compose 5.6）。容器内存上限下调：MySQL 2 GiB → 1 GiB（InnoDB buffer pool 256 → 128 MiB），PostgreSQL 1 GiB → 512 MiB，HANA 12 GiB → 8 GiB（SAP 公布的 server-only 最低值）。限制只在两份 Compose 里声明；`tools/EqpCompose.psm1` 和 CI 通过 `docker compose config` 读取声明值，再与容器实际的 HostConfig 比对，三个 PowerShell 脚本和两个 workflow 里原来写死的字节数都已删除。HANA CI 的 runner 可见内存门槛从 14 GiB 降到 10 GiB。
+
+所有数据库端口改为在 WSL 内监听 `0.0.0.0`。宿主机通过 localhost 或 WSL 的 `eth0` 地址访问；按用户要求不做 Windows 端口转发。
+
+HANA 实测记录：
+- 容器内 HANA 把 cgroup 上限 8192 MB 当作物理内存，默认分配上限为 7692 MB。
+- 曾尝试把 `global_allocation_limit` 设为 `80%`（6554 MB）。结果 146 个 HANA IT 中 145 个在查询编译阶段报 `[4] cannot allocate enough memory`，之后连 SYSTEMDB 的 ALTER 也无法执行，只能直接删除 `global.ini` 中的这一项并重启才恢复。因此保留默认上限。
+- 改为在 HOST 层关闭用不到的 web dispatcher（约 380 MB 常驻、884 MB 记账）。原来的 `enable-hdi.sh/.sql` 改名为 `configure.sh/.sql`，统一负责 start 之后的配置。
+- 评估过"只保留 SYSTEMDB"：SAP 不支持在系统库存放业务数据或部署 HDI，测试也有意拒绝 SYSTEMDB，所以没有采用。
+
+验证结果均使用 JBR 17 工具链：
+- 离线 `clean verify`：281 个测试通过。
+- 开发实例 `-Pmysql,postgres`：130 个 IT 通过。
+- `tools/test-databases.ps1 -Database all`：临时容器跑 281 + 130 个测试全部通过，结束后临时资源清理完毕。
+- `tools/hana.ps1 -Action test`：146 个 IT 通过。测试期间 HANA 容器的 cgroup `memory.peak` 为 3.79 GiB，`oom_kill` 为 0。
+- ts-orm：pnpm 11.22.0（corepack）安装，格式检查、类型检查和 144 个单元测试通过；三库集成测试 3 个通过。
+
+Java 8 准备：
+- `~/.m2/toolchains.xml` 同时注册了 `D:\soft\jdk1.8.0_181`（1.8）和 JBR 17。
+- 按 DebugTools 官方 8u181 安装包（sha256 与 GitHub release digest 一致），把 altjvm 从 `dcevmlight-14` 升级到 `dcevmlight-26`，旧文件保留为备份。
+- 迁移方案见 [Java 8 迁移](java8-migration.md)，尚未开始改代码。

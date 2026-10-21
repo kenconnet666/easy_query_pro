@@ -2,7 +2,9 @@
 
 ## JDK 与 Maven
 
-本机使用 `C:\Users\lionheart\.jdks\jbr-17.0.14`，IDEA Project SDK 为 `jbr-17`。已在本机 `~/.m2/toolchains.xml` 注册该路径，项目编译和测试选择 `[17,18)` 工具链；即使 Maven 本身由系统 Java 25 启动，编译器和测试 JVM 仍使用 JDK 17。
+本机使用 `C:\Users\Administrator\.jdks\jbr-17.0.14`，IDEA Project SDK 为 `jbr-17`。已在本机 `~/.m2/toolchains.xml` 注册该路径，项目编译和测试选择 `[17,18)` 工具链；即使 Maven 本身由其他版本的系统 Java 启动，编译器和测试 JVM 仍使用 JDK 17。
+
+Java 模块计划降到 Java 8，与上游 EasyQuery 的字节码基线一致。目标 JDK 为 `D:\soft\jdk1.8.0_181`，已作为 `1.8` 注册到同一个 `toolchains.xml`。POM 切换之前不会选中它，切换方案见 [Java 8 迁移](java8-migration.md)。
 
 Maven Wrapper 固定 Maven 3.9.16，wrapper 为官方 only-script 3.3.4。不要求安装全局 Maven，不更改系统 JAVA_HOME。首次运行需要网络以下载依赖。
 
@@ -39,9 +41,11 @@ POM 使用 `release=17`，不启用 preview；Maven 堆上限 1 GiB，测试 JVM
 
 供 IDEA 使用的持久开发实例由 `tools/databases.ps1 -Action start` 启动，Compose project 为 `eqp-dev`，MySQL 端口 53306、PostgreSQL 端口 55432；数据库和用户均为 `eqp`。`stop` 保留容器和卷，后续 `start` 从自己的已有容器恢复凭据，发现不一致时拒绝覆盖。
 
+所有数据库端口在 WSL 内监听 `0.0.0.0`，不做额外端口转发。宿主机可以用 `localhost`（wslrelay）或 WSL 的 `eth0` 地址访问；这个地址可以用 `wsl -d Debian hostname -I` 的第一项查到，NAT 模式下 WSL 重启后可能变化。
+
 `tools/database-password.ps1 -Database mysql|postgres|hana` 将相应本地密码复制到剪贴板，不写入仓库文件。该脚本兼容 Windows PowerShell 5.1 和 PowerShell 7；数据库生命周期脚本仍使用 PowerShell 7。IDEA 可以使用默认驱动或本地 Maven 缓存的对应 JAR；HANA 已验证必须使用本项目的 ngdbc 2.30.11，IDEA 默认下载的 2.17.12 在当前 IDE 运行时出现 `getSubject is not supported`。
 
-容器限制定义在 `infra/compose.yaml`：MySQL 2 GiB、PostgreSQL 1 GiB，memory+swap 与 memory 相等，两者各限 1 CPU；内存限制不足或不一致时脚本拒绝继续测试。镜像固定为 Linux amd64 的版本及 digest，资源不会因为上游浮动 tag 变化而悄悄更换。
+容器限制定义在 `infra/compose.yaml`：MySQL 1 GiB（InnoDB buffer pool 128 MiB）、PostgreSQL 512 MiB，memory+swap 与 memory 相等，两者各限 1 CPU。限制只在 Compose 文件里维护：本地脚本（`tools/EqpCompose.psm1`）和 CI 都通过 `docker compose config` 读取声明值，再与容器实际的 HostConfig 比对，不一致时拒绝继续测试。镜像固定为 Linux amd64 的版本及 digest，资源不会因为上游浮动 tag 变化而悄悄更换。
 
 凭据只通过进程环境传递，不写入 POM、Compose 明文值或仓库文件。测试使用 `eqp_product` 表，只有成功创建后才进入清理流程，已有同名表会使测试失败而不会被删除；PostgreSQL 额外使用每次随机创建的 schema。
 
@@ -68,7 +72,7 @@ POM 使用 `release=17`，不启用 preview；Maven 堆上限 1 GiB，测试 JVM
 
 ## HANA Docker 开发实例
 
-HANA 是核心目标数据库。`infra/hana.compose.yaml` 固定 SAP 官方 `saplabs/hanaexpress:2.00.088.00.20251110.1` 的 digest，使用独立 `eqp-hana` Compose project 和持久卷。容器限制 12 GiB 内存、无额外 swap、4 CPU，采用数据库服务版，不安装 XS 应用服务。
+HANA 是核心目标数据库。`infra/hana.compose.yaml` 固定 SAP 官方 `saplabs/hanaexpress:2.00.088.00.20251110.1` 的 digest，使用独立 `eqp-hana` Compose project 和持久卷。容器限制 8 GiB 内存（SAP 公布的 server-only 最低值）、无额外 swap、4 CPU，采用数据库服务版，不安装 XS 应用服务。HANA 会把 cgroup 限制当作物理内存，默认分配上限为 7692 MB。它的内存记账包含代码映射等部分，比实际常驻内存高：空闲时记账约 3.9 GB，实际只占约 3 GiB。曾尝试把 `global_allocation_limit` 设为 `80%`，结果租户在查询编译阶段就报 `[4] cannot allocate enough memory`，所以保留默认上限。`start` 后的配置步骤会关闭用不到的 HTTP web dispatcher（XS 入口，约 0.9 GB 记账、380 MB 常驻），把这部分额度让给租户。只保留 SYSTEMDB 的方案不可行：SAP 不支持在系统库存放业务数据或部署 HDI，本项目的集成测试也有意拒绝 SYSTEMDB。
 
 ```powershell
 .\tools\hana.ps1 -Action start
@@ -78,7 +82,7 @@ HANA 是核心目标数据库。`infra/hana.compose.yaml` 固定 SAP 官方 `sap
 .\tools\hana.ps1 -Action stop
 ```
 
-端口只绑定 loopback：HXE 业务租户使用 `127.0.0.1:39041` / `jdbc:sap://127.0.0.1:39041`；SYSTEMDB 管理连接使用 `127.0.0.1:39017`。集成测试显式拒绝 SYSTEMDB，避免连接成功却验证错数据库。首次启动从 `EQP_HANA_PASSWORD` 读取密码，未设置时生成随机密码；再次启动/测试从已存在容器的环境读取，不输出密码。已有数据卷而没有容器时，必须提供原始密码，脚本不会猜测、覆盖或删除数据库。
+端口在 WSL 内监听 `0.0.0.0`：HXE 业务租户使用 `39041`（`jdbc:sap://127.0.0.1:39041` 或 WSL `eth0` 地址）；SYSTEMDB 管理连接使用 `39017`。集成测试显式拒绝 SYSTEMDB，避免连接成功却验证错数据库。首次启动从 `EQP_HANA_PASSWORD` 读取密码，未设置时生成随机密码；再次启动/测试从已存在容器的环境读取，不输出密码。已有数据卷而没有容器时，必须提供原始密码，脚本不会猜测、覆盖或删除数据库。
 
 `test` 默认增量编译，`-IntegrationTest` 传给 Failsafe 选择定向测试；需要干净构建时显式添加 `-Clean`。CI 始终执行完整 clean 验证。本地开发不等待长时间 CI 结束，下一次提交前读取前一提交的结果并处理失败。
 
@@ -86,17 +90,19 @@ SAP 启动入口要求密码 JSON 文件。启动脚本从环境变量生成该�
 
 部署执行 SAP 官方入口的许可接受参数。参考 [SAP 官方 Docker 安装说明](https://developers.sap.com/tutorials/hxe-ua-install-using-docker)与 [官方镜像](https://hub.docker.com/r/saplabs/hanaexpress)。本机 Debian/WSL 是开发验证环境，不能从测试成功推导生产部署认证。
 
-HANA 所需 IPC sysctl 和文件句柄限制在 Compose 中配置。若宿主系统检查不满足，先核对错误和现值再调整相应内核参数，不关闭整个系统检查。CI 在独立 runner 上设置所需 AIO、memory map 和 early kill 参数；需要至少约 14 GiB 可见内存，资源不足会失败。
+HANA 所需 IPC sysctl 和文件句柄限制在 Compose 中配置。若宿主系统检查不满足，先核对错误和现值再调整相应内核参数，不关闭整个系统检查。CI 在独立 runner 上设置所需 AIO、memory map 和 early kill 参数；需要至少 10 GiB 可见内存，资源不足会失败。
 
 `tools/hana.ps1 stop` 保留容器和数据，避免下次启动丢失初始化凭据。清空开发数据库属于单独的显式操作，普通测试不会删除持久卷。
 
-`start` 还会为 HXE 启用 HDI 的 diserver 并等待 SQL API 就绪，CI 使用同一脚本。该服务仅用于部署真实计算视图等测试工件，不要求安装 XS Advanced。部署权限、结果码和清理流程见 [HDI 测试说明](hana-hdi.md)。
+`start` 之后统一执行 `infra/hana/configure.sh`：先在 HOST 层关闭 web dispatcher（`daemon.ini` 的这个参数只接受 HOST 层，Compose 固定了主机名 `hxehost`），再为 HXE 启用 HDI 的 diserver 并等待 SQL API 就绪。CI 使用同一脚本，脚本可重复执行。该服务仅用于部署真实计算视图等测试工件，不要求安装 XS Advanced。部署权限、结果码和清理流程见 [HDI 测试说明](hana-hdi.md)。
 
 ## IDEA 与 DebugTools
 
 IDEA 已识别父项目和六个子模块，Project SDK 为指定 JBR 17。通过 Maven 导入同步依赖；代理源由 `sql-processor:3.2.17` 生成在 `integration-tests/target/generated-test-sources/test-annotations`，不提交生成文件。
 
 已核对 DebugTools 官方 [热重载说明](https://debug-tools.cc/guide/hot-reload.html)和 [JDK 安装说明](https://debug-tools.cc/guide/install.html)。本机插件为 5.3.0，JBR 17 已通过 `-XX:+AllowEnhancedClassRedefinition -version` 启动检查；这项检查不等于已经完成应用热重载验证。
+
+JDK 8 热重载依赖 DCEVM。`D:\soft\jdk1.8.0_181` 已按官方 8u181 安装包以 altjvm 方式装好 `jre\bin\dcevm\jvm.dll`（`dcevmlight-26`，sha256 `045D9E63…7D37`），默认 JVM 不变，旧的 `dcevmlight-14` 备份为同目录 `jvm.dll.dcevmlight-14.bak`。DebugTools 的检测命令是 `D:\soft\jdk1.8.0_181\bin\java -XXaltjvm=dcevm -version`，输出 `Dynamic Code Evolution 64-Bit Server VM` 即为可用。官方要求关闭 IDEA 的 Build, Execution, Deployment → Debugger → Async Stack Traces。
 
 当前会话已暴露 `get_debug_tools_status`、`execute_debug_tools_run_configuration` 和 `compile_and_reload_modified_files`。后续有运行中的调试程序时，可通过 DebugTools Hotswap 启动并重编译/重载函数实现。按官方文档核对 Async Stack Traces 设置；本轮没有改动全局调试设置，也没有在普通 Maven 构建中加入 agent。
 

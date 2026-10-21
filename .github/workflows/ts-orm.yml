@@ -92,8 +92,7 @@ jobs:
       - name: Start isolated database with a memory limit
         run: |
           docker compose up --detach --wait --wait-timeout 120
-          expected=1073741824
-          if [ "$TEST_DATABASE" = mysql ]; then expected=2147483648; fi
+          expected=$(docker compose config --format json | jq --arg service "$TEST_DATABASE" '.services[$service].mem_limit | tonumber')
           container=$(docker compose ps -q "$TEST_DATABASE")
           docker inspect "$container" | jq -e --argjson expected "$expected" \
             '.[0].HostConfig | .Memory == $expected and .MemorySwap == $expected'

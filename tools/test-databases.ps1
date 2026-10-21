@@ -9,6 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $repoRoot = Split-Path $PSScriptRoot -Parent
+Import-Module (Join-Path $PSScriptRoot 'EqpCompose.psm1') -Force
 $project = 'eqp-test-' + [Guid]::NewGuid().ToString('N').Substring(0, 12)
 $services = if ($Database -eq 'all') { @('mysql', 'postgres') } else { @($Database) }
 $environmentNames = @('EQP_DB_PASSWORD', 'EQP_MYSQL_PORT', 'EQP_PG_PORT', 'WSLENV',
@@ -45,14 +46,8 @@ try {
     $started = $true
     & wsl @compose up --detach --wait --wait-timeout 120
     foreach ($service in $services) {
-        $containerId = (& wsl @compose ps -q $service).Trim()
-        $limits = (& wsl -d $Distribution --exec docker inspect --format '{{json .HostConfig}}' $containerId) |
-            ConvertFrom-Json
-        $expectedMemory = if ($service -eq 'mysql') { 2GB } else { 1GB }
-        if ($limits.Memory -ne $expectedMemory -or $limits.MemorySwap -ne $expectedMemory) {
-            throw "Unexpected memory limits for $service"
-        }
-        Write-Host "$service memory=$($limits.Memory) memory+swap=$($limits.MemorySwap) bytes"
+        $memory = Assert-ComposeMemoryLimit -Compose $compose -Distribution $Distribution -Service $service
+        Write-Host "$service memory=memory+swap=$memory bytes"
     }
     $env:EQP_MYSQL_JDBC_URL = "jdbc:mysql://127.0.0.1:$env:EQP_MYSQL_PORT/eqp?sslMode=DISABLED&allowPublicKeyRetrieval=true"
     $env:EQP_MYSQL_USER = 'eqp'
