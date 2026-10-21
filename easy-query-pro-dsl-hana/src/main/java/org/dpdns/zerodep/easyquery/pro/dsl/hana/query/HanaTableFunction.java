@@ -6,6 +6,7 @@ import com.easy.query.core.proxy.ProxyEntity;
 
 import java.util.List;
 import java.util.function.Supplier;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 已部署 SQLScript 表函数的类型化查询来源，仅处理可绑定为单个 JDBC 值的输入。
@@ -33,7 +34,7 @@ public class HanaTableFunction<P extends ProxyEntity<P, T>, T> {
      */
     public static <P extends ProxyEntity<P, T>, T> HanaTableFunction<P, T> of(
             String schema, String function, Supplier<P> proxyFactory, HanaInput<?>... inputs) {
-        return new HanaTableFunction<>(schema, function, proxyFactory, List.of(inputs));
+        return new HanaTableFunction<>(schema, function, proxyFactory, ImmutableCollections.listOf(inputs));
     }
 
     /**

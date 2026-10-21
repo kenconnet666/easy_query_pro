@@ -81,13 +81,14 @@ public abstract class RangeFrame<O> implements WindowFrame {
      * BigDecimal 保留原精度。浮点/自定义 Number 不作猜测性截断，超出 BIGINT 的整数明确失败。
      */
     protected static Number numericOffset(Number value) {
-        if (value instanceof BigDecimal decimal) {
+        if (value instanceof BigDecimal) {
+            BigDecimal decimal = (BigDecimal) value;
             if (decimal.signum() < 0) throw new IllegalArgumentException("A RANGE offset cannot be negative");
             return decimal;
         }
         long integer;
         try {
-            if (value instanceof BigInteger big) integer = big.longValueExact();
+            if (value instanceof BigInteger) integer = ((BigInteger) value).longValueExact();
             else if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long)
                 integer = value.longValue();
             else throw new IllegalArgumentException("Use an integral or BigDecimal RANGE offset");
@@ -102,7 +103,7 @@ public abstract class RangeFrame<O> implements WindowFrame {
      * 检查可证明的 Java 数值族；Object 载体或未知映射需先通过明确的数据库 CAST 建立键类型。
      */
     protected static Class<?> numericKey(PropTypeColumn<?> key) {
-        var type = EasyClassUtil.getObjectTypeWhenPrimitive(Objects.requireNonNull(key.getPropertyType(), "RANGE key Java type"));
+        Class<?> type = EasyClassUtil.getObjectTypeWhenPrimitive(Objects.requireNonNull(key.getPropertyType(), "RANGE key Java type"));
         if (type != Byte.class && type != Short.class && type != Integer.class && type != Long.class
                 && type != BigInteger.class && type != BigDecimal.class)
             throw new IllegalArgumentException("Numeric RANGE requires a known integral/decimal key; use an explicit native CAST");

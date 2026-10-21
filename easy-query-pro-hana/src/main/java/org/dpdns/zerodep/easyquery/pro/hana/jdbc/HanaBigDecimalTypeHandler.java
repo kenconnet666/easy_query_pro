@@ -12,7 +12,7 @@ import java.sql.SQLException;
 public final class HanaBigDecimalTypeHandler extends BigDecimalTypeHandler {
     @Override
     public void setParameter(EasyParameter parameter) throws SQLException {
-        var value = (BigDecimal) parameter.getValue();
+        BigDecimal value = (BigDecimal) parameter.getValue();
         if (value != null && value.signum() == 0) value = BigDecimal.ZERO;
         if (value != null && (value.scale() < 0 || value.scale() > 6176 || (long) value.precision() - value.scale() > 38)) {
             // ngdbc 2.30 expands negative scales and can wrap exponents below the decimal128 minimum.

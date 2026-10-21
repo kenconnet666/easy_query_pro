@@ -16,34 +16,40 @@ import java.math.BigDecimal;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.sql.SQLException;
-import java.util.List;
+import com.mysql.cj.jdbc.MysqlDataSource;
+import java.util.Arrays;
+import com.zaxxer.hikari.HikariDataSource;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft5Proxy;
+import com.easy.query.core.proxy.core.draft.Draft5;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationExpression;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class MySqlShardingDslIT {
     private static final String COLUMNS = "id INTEGER PRIMARY KEY, name VARCHAR(200), amount DECIMAL(19,4), created DATETIME(6)";
 
     @Test
     void rowLocalExpressionsCanBeEvaluatedBeforeShardMerge() throws SQLException {
-        var source = MySqlTestDatabase.dataSource();
-        try (var first = MySqlTestDatabase.createTable(source, "eqp_shard_a_", COLUMNS);
-             var second = MySqlTestDatabase.createTable(source, "eqp_shard_b_", COLUMNS)) {
-            ShardingDslContract.verify(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure, List.of(first.name(), second.name()), MySqlShardingDslIT::verifyNativeViews);
+        MysqlDataSource source = MySqlTestDatabase.dataSource();
+        try (MySqlTestDatabase.Table first = MySqlTestDatabase.createTable(source, "eqp_shard_a_", COLUMNS);
+             MySqlTestDatabase.Table second = MySqlTestDatabase.createTable(source, "eqp_shard_b_", COLUMNS)) {
+            ShardingDslContract.verify(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure, Arrays.asList(first.name(), second.name()), MySqlShardingDslIT::verifyNativeViews);
         }
     }
 
     @Test
     void independentPoolsCanUseDifferentPreparedStatementModes() throws SQLException {
-        var firstSource = MySqlTestDatabase.dataSource();
+        MysqlDataSource firstSource = MySqlTestDatabase.dataSource();
         firstSource.setUseServerPrepStmts(false);
-        var secondSource = MySqlTestDatabase.dataSource();
+        MysqlDataSource secondSource = MySqlTestDatabase.dataSource();
         secondSource.setUseServerPrepStmts(true);
-        try (var first = MySqlTestDatabase.createTable(firstSource, "eqp_multisource_a_", COLUMNS);
-             var second = MySqlTestDatabase.createTable(secondSource, "eqp_multisource_b_", COLUMNS);
-             var primary = ShardingDslContract.pool(firstSource, null);
-             var secondary = ShardingDslContract.pool(secondSource, null)) {
-            ShardingDslContract.verify(List.of(new ShardingDslContract.Shard("primary", primary, first.name()),
+        try (MySqlTestDatabase.Table first = MySqlTestDatabase.createTable(firstSource, "eqp_multisource_a_", COLUMNS);
+             MySqlTestDatabase.Table second = MySqlTestDatabase.createTable(secondSource, "eqp_multisource_b_", COLUMNS);
+             HikariDataSource primary = ShardingDslContract.pool(firstSource, null);
+             HikariDataSource secondary = ShardingDslContract.pool(secondSource, null)) {
+            ShardingDslContract.verify(Arrays.asList(new ShardingDslContract.Shard("primary", primary, first.name()),
                             new ShardingDslContract.Shard("secondary", secondary, second.name())),
                     new MySQLDatabaseConfiguration(), MySqlExtensions::configure, MySqlShardingDslIT::verifyNativeViews);
             assertEquals(0, primary.getHikariPoolMXBean().getActiveConnections());
@@ -56,12 +62,12 @@ class MySqlShardingDslIT {
                 .setPath(JsonPath.root().key("added"), JsonInput.encoded("true")).removePath(JsonPath.root().key("code"))
                 .containsJson(JsonInput.encoded("true"), JsonPath.root().key("added")));
         MySqlExtensions.configureTypeHandlers(query.getRuntimeContext().getJdbcTypeHandlerManager());
-        var duration = Duration.ofHours(27).plusNanos(1000);
-        var times = query.queryable(ShardedProduct.class).orderBy(p -> p.id().asc()).select(p -> {
-            var span = MySqlDsl.of(p).value(duration, MySqlTypes.durationTime(6));
+        Duration duration = Duration.ofHours(27).plusNanos(1000);
+        EntityQueryable<Draft5Proxy<Integer, Duration, Duration, BigDecimal, LocalDateTime>, Draft5<Integer, Duration, Duration, BigDecimal, LocalDateTime>> times = query.queryable(ShardedProduct.class).orderBy(p -> p.id().asc()).select(p -> {
+            MySqlDurationExpression<Duration> span = MySqlDsl.of(p).value(duration, MySqlTypes.durationTime(6));
             return Select.DRAFT.of(p.id(), span, span.plus(span).negated(), span.toSeconds(), span.addToDateTime(p.created()));
         });
-        for (var row : times.toList()) {
+        for (Draft5<Integer, Duration, Duration, BigDecimal, LocalDateTime> row : times.toList()) {
             assertEquals(duration, row.getValue2());
             assertEquals(duration.multipliedBy(-2), row.getValue3());
             NativeDecimalContract.equalValue(new BigDecimal("97200.000001"), row.getValue4());

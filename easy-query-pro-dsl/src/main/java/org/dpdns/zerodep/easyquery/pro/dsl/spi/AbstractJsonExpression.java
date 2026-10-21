@@ -23,12 +23,16 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
+import com.easy.query.core.metadata.ColumnMetadata;
+import java.lang.reflect.Field;
+import com.easy.query.core.util.EasyStringUtil;
 
 /**
  * Reuses the existing property mapping and the portable reader without exposing text methods on JSON.
  */
 public abstract class AbstractJsonExpression<T> extends MappedValueExpression<T> implements JsonExpression<T> {
-    private static final Set<String> KNOWN_TYPES = Set.of("JSON", "JSONB", "TEXT", "TINYTEXT", "MEDIUMTEXT", "LONGTEXT", "BYTEA", "UUID", "INT", "INT2", "INT4", "INT8", "BOOL", "DATETIME", "TIMESTAMPTZ");
+    private static final Set<String> KNOWN_TYPES = ImmutableCollections.setOf("JSON", "JSONB", "TEXT", "TINYTEXT", "MEDIUMTEXT", "LONGTEXT", "BYTEA", "UUID", "INT", "INT2", "INT4", "INT8", "BOOL", "DATETIME", "TIMESTAMPTZ");
     protected final ProDsl portable;
     private final NativeJsonType type;
 
@@ -74,19 +78,20 @@ public abstract class AbstractJsonExpression<T> extends MappedValueExpression<T>
     public static void requireView(ExpressionScope scope, PropTypeColumn<?> source, NativeJsonType target) {
         scope.requireSource(source);
         target.requireDialect(scope.dialect());
-        if (source instanceof JsonExpression<?> known && !known.sqlType().equals(target)) {
+        if (source instanceof JsonExpression<?> && !((JsonExpression<?>) source).sqlType().equals(target)) {
+            JsonExpression<?> known = (JsonExpression<?>) source;
             throw new IllegalArgumentException("Use an explicit CAST from " + known.sqlType().sqlName() + " to " + target.sqlName());
         }
         if (source instanceof JsonFragmentExpression && target.dialect() == SqlDialect.POSTGRESQL && target.sqlName().equals("JSONB")) {
             throw new IllegalArgumentException("Portable JSON fragments require an explicit JSONB CAST");
         }
         if (source instanceof DSLSQLFunctionAvailable || source.getTable() == null || source.getValue() == null) return;
-        var column = source.getTable().getEntityMetadata().getColumnNotNull(source.getValue());
+        ColumnMetadata column = source.getTable().getEntityMetadata().getColumnNotNull(source.getValue());
         if (column.getColumnValueSQLConverter() != null && !(column.getColumnValueSQLConverter() instanceof NativeJsonColumnConverter))
             return;
-        var field = EasyClassUtil.getAllFieldsMap(source.getTable().getEntityClass()).get(column.getFieldName());
-        var annotation = field == null ? null : field.getAnnotation(Column.class);
-        if (annotation == null || annotation.dbType().isBlank()) return;
+        Field field = EasyClassUtil.getAllFieldsMap(source.getTable().getEntityClass()).get(column.getFieldName());
+        Column annotation = field == null ? null : field.getAnnotation(Column.class);
+        if (annotation == null || EasyStringUtil.isBlank(annotation.dbType())) return;
         String declared = annotation.dbType().trim().toUpperCase(Locale.ROOT).split("[\\s(]", 2)[0];
         // 已知内置声明才做冲突判断；未知 domain 或自定义类型仍是调用者的类型声明。
         boolean known = KNOWN_TYPES.contains(declared);

@@ -13,6 +13,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import com.easy.query.core.basic.jdbc.conn.DataSourceWrapper;
+import com.easy.query.core.datasource.DataSourceUnit;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
 
 /**
  * 沿用上游数据源路由、借用等待和连接管理，补充 HANA 隔离级别及会话初始化约束。
@@ -50,15 +53,15 @@ public final class HanaConnectionFactory implements EasyConnectionFactory {
                 && isolation != Connection.TRANSACTION_REPEATABLE_READ && isolation != Connection.TRANSACTION_SERIALIZABLE) {
             throw new IllegalArgumentException("HANA supports READ_COMMITTED, REPEATABLE_READ and SERIALIZABLE; requested " + isolation);
         }
-        var source = dataSources.getDataSourceNotNull(name, strategy);
-        var unit = source.getDataSourceUnit();
+        DataSourceWrapper source = dataSources.getDataSourceNotNull(name, strategy);
+        DataSourceUnit unit = source.getDataSourceUnit();
         List<Connection> borrowed = null;
         try {
             // 保留单/多连接的借用入口，避免绕过自定义 DataSourceUnit 的等待策略。
             borrowed = multiple ? unit.getConnections(count, waitTimeoutMillis, TimeUnit.MILLISECONDS)
-                    : List.of(unit.getConnection(waitTimeoutMillis, TimeUnit.MILLISECONDS));
-            var result = new ArrayList<EasyConnection>(borrowed.size());
-            for (var connection : borrowed)
+                    : ImmutableCollections.listOf(unit.getConnection(waitTimeoutMillis, TimeUnit.MILLISECONDS));
+            ArrayList<EasyConnection> result = new ArrayList<EasyConnection>(borrowed.size());
+            for (Connection connection : borrowed)
                 result.add(new HanaEasyConnection(name, source.getStrategy(), connection, isolation));
             return result;
         } catch (SQLException failure) {
@@ -76,7 +79,7 @@ public final class HanaConnectionFactory implements EasyConnectionFactory {
     private static void release(List<Connection> connections, Throwable failure) {
         if (connections == null) return;
         // 初始化未完成的连接还没有交给 ConnectionManager，必须释放整批，包括尚未包装的连接。
-        for (var connection : connections) {
+        for (Connection connection : connections) {
             try {
                 connection.close();
             } catch (Throwable closeFailure) {

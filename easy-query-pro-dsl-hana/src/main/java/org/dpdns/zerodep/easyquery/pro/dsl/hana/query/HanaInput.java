@@ -2,6 +2,7 @@ package org.dpdns.zerodep.easyquery.pro.dsl.hana.query;
 
 import java.util.List;
 import java.util.Objects;
+import com.easy.query.core.util.EasyStringUtil;
 
 /**
  * HANA 查询来源的输入参数声明，将名称、Java 值类型和省略/NULL 策略绑定在一起。
@@ -23,7 +24,7 @@ public class HanaInput<T> {
     protected HanaInput(String name, Class<T> type, boolean required, boolean nullable) {
         this.name = Objects.requireNonNull(name, "name");
         this.type = Objects.requireNonNull(type, "type");
-        if (name.isBlank() || name.indexOf('\0') >= 0 || name.contains("$$"))
+        if (EasyStringUtil.isBlank(name) || name.indexOf('\0') >= 0 || name.contains("$$"))
             throw new IllegalArgumentException("Use a nonblank bare HANA input name without NUL or $$");
         if (type.isPrimitive()) throw new IllegalArgumentException("HANA input declarations require boxed Java types");
         this.required = required;
@@ -82,8 +83,8 @@ public class HanaInput<T> {
      */
     public HanaInput<T> nullable() {
         if (nullable) return this;
-        var original = this;
-        return new HanaInput<>(name, type, required, true) {
+        HanaInput<T> original = this;
+        return new HanaInput<T>(name, type, required, true) {
             @Override
             protected void validate(T value) {
                 if (value != null) original.validate(value);
@@ -142,13 +143,45 @@ public class HanaInput<T> {
      * 一次查询的参数赋值。绑定只保存值引用，不深复制业务对象；构建后不要修改传入的可变值。
      * 公共构造器与 bind 使用相同校验，避免直接创建 Binding 绕过声明的 NULL/类型契约。
      */
-    public record Binding<T>(HanaInput<T> input, T value) {
-        public Binding {
+    public static final class Binding<T> {
+        private final HanaInput<T> input;
+        private final T value;
+
+        public Binding(HanaInput<T> input, T value) {
             Objects.requireNonNull(input, "input").validate(value);
+            this.input = input;
+            this.value = value;
         }
 
         Object jdbcValue() {
             return value == null ? null : Objects.requireNonNull(input.toJdbcValue(value), "HANA input encoder result");
+        }
+
+        public HanaInput<T> input() {
+            return input;
+        }
+
+        public T value() {
+            return value;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Binding)) return false;
+            Binding<?> other = (Binding<?>) o;
+            return Objects.equals(input, other.input)
+                    && Objects.equals(value, other.value);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(input, value);
+        }
+
+        @Override
+        public String toString() {
+            return "Binding[input=" + input + ", value=" + value + "]";
         }
     }
 }

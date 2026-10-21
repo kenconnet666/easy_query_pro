@@ -3,6 +3,7 @@ package org.dpdns.zerodep.easyquery.pro.dsl.group;
 import com.easy.query.core.proxy.PropTypeColumn;
 
 import java.util.List;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 一个原生 GROUPING SETS 成员，键必须直接取自当前分组代理的 keyN()。
@@ -14,21 +15,21 @@ public class GroupingSet {
     private final List<PropTypeColumn<?>> keys;
 
     protected GroupingSet(List<PropTypeColumn<?>> keys) {
-        this.keys = List.copyOf(keys);
+        this.keys = ImmutableCollections.listCopyOf(keys);
     }
 
     /**
      * 按声明顺序选择本组保留的键；重复键会在挂接查询时被拒绝。
      */
     public static GroupingSet of(PropTypeColumn<?>... keys) {
-        return new GroupingSet(List.of(keys));
+        return new GroupingSet(ImmutableCollections.listOf(keys));
     }
 
     /**
      * 生成空分组成员 ()，请求整个输入的总计。空输入行为由所选方言决定。
      */
     public static GroupingSet total() {
-        return new GroupingSet(List.of());
+        return new GroupingSet(ImmutableCollections.listOf());
     }
 
     public List<PropTypeColumn<?>> keys() {

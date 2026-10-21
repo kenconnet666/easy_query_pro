@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   build:
-    name: Java 17 / ${{ matrix.os }}
+    name: Java 8 / ${{ matrix.os }}
     concurrency:
       group: ci-${{ github.workflow }}-build-${{ github.ref }}-${{ matrix.os }}
       cancel-in-progress: true
@@ -29,8 +29,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
-          distribution: jetbrains
-          java-version: '17.0.14'
+          distribution: temurin
+          # JDK 8 builds and tests through the Maven toolchain; the last JDK (17) runs Maven and the Spring examples.
+          java-version: |
+            8
+            17
           cache: maven
       - name: Build and run SQL contracts
         shell: bash
@@ -60,8 +63,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
-          distribution: jetbrains
-          java-version: '17.0.14'
+          distribution: temurin
+          # JDK 8 builds and tests through the Maven toolchain; the last JDK (17) runs Maven and the Spring examples.
+          java-version: |
+            8
+            17
           cache: maven
       - name: Build isolated JAR and APT consumers
         shell: bash
@@ -104,8 +110,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
-          distribution: jetbrains
-          java-version: '17.0.14'
+          distribution: temurin
+          # JDK 8 builds and tests through the Maven toolchain; the last JDK (17) runs Maven and the Spring examples.
+          java-version: |
+            8
+            17
           cache: maven
       - name: Generate temporary database credentials
         run: |
@@ -166,8 +175,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
-          distribution: jetbrains
-          java-version: '17.0.14'
+          distribution: temurin
+          # JDK 8 builds and tests through the Maven toolchain; the last JDK (17) runs Maven and the Spring examples.
+          java-version: |
+            8
+            17
           cache: maven
       - name: Prepare the dedicated HANA runner
         run: |
@@ -244,8 +256,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
-          distribution: jetbrains
-          java-version: '17.0.14'
+          distribution: temurin
+          # JDK 8 builds and tests through the Maven toolchain; the last JDK (17) runs Maven and the Spring examples.
+          java-version: |
+            8
+            17
           cache: maven
       - name: Check HANA configuration
         run: |

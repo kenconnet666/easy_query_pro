@@ -9,14 +9,16 @@ import org.dpdns.zerodep.easyquery.pro.dsl.hana.HanaTypes;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.test.entity.HanaTypedLob;
 import org.junit.jupiter.api.Test;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import com.easy.query.core.basic.api.select.Query;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class HanaLobDslTest {
     @Test
     void lobReturnTypeSurvivesDistinctAndCloneWhileScalarConversionRemainsLegal() {
-        var client = TestClients.offline(new HanaDatabaseConfiguration(), HanaExtensions::configure);
-        var selected = client.queryable(HanaTypedLob.class).selectColumn(p -> HanaDsl.of(p).view(p.text(), HanaTypes.nclob()));
+        DefaultEasyEntityQuery client = TestClients.offline(new HanaDatabaseConfiguration(), HanaExtensions::configure);
+        Query<String> selected = client.queryable(HanaTypedLob.class).selectColumn(p -> HanaDsl.of(p).view(p.text(), HanaTypes.nclob()));
         assertThrows(IllegalArgumentException.class, () -> selected.cloneQueryable().distinct().toSQL());
         assertDoesNotThrow(() -> {
             selected.toSQL();
@@ -39,7 +41,7 @@ class HanaLobDslTest {
 
     @Test
     void knownStorageAndSliceErrorsFailBeforeJdbc() {
-        var client = TestClients.offline(new HanaDatabaseConfiguration(), HanaExtensions::configure);
+        DefaultEasyEntityQuery client = TestClients.offline(new HanaDatabaseConfiguration(), HanaExtensions::configure);
         assertThrows(IllegalArgumentException.class, () -> client.queryable(HanaTypedLob.class).selectColumn(p -> HanaDsl.of(p).view(p.plain(), HanaTypes.nclob())));
         assertThrows(IllegalArgumentException.class, () -> client.queryable(HanaTypedLob.class).selectColumn(p ->
                 ProDsl.of(p).nullSafeEqualsValue(HanaDsl.of(p).view(p.text(), HanaTypes.nclob()), "text")));

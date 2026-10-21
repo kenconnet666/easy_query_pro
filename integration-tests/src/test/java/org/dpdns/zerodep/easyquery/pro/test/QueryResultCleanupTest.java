@@ -19,9 +19,13 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import com.easy.query.core.expression.sql.builder.ExpressionContext;
+import com.easy.query.core.sql.DefaultJdbcSQLExecutor;
+import java.util.Collections;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -35,49 +39,53 @@ class QueryResultCleanupTest {
     void wrapperFailureKeepsItsIdentityWhenStatementCleanupAlsoFails(boolean hana, Cleanup mode) {
         Throwable original = mode == Cleanup.SAME ? new IllegalStateException("fixture metadata failure")
                 : new SQLException("fixture metadata failure");
-        Throwable cleanup = switch (mode) {
-            case RUNTIME -> new IllegalStateException("fixture statement close failure");
-            case ERROR -> new AssertionError("fixture statement close failure");
-            case SAME -> original;
-        };
-        var resultCloses = new AtomicInteger();
-        var statementCloses = new AtomicInteger();
-        var result = proxy(ResultSet.class, (ignored, method, args) -> switch (method.getName()) {
-            case "next" -> true;
-            case "getMetaData" -> throw original;
-            case "close" -> {
-                resultCloses.incrementAndGet();
-                yield null;
+        Throwable cleanup;
+        switch (mode) {
+            case RUNTIME: cleanup = new IllegalStateException("fixture statement close failure"); break;
+            case ERROR: cleanup = new AssertionError("fixture statement close failure"); break;
+            case SAME: cleanup = original; break;
+            default: throw new IllegalStateException("Unhandled value: " + mode);
+        }
+        AtomicInteger resultCloses = new AtomicInteger();
+        AtomicInteger statementCloses = new AtomicInteger();
+        ResultSet result = proxy(ResultSet.class, (ignored, method, args) -> {
+            switch (method.getName()) {
+                case "next": return true;
+                case "getMetaData": throw original;
+                case "close":
+                    resultCloses.incrementAndGet();
+                    return null;
+                default: throw new AssertionError(method.getName());
             }
-            default -> throw new AssertionError(method.getName());
         });
-        var statement = proxy(PreparedStatement.class, (ignored, method, args) -> switch (method.getName()) {
-            case "executeQuery", "getResultSet" -> result;
-            case "setFetchSize" -> null;
-            case "close" -> {
-                statementCloses.incrementAndGet();
-                throw cleanup;
+        PreparedStatement statement = proxy(PreparedStatement.class, (ignored, method, args) -> {
+            switch (method.getName()) {
+                case "executeQuery": case "getResultSet": return result;
+                case "setFetchSize": return null;
+                case "close":
+                    statementCloses.incrementAndGet();
+                    throw cleanup;
+                default: throw new AssertionError(method.getName());
             }
-            default -> throw new AssertionError(method.getName());
         });
-        var connection = proxy(Connection.class, (ignored, method, args) -> {
+        Connection connection = proxy(Connection.class, (ignored, method, args) -> {
             if (method.getName().equals("prepareStatement")) return statement;
             throw new AssertionError(method.getName());
         });
-        var easyConnection = proxy(EasyConnection.class, (ignored, method, args) -> {
+        EasyConnection easyConnection = proxy(EasyConnection.class, (ignored, method, args) -> {
             if (method.getName().equals("getConnection")) return connection;
             if (method.getName().equals("getDataSourceName")) return "fixture";
             throw new AssertionError(method.getName());
         });
-        var query = hana ? TestClients.offline(new HanaDatabaseConfiguration())
+        DefaultEasyEntityQuery query = hana ? TestClients.offline(new HanaDatabaseConfiguration())
                 : TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
-        var context = query.queryable(TestEvent.class).getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext();
-        var executor = hana ? new HanaJdbcSQLExecutor() : new PgJdbcSQLExecutor();
-        var actual = assertThrows(Throwable.class, () -> executor.query(
-                ExecutorContext.create(context, true, ExecuteMethodEnum.LIST), easyConnection, "SELECT 1", List.of(), true, false));
+        ExpressionContext context = query.queryable(TestEvent.class).getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext();
+        DefaultJdbcSQLExecutor executor = hana ? new HanaJdbcSQLExecutor() : new PgJdbcSQLExecutor();
+        Throwable actual = assertThrows(Throwable.class, () -> executor.query(
+                ExecutorContext.create(context, true, ExecuteMethodEnum.LIST), easyConnection, "SELECT 1", Collections.emptyList(), true, false));
         assertSame(original, actual);
         // 不重复关闭底层资源，也不让同一异常实例触发 Throwable 的 self-suppression 错误。
-        assertEquals(mode == Cleanup.SAME ? List.of() : List.of(cleanup), List.of(actual.getSuppressed()));
+        assertEquals(mode == Cleanup.SAME ? Collections.emptyList() : Arrays.asList(cleanup), Arrays.asList(actual.getSuppressed()));
         assertEquals(1, resultCloses.get());
         assertEquals(1, statementCloses.get());
     }

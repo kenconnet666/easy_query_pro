@@ -31,10 +31,10 @@ public final class StatisticalAggregates {
         // FILTER 会把来源包装成 CASE 并隐藏聚合分类，必须在包装前先检查原始样本。
         requireSample(scope, scope.operand(source, scope.runtime().fx()));
         return new NumberFilterTypeExpressionImpl<>(scope.context(), source, source.getTable(), null, (sample, factory) -> {
-            var input = scope.operand(sample, factory);
+            SQLFunction input = scope.operand(sample, factory);
             requireSample(scope, input);
             // MySQL 上游 Double CAST 实际使用 DECIMAL，统计内部需明确请求 DOUBLE；PG/HANA 复用原转换。
-            var approximate = scope.dialect() == SqlDialect.MYSQL
+            SQLFunction approximate = scope.dialect() == SqlDialect.MYSQL
                     ? factory.anySQLFunction("CAST({0} AS DOUBLE)", args -> args.sqlFunc(input))
                     : factory.cast(input, Double.class);
             return scope.aggregate(factory.anySQLFunction(kind.name() + "({0})", args -> args.sqlFunc(approximate)), source.getTable());

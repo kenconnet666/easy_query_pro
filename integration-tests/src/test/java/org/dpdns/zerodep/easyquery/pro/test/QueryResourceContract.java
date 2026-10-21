@@ -36,6 +36,13 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
 import java.util.stream.IntStream;
+import java.sql.PreparedStatement;
+import com.easy.query.core.api.client.EasyQueryClient;
+import com.easy.query.core.basic.jdbc.tx.Transaction;
+import com.easy.query.core.basic.jdbc.executor.internal.enumerable.JdbcStreamResult;
+import java.util.concurrent.ExecutorService;
+import java.util.stream.Collectors;
+import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -52,7 +59,7 @@ final class QueryResourceContract {
     }
 
     static void seed(Connection owner, String table) throws SQLException {
-        try (var insert = owner.prepareStatement("INSERT INTO " + table + " VALUES (?,?,?)")) {
+        try (PreparedStatement insert = owner.prepareStatement("INSERT INTO " + table + " VALUES (?,?,?)")) {
             for (int id = 1; id <= ROWS; id++) {
                 insert.setInt(1, id);
                 if (name(id) == null) insert.setNull(2, Types.VARCHAR);
@@ -67,19 +74,19 @@ final class QueryResourceContract {
 
     static void verify(DataSource source, DatabaseConfiguration database, Consumer<ServiceCollection> extensions,
                        String table, String schema) throws Exception {
-        var config = new HikariConfig();
+        HikariConfig config = new HikariConfig();
         config.setDataSource(source);
         config.setMaximumPoolSize(2);
         config.setMinimumIdle(0);
         config.setConnectionTimeout(10_000);
-        try (var pool = new HikariDataSource(config)) {
-            var resources = new JdbcResourceProbe(pool);
-            var client = EasyQueryBootstrapper.defaultBuilderConfiguration().setDefaultDataSource(resources.dataSource())
+        try (HikariDataSource pool = new HikariDataSource(config)) {
+            JdbcResourceProbe resources = new JdbcResourceProbe(pool);
+            EasyQueryClient client = EasyQueryBootstrapper.defaultBuilderConfiguration().setDefaultDataSource(resources.dataSource())
                     .useDatabaseConfigure(database).customConfigure(extensions)
                     .replaceService(JdbcExecutorListener.class, resources).build();
-            var query = new DefaultEasyEntityQuery(client);
+            DefaultEasyEntityQuery query = new DefaultEasyEntityQuery(client);
             Supplier<EntityQueryable<TestProductProxy, TestProduct>> rows = () -> {
-                var current = query.queryable(TestProduct.class).asTable(ignored -> table);
+                EntityQueryable<TestProductProxy, TestProduct> current = query.queryable(TestProduct.class).asTable(ignored -> table);
                 return schema == null ? current : current.asSchema(ignored -> schema);
             };
             try {
@@ -112,22 +119,22 @@ final class QueryResourceContract {
         for (int scenario = 0; scenario < 4; scenario++) {
             int beforeSql = resources.sqlExecutions();
             int beforeJdbc = resources.jdbcExecutions();
-            try (var transaction = query.getEasyQueryClient().beginTransaction()) {
+            try (Transaction transaction = query.getEasyQueryClient().beginTransaction()) {
                 if (scenario == 0) {
-                    var summary = read(rows.get().orderBy(p -> p.id().asc()).getClientQueryable(), TestProduct::getId,
+                    QueryResourceContract.ReadSummary summary = read(rows.get().orderBy(p -> p.id().asc()).getClientQueryable(), TestProduct::getId,
                             row -> assertRow(row.getId(), row.getName(), row.getAmount(), ""), Integer.MAX_VALUE);
                     assertEquals(new ReadSummary(ROWS, checksum(ROWS)), summary);
                 } else {
-                    var reader = new ReaderProbe("", scenario == 3 ? 129 : 0);
-                    var projected = projection(rows, reader).toCteAs("stream_rows").orderBy(p -> p.value1().asc());
+                    QueryResourceContract.ReaderProbe reader = new ReaderProbe("", scenario == 3 ? 129 : 0);
+                    EntityQueryable<Draft3Proxy<Integer, String, BigDecimal>, Draft3<Integer, String, BigDecimal>> projected = projection(rows, reader).toCteAs("stream_rows").orderBy(p -> p.value1().asc());
                     if (scenario == 3) {
-                        var thrown = assertThrows(RuntimeException.class, () -> read(projected.getClientQueryable(), Draft3::getValue1,
+                        RuntimeException thrown = assertThrows(RuntimeException.class, () -> read(projected.getClientQueryable(), Draft3::getValue1,
                                 row -> assertRow(row.getValue1(), row.getValue2(), row.getValue3(), ""), Integer.MAX_VALUE));
                         assertTrue(hasCause(thrown, reader.failure));
                         assertEquals(129, reader.calls);
                     } else {
                         int consumed = scenario == 2 ? 65 : ROWS;
-                        var summary = read(projected.getClientQueryable(), Draft3::getValue1,
+                        QueryResourceContract.ReadSummary summary = read(projected.getClientQueryable(), Draft3::getValue1,
                                 row -> assertRow(row.getValue1(), row.getValue2(), row.getValue3(), ""), scenario == 2 ? consumed : Integer.MAX_VALUE);
                         assertEquals(new ReadSummary(consumed, checksum(consumed)), summary);
                         assertEquals(consumed, reader.calls);
@@ -140,7 +147,7 @@ final class QueryResourceContract {
             }
             assertEquals(beforeSql + 1, resources.sqlExecutions());
             assertEquals(beforeJdbc + 1, resources.jdbcExecutions());
-            var executed = resources.execution(beforeJdbc);
+            JdbcResourceProbe.Execution executed = resources.execution(beforeJdbc);
             assertEquals(FETCH, executed.fetchSize());
             assertFalse(executed.autoCommit(), "PostgreSQL cursor fetching needs an explicit transaction");
             assertEquals(ResultSet.TYPE_FORWARD_ONLY, executed.resultSetType());
@@ -151,8 +158,8 @@ final class QueryResourceContract {
     private static <T> ReadSummary read(Query<T> query, ToIntFunction<T> id, Consumer<T> check, int limit) throws SQLException {
         int count = 0;
         long total = 0;
-        try (var result = query.toStreamResult(statement -> statement.setFetchSize(FETCH))) {
-            for (var row : result.getStreamIterable()) {
+        try (JdbcStreamResult<T> result = query.toStreamResult(statement -> statement.setFetchSize(FETCH))) {
+            for (T row : result.getStreamIterable()) {
                 check.accept(row);
                 total += id.applyAsInt(row);
                 if (++count == limit) break;
@@ -163,10 +170,10 @@ final class QueryResourceContract {
 
     private static void verifyConcurrentReaders(Supplier<EntityQueryable<TestProductProxy, TestProduct>> rows,
                                                 HikariDataSource pool) throws Exception {
-        var executor = Executors.newFixedThreadPool(WORKERS);
+        ExecutorService executor = Executors.newFixedThreadPool(WORKERS);
         try {
-            var start = new CountDownLatch(1);
-            var futures = new ArrayList<Future<Integer>>();
+            CountDownLatch start = new CountDownLatch(1);
+            ArrayList<Future<Integer>> futures = new ArrayList<Future<Integer>>();
             for (int worker = 0; worker < WORKERS; worker++) {
                 int workerId = worker;
                 futures.add(executor.submit(() -> {
@@ -174,28 +181,28 @@ final class QueryResourceContract {
                     for (int round = 0; round < ROUNDS; round++) {
                         String tag = "w" + workerId + "/r" + round + ":";
                         if (workerId == 0 && round == 2) {
-                            var reader = new ReaderProbe(tag, 4);
-                            var failing = projection(() -> rows.get().where(p -> p.id().le(16)), reader).toCteAs("worker_rows");
+                            QueryResourceContract.ReaderProbe reader = new ReaderProbe(tag, 4);
+                            EntityQueryable<Draft3Proxy<Integer, String, BigDecimal>, Draft3<Integer, String, BigDecimal>> failing = projection(() -> rows.get().where(p -> p.id().le(16)), reader).toCteAs("worker_rows");
                             assertTrue(hasCause(assertThrows(RuntimeException.class, failing::toList), reader.failure));
                             assertEquals(4, reader.calls);
                         }
-                        var reader = new ReaderProbe(tag, 0);
+                        QueryResourceContract.ReaderProbe reader = new ReaderProbe(tag, 0);
                         List<String> actual;
                         if (round % 3 == 0) {
-                            var direct = rows.get().where(p -> p.id().le(16)).orderBy(p -> p.id().asc());
+                            EntityQueryable<TestProductProxy, TestProduct> direct = rows.get().where(p -> p.id().le(16)).orderBy(p -> p.id().asc());
                             direct.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext()
                                     .getResultValueConverterMap(true).put("name", reader);
-                            var result = direct.toList();
+                            List<TestProduct> result = direct.toList();
                             result.forEach(row -> assertRow(row.getId(), row.getName(), row.getAmount(), tag));
-                            actual = result.stream().map(TestProduct::getName).toList();
+                            actual = result.stream().map(TestProduct::getName).collect(Collectors.toList());
                         } else {
-                            var projected = projection(() -> rows.get().where(p -> p.id().le(16)), reader);
+                            EntityQueryable<Draft3Proxy<Integer, String, BigDecimal>, Draft3<Integer, String, BigDecimal>> projected = projection(() -> rows.get().where(p -> p.id().le(16)), reader);
                             if (round % 3 == 2) projected = projected.toCteAs("worker_rows");
-                            var result = projected.orderBy(p -> p.value1().asc()).toList();
+                            List<Draft3<Integer, String, BigDecimal>> result = projected.orderBy(p -> p.value1().asc()).toList();
                             result.forEach(row -> assertRow(row.getValue1(), row.getValue2(), row.getValue3(), tag));
-                            actual = result.stream().map(Draft3::getValue2).toList();
+                            actual = result.stream().map(Draft3::getValue2).collect(Collectors.toList());
                         }
-                        assertEquals(IntStream.rangeClosed(1, 16).mapToObj(id -> name(id) == null ? null : tag + name(id)).toList(), actual);
+                        assertEquals(IntStream.rangeClosed(1, 16).mapToObj(id -> name(id) == null ? null : tag + name(id)).collect(Collectors.toList()), actual);
                         assertEquals(16, reader.calls);
                     }
                     return ROUNDS;
@@ -203,7 +210,7 @@ final class QueryResourceContract {
             }
             start.countDown();
             int completed = 0;
-            for (var future : futures) completed += future.get(40, TimeUnit.SECONDS);
+            for (Future<Integer> future : futures) completed += future.get(40, TimeUnit.SECONDS);
             assertEquals(WORKERS * ROUNDS, completed);
             assertEquals(0, pool.getHikariPoolMXBean().getActiveConnections());
             assertTrue(pool.getHikariPoolMXBean().getTotalConnections() <= 2);
@@ -215,7 +222,7 @@ final class QueryResourceContract {
 
     private static EntityQueryable<Draft3Proxy<Integer, String, BigDecimal>, Draft3<Integer, String, BigDecimal>>
     projection(Supplier<EntityQueryable<TestProductProxy, TestProduct>> rows, ReaderProbe reader) {
-        var projected = rows.get().select(p -> Select.DRAFT.of(p.id(), p.name(),
+        EntityQueryable<Draft3Proxy<Integer, String, BigDecimal>, Draft3<Integer, String, BigDecimal>> projected = rows.get().select(p -> Select.DRAFT.of(p.id(), p.name(),
                 ProDsl.of(p).nativeCast(p.amount(), CommonTypes.decimal(19, 4))));
         projected.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext()
                 .getResultValueConverterMap(true).put("value2", reader);
@@ -227,7 +234,7 @@ final class QueryResourceContract {
         assertEquals(0, pool.getHikariPoolMXBean().getActiveConnections());
         resources.assertReleased();
         assertEquals(ROWS, rows.get().count());
-        try (var connection = pool.getConnection()) {
+        try (Connection connection = pool.getConnection()) {
             assertTrue(connection.getAutoCommit());
             assertFalse(connection.isReadOnly());
         }
@@ -257,11 +264,45 @@ final class QueryResourceContract {
     }
 
     private static boolean hasCause(Throwable failure, Throwable expected) {
-        for (var current = failure; current != null; current = current.getCause()) if (current == expected) return true;
+        for (Throwable current = failure; current != null; current = current.getCause()) if (current == expected) return true;
         return false;
     }
 
-    private record ReadSummary(int count, long checksum) {
+    private static final class ReadSummary {
+        private final int count;
+        private final long checksum;
+
+        private ReadSummary(int count, long checksum) {
+            this.count = count;
+            this.checksum = checksum;
+        }
+
+        public int count() {
+            return count;
+        }
+
+        public long checksum() {
+            return checksum;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof ReadSummary)) return false;
+            ReadSummary other = (ReadSummary) o;
+            return count == other.count
+                    && checksum == other.checksum;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(count, checksum);
+        }
+
+        @Override
+        public String toString() {
+            return "ReadSummary[count=" + count + ", checksum=" + checksum + "]";
+        }
     }
 
     private static final class ReaderProbe implements ColumnReader {

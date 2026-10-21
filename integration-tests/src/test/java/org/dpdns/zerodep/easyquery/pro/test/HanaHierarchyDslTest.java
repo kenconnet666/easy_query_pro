@@ -14,8 +14,20 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Stream;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import org.dpdns.zerodep.easyquery.pro.test.entity.HanaHierarchyEdge;
+import java.util.Arrays;
+import org.dpdns.zerodep.easyquery.pro.test.entity.HanaHierarchyRow;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.stream.Collectors;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import java.util.Collections;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.ShardedProductProxy;
+import com.easy.query.api.proxy.entity.select.EntityQueryable2;
+import com.easy.query.core.configuration.QueryConfiguration;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.CodecRecordProxy;
+import org.dpdns.zerodep.easyquery.pro.test.entity.HanaHierarchyNavigationRow;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -27,20 +39,20 @@ class HanaHierarchyDslTest {
     @ParameterizedTest
     @MethodSource("org.dpdns.zerodep.easyquery.pro.test.DecimalDslTest#backends")
     void hierarchyRetainsSourceRootAndOuterParameterMetadata(DecimalDslTest.Backend backend) {
-        var source = backend.client().queryable(HanaHierarchyEdgeProxy.createTable()).where(p -> p.name().eq("source"));
+        EntityQueryable<HanaHierarchyEdgeProxy, HanaHierarchyEdge> source = backend.client().queryable(HanaHierarchyEdgeProxy.createTable()).where(p -> p.name().eq("source"));
         if (backend.dialect() != SqlDialect.HANA) {
             assertThrows(IllegalArgumentException.class, () -> HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId())));
             return;
         }
-        var hierarchy = HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()).roots(List.of(7)).siblingsAsc(p.sortOrder()));
+        HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()).roots(Arrays.asList(7)).siblingsAsc(p.sortOrder()));
         source.where(p -> p.id().eq(99));
-        var query = hierarchy.query(HanaHierarchyRowProxy::createTable).where(p -> p.level().le(3));
-        var result = query.cloneQueryable().toSQLResult();
+        EntityQueryable<HanaHierarchyRowProxy, HanaHierarchyRow> query = hierarchy.query(HanaHierarchyRowProxy::createTable).where(p -> p.level().le(3));
+        ToSQLResult result = query.cloneQueryable().toSQLResult();
         assertTrue(result.getSQL().contains("HIERARCHY(SOURCE"), result.getSQL());
         assertTrue(result.getSQL().contains("START WHERE \"NODE_ID\" IN (?)"), result.getSQL());
         assertTrue(result.getSQL().contains("SIBLING ORDER BY \"sort_order\" ASC,\"NODE_ID\" ASC"), result.getSQL());
-        var parameters = result.getSqlContext().getParameters();
-        assertEquals(List.of("source", 7, 3), parameters.stream().map(SQLParameter::getValue).toList());
+        List<SQLParameter> parameters = result.getSqlContext().getParameters();
+        assertEquals(Arrays.asList("source", 7, 3), parameters.stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         assertEquals("name", parameters.get(0).getPropertyNameOrNull());
         assertEquals("id", parameters.get(1).getPropertyNameOrNull());
         assertNotNull(parameters.get(1).getColumnMetadata());
@@ -50,18 +62,18 @@ class HanaHierarchyDslTest {
     @ParameterizedTest
     @MethodSource("hana")
     void invalidPoliciesForeignColumnsAndReusedOutputProxyAreRejected(DecimalDslTest.Backend backend) {
-        var client = backend.client();
-        var source = client.queryable(HanaHierarchyEdgeProxy.createTable());
-        var foreign = client.queryable(HanaHierarchyEdgeProxy.createTable()).get1Proxy();
+        DefaultEasyEntityQuery client = backend.client();
+        EntityQueryable<HanaHierarchyEdgeProxy, HanaHierarchyEdge> source = client.queryable(HanaHierarchyEdgeProxy.createTable());
+        HanaHierarchyEdgeProxy foreign = client.queryable(HanaHierarchyEdgeProxy.createTable()).get1Proxy();
         assertThrows(IllegalArgumentException.class, () -> HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), foreign.parentId())));
         assertThrows(IllegalArgumentException.class, () -> HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()).siblingsAsc(foreign.name())));
         assertThrows(IllegalArgumentException.class, () -> HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()).depth(-1)));
-        assertThrows(IllegalArgumentException.class, () -> HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()).roots(List.of())));
+        assertThrows(IllegalArgumentException.class, () -> HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()).roots(Collections.emptyList())));
         assertThrows(IllegalArgumentException.class, () -> HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()).roots(java.util.Arrays.asList((Integer) null))));
         assertThrows(IllegalArgumentException.class, () -> HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId())
                 .depth(1).orphans(HanaHierarchySpec.Orphans.ROOT)));
-        var hierarchy = HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()));
-        var output = HanaHierarchyRowProxy.createTable();
+        HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()));
+        HanaHierarchyRowProxy output = HanaHierarchyRowProxy.createTable();
         hierarchy.query(() -> output);
         assertThrows(IllegalArgumentException.class, () -> hierarchy.query(() -> output));
     }
@@ -69,20 +81,20 @@ class HanaHierarchyDslTest {
     @ParameterizedTest
     @MethodSource("hana")
     void shardMergingCannotBeAddedAfterCloningTheHierarchy(DecimalDslTest.Backend backend) {
-        var client = backend.client();
-        var source = client.queryable(HanaHierarchyEdgeProxy.createTable());
-        var hierarchy = HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()));
-        var copy = hierarchy.query(HanaHierarchyRowProxy::createTable).cloneQueryable();
+        DefaultEasyEntityQuery client = backend.client();
+        EntityQueryable<HanaHierarchyEdgeProxy, HanaHierarchyEdge> source = client.queryable(HanaHierarchyEdgeProxy.createTable());
+        HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()));
+        EntityQueryable<HanaHierarchyRowProxy, HanaHierarchyRow> copy = hierarchy.query(HanaHierarchyRowProxy::createTable).cloneQueryable();
         copy.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().useSharding();
         assertThrows(UnsupportedOperationException.class, copy::toSQL);
         client.getRuntimeContext().getQueryConfiguration().applyShardingInitializer(
-                new ShardedProduct.Tables(Map.of("default", List.of("eqp_hierarchy_shard_0", "eqp_hierarchy_shard_1"))));
-        var sharded = client.queryable(ShardedProduct.class);
+                new ShardedProduct.Tables(Collections.singletonMap("default", Arrays.asList("eqp_hierarchy_shard_0", "eqp_hierarchy_shard_1"))));
+        EntityQueryable<ShardedProductProxy, ShardedProduct> sharded = client.queryable(ShardedProduct.class);
         assertTrue(sharded.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().isSharding());
-        var joined = hierarchy.query(HanaHierarchyRowProxy::createTable).cloneQueryable()
+        EntityQueryable2<HanaHierarchyRowProxy, HanaHierarchyRow, ShardedProductProxy, ShardedProduct> joined = hierarchy.query(HanaHierarchyRowProxy::createTable).cloneQueryable()
                 .leftJoin(sharded, (node, product) -> node.id().eq(product.id()));
         assertThrows(UnsupportedOperationException.class, joined::toSQL);
-        var cteJoined = hierarchy.query(HanaHierarchyRowProxy::createTable).toCteAs("hierarchy_before_sharding")
+        EntityQueryable2<HanaHierarchyRowProxy, HanaHierarchyRow, ShardedProductProxy, ShardedProduct> cteJoined = hierarchy.query(HanaHierarchyRowProxy::createTable).toCteAs("hierarchy_before_sharding")
                 .innerJoin(sharded, (node, product) -> node.id().eq(product.id()));
         assertThrows(UnsupportedOperationException.class, cteJoined::toSQL);
     }
@@ -91,35 +103,35 @@ class HanaHierarchyDslTest {
     @MethodSource("hana")
     @SuppressWarnings({"rawtypes", "unchecked"})
     void businessKeyValidationUsesMetadataInsteadOfAptObjectCarriers(DecimalDslTest.Backend backend) {
-        var client = backend.client();
-        var configuration = client.getRuntimeContext().getQueryConfiguration();
+        DefaultEasyEntityQuery client = backend.client();
+        QueryConfiguration configuration = client.getRuntimeContext().getQueryConfiguration();
         configuration.applyValueConverter(new CodecRecord.IdConverter());
         configuration.applyValueConverter(new CodecRecord.LabelConverter("ENC:"));
         configuration.applyColumnValueSQLConverter(new CodecRecord.CentsConverter());
-        var source = client.queryable(CodecRecord.class);
+        EntityQueryable<CodecRecordProxy, CodecRecord> source = client.queryable(CodecRecord.class);
         // 3.2.17 APT 为两个不同的 record 都生成 Object.class，raw 调用不能因此混用不同业务键。
         assertThrows(IllegalArgumentException.class, () -> HanaHierarchy.from(source,
                 p -> HanaHierarchySpec.of((SQLColumn) p.id(), (SQLColumn) p.label())));
         assertThrows(IllegalArgumentException.class, () -> HanaHierarchy.from(source,
-                p -> ((HanaHierarchySpec) HanaHierarchySpec.of(p.label(), p.document())).roots(List.of("wrong Java type"))));
+                p -> ((HanaHierarchySpec) HanaHierarchySpec.of(p.label(), p.document())).roots(Arrays.asList("wrong Java type"))));
     }
 
     @ParameterizedTest
     @MethodSource("hana")
     void navigationComposesTheGeneratorAndBindsSignedDistances(DecimalDslTest.Backend backend) {
-        var source = backend.client().queryable(HanaHierarchyEdgeProxy.createTable()).where(p -> p.id().le(10));
-        var hierarchy = HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()).roots(List.of(1)));
-        var navigation = hierarchy.ancestorsOf(List.of(4)).distanceBetween(-2, -1);
-        var query = navigation.query(HanaHierarchyNavigationRowProxy::createTable).where(p -> p.id().gt(0));
-        var result = query.cloneQueryable().toSQLResult();
+        EntityQueryable<HanaHierarchyEdgeProxy, HanaHierarchyEdge> source = backend.client().queryable(HanaHierarchyEdgeProxy.createTable()).where(p -> p.id().le(10));
+        HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(source, p -> HanaHierarchySpec.of(p.id(), p.parentId()).roots(Arrays.asList(1)));
+        HanaHierarchy<Integer> navigation = hierarchy.ancestorsOf(Arrays.asList(4)).distanceBetween(-2, -1);
+        EntityQueryable<HanaHierarchyNavigationRowProxy, HanaHierarchyNavigationRow> query = navigation.query(HanaHierarchyNavigationRowProxy::createTable).where(p -> p.id().gt(0));
+        ToSQLResult result = query.cloneQueryable().toSQLResult();
         assertTrue(result.getSQL().contains("HIERARCHY_ANCESTORS(SOURCE HIERARCHY("), result.getSQL());
         assertTrue(result.getSQL().contains("DISTANCE FROM ? TO ?"), result.getSQL());
-        assertEquals(List.of(10, 1, 4, -2, -1, 0), result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(Arrays.asList(10, 1, 4, -2, -1, 0), result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         assertEquals(result.getSQL(), query.cloneQueryable().toSQL());
         assertThrows(IllegalStateException.class, () -> hierarchy.distanceBetween(0, 1));
-        assertThrows(IllegalArgumentException.class, () -> hierarchy.descendantsOf(List.of()));
+        assertThrows(IllegalArgumentException.class, () -> hierarchy.descendantsOf(Collections.emptyList()));
         assertThrows(IllegalArgumentException.class, () -> hierarchy.ancestorsOf(java.util.Arrays.asList((Integer) null)));
-        assertThrows(IllegalStateException.class, () -> navigation.descendantsOf(List.of(1)));
+        assertThrows(IllegalStateException.class, () -> navigation.descendantsOf(Arrays.asList(1)));
         assertFalse(hierarchy.query(HanaHierarchyRowProxy::createTable).toSQL().contains("HIERARCHY_ANCESTORS("));
     }
 }

@@ -19,6 +19,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -63,28 +64,29 @@ final class JdbcResourceProbe implements JdbcExecutorListener {
 
     void assertReleased() throws SQLException {
         synchronized (results) {
-            for (var result : results) assertTrue(result.isClosed(), "A JDBC result remained open");
+            for (ResultSet result : results) assertTrue(result.isClosed(), "A JDBC result remained open");
         }
         synchronized (statements) {
-            for (var statement : statements) assertTrue(statement.isClosed(), "A JDBC statement remained open");
+            for (Statement statement : statements) assertTrue(statement.isClosed(), "A JDBC statement remained open");
         }
     }
 
     private synchronized Object wrap(Object delegate, Class<?> contract) {
         return wrappers.computeIfAbsent(delegate, ignored -> {
-            if (delegate instanceof ResultSet result) results.add(result);
-            else if (delegate instanceof Statement statement) statements.add(statement);
+            if (delegate instanceof ResultSet) results.add(((ResultSet) delegate));
+            else if (delegate instanceof Statement) statements.add(((Statement) delegate));
             return Proxy.newProxyInstance(contract.getClassLoader(), new Class<?>[]{contract}, (proxy, method, args) -> {
-                if (delegate instanceof Statement statement && (method.getName().equals("executeQuery") || method.getName().equals("execute"))) {
+                if (delegate instanceof Statement && (method.getName().equals("executeQuery") || method.getName().equals("execute"))) {
+                    Statement statement = (Statement) delegate;
                     executions.add(new Execution(statement.getFetchSize(), statement.getConnection().getAutoCommit(), statement.getResultSetType()));
                 }
                 try {
-                    var result = method.invoke(delegate, args);
-                    if (result instanceof ResultSet rows) return wrap(rows, ResultSet.class);
-                    if (result instanceof CallableStatement statement) return wrap(statement, CallableStatement.class);
-                    if (result instanceof PreparedStatement statement) return wrap(statement, PreparedStatement.class);
-                    if (result instanceof Statement statement) return wrap(statement, Statement.class);
-                    if (result instanceof Connection connection) return wrap(connection, Connection.class);
+                    Object result = method.invoke(delegate, args);
+                    if (result instanceof ResultSet) return wrap(((ResultSet) result), ResultSet.class);
+                    if (result instanceof CallableStatement) return wrap(((CallableStatement) result), CallableStatement.class);
+                    if (result instanceof PreparedStatement) return wrap(((PreparedStatement) result), PreparedStatement.class);
+                    if (result instanceof Statement) return wrap(((Statement) result), Statement.class);
+                    if (result instanceof Connection) return wrap(((Connection) result), Connection.class);
                     return result;
                 } catch (InvocationTargetException failure) {
                     throw failure.getCause();
@@ -107,6 +109,47 @@ final class JdbcResourceProbe implements JdbcExecutorListener {
     public void onExecuteAfter(JdbcExecuteAfterArg argument) {
     }
 
-    record Execution(int fetchSize, boolean autoCommit, int resultSetType) {
+    static final class Execution {
+        private final int fetchSize;
+        private final boolean autoCommit;
+        private final int resultSetType;
+
+        Execution(int fetchSize, boolean autoCommit, int resultSetType) {
+            this.fetchSize = fetchSize;
+            this.autoCommit = autoCommit;
+            this.resultSetType = resultSetType;
+        }
+
+        public int fetchSize() {
+            return fetchSize;
+        }
+
+        public boolean autoCommit() {
+            return autoCommit;
+        }
+
+        public int resultSetType() {
+            return resultSetType;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Execution)) return false;
+            Execution other = (Execution) o;
+            return fetchSize == other.fetchSize
+                    && autoCommit == other.autoCommit
+                    && resultSetType == other.resultSetType;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(fetchSize, autoCommit, resultSetType);
+        }
+
+        @Override
+        public String toString() {
+            return "Execution[fetchSize=" + fetchSize + ", autoCommit=" + autoCommit + ", resultSetType=" + resultSetType + "]";
+        }
     }
 }

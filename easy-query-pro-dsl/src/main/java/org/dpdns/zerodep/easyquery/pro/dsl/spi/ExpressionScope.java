@@ -32,6 +32,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.UnaryOperator;
 import java.util.function.BiFunction;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 将 Pro 表达式绑定到创建它的 client、查询上下文和锚点表，并传播计算语义。
@@ -104,19 +105,16 @@ public class ExpressionScope {
 
     public static boolean isWindowAggregate(SQLFunction function) {
         switch (function.getAggregationType()) {
-            case SUM_DISTINCT, AVG_DISTINCT, COUNT_DISTINCT -> {
-                return false;
-            }
-            default -> {
-            }
+            case SUM_DISTINCT: case AVG_DISTINCT: case COUNT_DISTINCT: return false;
+            default: break;
         }
-        if (function instanceof ScopedFunction scoped) return scoped.kind == FunctionKind.AGGREGATE;
+        if (function instanceof ScopedFunction) return ((ScopedFunction) function).kind == FunctionKind.AGGREGATE;
         if (!(function instanceof SumSQLFunction || function instanceof AvgSQLFunction || function instanceof CountSQLFunction
                 || function instanceof MinSQLFunction || function instanceof MaxSQLFunction)) return false;
-        return switch (function.getAggregationType()) {
-            case SUM, AVG, COUNT, MIN, MAX -> true;
-            default -> false;
-        };
+        switch (function.getAggregationType()) {
+            case SUM: case AVG: case COUNT: case MIN: case MAX: return true;
+            default: return false;
+        }
     }
 
     /**
@@ -149,7 +147,7 @@ public class ExpressionScope {
     public SQLFunction operation(SQLFunction delegate, AggregationType aggregation, SQLFunction... operands) {
         boolean requiresServerEvaluation = aggregation != AggregationType.UNKNOWN;
         boolean preservesRows = aggregation == AggregationType.UNKNOWN;
-        for (var operand : operands) {
+        for (SQLFunction operand : operands) {
             // UNKNOWN 还可能表示未分类的聚合包装，不能把它当成普通列表达式。
             if (!isRowLocal(operand))
                 requiresServerEvaluation = true;
@@ -159,11 +157,11 @@ public class ExpressionScope {
     }
 
     public static boolean isRowLocal(SQLFunction function) {
-        return function instanceof ScopedFunction scoped && !scoped.requiresServerEvaluation && scoped.aggregation == AggregationType.UNKNOWN;
+        return function instanceof ScopedFunction && !((ScopedFunction) function).requiresServerEvaluation && ((ScopedFunction) function).aggregation == AggregationType.UNKNOWN;
     }
 
     public static boolean preservesRows(SQLFunction function) {
-        return function instanceof ScopedFunction scoped && scoped.preservesRows;
+        return function instanceof ScopedFunction && ((ScopedFunction) function).preservesRows;
     }
 
     /**
@@ -182,9 +180,9 @@ public class ExpressionScope {
     }
 
     private static boolean containsKind(SQLSegment segment, FunctionKind kind) {
-        var visitor = new SemanticVisitor(kind);
+        ExpressionScope.SemanticVisitor visitor = new SemanticVisitor(kind);
         // 上游单节点 visitor 不展开 GROUP/SELECT 的容器，必须显式遍历其中的实际 SQL 节点。
-        if (segment instanceof SQLBuilderSegment builder) EasySQLSegmentUtil.tableVisit(builder, visitor);
+        if (segment instanceof SQLBuilderSegment) EasySQLSegmentUtil.tableVisit(((SQLBuilderSegment) segment), visitor);
         else EasySQLSegmentUtil.sqlSegmentTableVisit(segment, visitor);
         return visitor.found;
     }
@@ -194,14 +192,14 @@ public class ExpressionScope {
     }
 
     public SQLFunction scalar(SQLFunc factory, PropTypeColumn<?> source, UnaryOperator<SQLFunction> expression) {
-        var value = operand(source, factory);
+        SQLFunction value = operand(source, factory);
         return operation(expression.apply(value), AggregationType.UNKNOWN, value);
     }
 
     public SQLFunction scalar(SQLFunc factory, PropTypeColumn<?> left, PropTypeColumn<?> right,
                               BiFunction<SQLFunction, SQLFunction, SQLFunction> expression) {
-        var leftValue = operand(left, factory);
-        var rightValue = operand(right, factory);
+        SQLFunction leftValue = operand(left, factory);
+        SQLFunction rightValue = operand(right, factory);
         return operation(expression.apply(leftValue, rightValue), AggregationType.UNKNOWN, leftValue, rightValue);
     }
 
@@ -222,7 +220,7 @@ public class ExpressionScope {
      * 避免把派生结果再次按原实体列转换或序列化。
      */
     public SQLFunction operand(PropTypeColumn<?> source, SQLFunc factory) {
-        if (source instanceof DSLSQLFunctionAvailable function) return function.func().apply(factory);
+        if (source instanceof DSLSQLFunctionAvailable) return ((DSLSQLFunctionAvailable) source).func().apply(factory);
         // 普通属性先走上游的 SQL 属性转换；派生结果不再套用整列值转换器。
         return function(factory.anySQLFunction("{0}", args -> args.sql(EasyColumnSegmentUtil.createColumn2Segment(source.getTable(),
                         source.getTable().getEntityMetadata().getColumnNotNull(source.getValue()), context.getExpressionContext(), false, true))),
@@ -272,8 +270,8 @@ public class ExpressionScope {
         public void consume(SQLNativeChainExpressionContext target) {
             if (target.getRuntimeContext() != runtime)
                 throw new IllegalArgumentException("Pro expression cannot be reused by another client");
-            var expression = target.getExpressionContext();
-            var segment = new SQLFunctionTranslateImpl(delegate).toSQLSegment(expression, target.getDefaultTable(), runtime, null);
+            ExpressionContext expression = target.getExpressionContext();
+            SQLSegment segment = new SQLFunctionTranslateImpl(delegate).toSQLSegment(expression, target.getDefaultTable(), runtime, null);
             target.sql(new ScopedSegment(expression, segment));
         }
 
@@ -301,7 +299,7 @@ public class ExpressionScope {
             public void accept(TableVisitor visitor) {
                 if (visitor instanceof ServerEvaluationVisitor && requiresServerEvaluation)
                     throw ServerEvaluationVisitor.unsupported();
-                if (visitor instanceof SemanticVisitor semantics && semantics.kind == kind) semantics.found = true;
+                if (visitor instanceof SemanticVisitor && ((SemanticVisitor) visitor).kind == kind) ((SemanticVisitor) visitor).found = true;
                 // 透明包装必须继续传递返回类型和表访问，否则外层 LOB/窗口检查会丢失语义。
                 EasySQLSegmentUtil.sqlSegmentTableVisit(segment, visitor);
             }
@@ -311,7 +309,7 @@ public class ExpressionScope {
                 // 相关子查询先构造、后附着外层；必须在最终表上下文就绪后校验，不能在 consume 时误拒绝。
                 try {
                     sql.getAlias(anchor);
-                    for (var source : sources) if (source != null) sql.getAlias(source);
+                    for (TableAvailable source : sources) if (source != null) sql.getAlias(source);
                 } catch (EasyQueryTableNotInSQLContextException absent) {
                     throw new IllegalArgumentException("Pro expression cannot be reused outside its query scope", absent);
                 }
@@ -335,7 +333,7 @@ public class ExpressionScope {
 
         @Override
         public Set<TableAvailable> getTables() {
-            return Set.of();
+            return ImmutableCollections.setOf();
         }
 
         @Override
@@ -349,7 +347,7 @@ public class ExpressionScope {
 
         @Override
         public void addAll(TableVisitor other) {
-            if (other instanceof SemanticVisitor semantics && semantics.kind == kind) found |= semantics.found;
+            if (other instanceof SemanticVisitor && ((SemanticVisitor) other).kind == kind) found |= ((SemanticVisitor) other).found;
         }
     }
 }

@@ -3,18 +3,24 @@ package org.dpdns.zerodep.easyquery.pro.dsl.hana.text;
 import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.UnicodeStrings;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.TextType;
+import java.util.Objects;
 
 /**
  * Native character declarations; typed values preserve their exact Java string representation.
  */
-public record HanaCharacterType(Kind kind, int capacity) implements TextType {
+public final class HanaCharacterType implements TextType {
+    private final Kind kind;
+    private final int capacity;
+
     public enum Kind {VARCHAR, NVARCHAR, ALPHANUM}
 
-    public HanaCharacterType {
+    public HanaCharacterType(Kind kind, int capacity) {
         java.util.Objects.requireNonNull(kind, "kind");
         int maximum = kind == Kind.ALPHANUM ? 127 : 5000;
         if (capacity < 1 || capacity > maximum)
             throw new IllegalArgumentException(kind + " requires 1 <= capacity <= " + maximum);
+        this.kind = kind;
+        this.capacity = capacity;
     }
 
     @Override
@@ -41,5 +47,32 @@ public record HanaCharacterType(Kind kind, int capacity) implements TextType {
             throw new IllegalArgumentException("Numeric ALPHANUM parameters require their complete zero-padded representation; use nativeCast for padding");
         }
         return value;
+    }
+
+    public Kind kind() {
+        return kind;
+    }
+
+    public int capacity() {
+        return capacity;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof HanaCharacterType)) return false;
+        HanaCharacterType other = (HanaCharacterType) o;
+        return Objects.equals(kind, other.kind)
+                && capacity == other.capacity;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(kind, capacity);
+    }
+
+    @Override
+    public String toString() {
+        return "HanaCharacterType[kind=" + kind + ", capacity=" + capacity + "]";
     }
 }

@@ -30,38 +30,47 @@ import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft4Proxy;
+import com.easy.query.core.proxy.core.draft.Draft4;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+import com.easy.query.core.proxy.core.draft.proxy.Draft2Proxy;
+import com.easy.query.core.proxy.core.draft.Draft2;
+import com.easy.query.core.expression.sql.builder.ExpressionBuilder;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class DslExtensionTest {
     @Test
     void mountedFacadeAndExpressionKeepTheirConcreteTypes() {
-        var client = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
-        var selected = client.queryable(TestProduct.class).select(p -> {
+        DefaultEasyEntityQuery client = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+        EntityQueryable<Draft4Proxy<BigDecimal, BigDecimal, BigDecimal, String>, Draft4<BigDecimal, BigDecimal, BigDecimal, String>> selected = client.queryable(TestProduct.class).select(p -> {
             ReportDsl report = ProDsl.of(p, ReportDsl::new);
             MoneyExpression cast = report.money(p.amount());
             MoneyExpression value = report.value(new BigDecimal("12.5"), CommonTypes.decimal(10, 2), MoneyExpression::new);
             MoneyExpression view = report.view(p.amount(), MoneyExpression::new);
             return Select.DRAFT.of(cast.taxed(), value.taxed(), view.taxed(), report.nullIfValue(p.name(), ""));
         });
-        var rendered = selected.toSQLResult();
+        ToSQLResult rendered = selected.toSQLResult();
         assertTrue(rendered.getSQL().contains("DECIMAL(10,2)"), rendered.getSQL());
-        assertEquals(List.of(new BigDecimal("1.20"), new BigDecimal("12.50"), new BigDecimal("1.20"), new BigDecimal("1.20"), ""),
-                rendered.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(Arrays.asList(new BigDecimal("1.20"), new BigDecimal("12.50"), new BigDecimal("1.20"), new BigDecimal("1.20"), ""),
+                rendered.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         assertEquals(rendered.getSQL(), selected.cloneQueryable().toSQL());
     }
 
     @Test
     void mountingRetainsDialectAndCrossClientChecks() {
-        var mysql = TestClients.offline(new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+        DefaultEasyEntityQuery mysql = TestClients.offline(new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
         assertThrows(IllegalArgumentException.class, () -> mysql.queryable(TestProduct.class).selectColumn(p -> ProDsl.of(p, ReportDsl::new).money(p.amount())));
-        var first = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
-        var other = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
-        var foreign = new AtomicReference<PropTypeColumn<BigDecimal>>();
+        DefaultEasyEntityQuery first = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+        DefaultEasyEntityQuery other = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+        AtomicReference<PropTypeColumn<BigDecimal>> foreign = new AtomicReference<PropTypeColumn<BigDecimal>>();
         first.queryable(TestProduct.class).selectColumn(p -> {
             foreign.set(p.amount());
             return p.amount();
@@ -73,17 +82,17 @@ class DslExtensionTest {
 
     @Test
     void selectorHooksAndCteClonesKeepTheInstalledFactories() {
-        var projections = new TrackingProjectionFactory();
-        var builders = new TrackingBuilderFactory();
-        var client = TestClients.offline(new PgSQLDatabaseConfiguration(), services -> {
+        DslExtensionTest.TrackingProjectionFactory projections = new TrackingProjectionFactory();
+        DslExtensionTest.TrackingBuilderFactory builders = new TrackingBuilderFactory();
+        DefaultEasyEntityQuery client = TestClients.offline(new PgSQLDatabaseConfiguration(), services -> {
             PgSqlExtensions.configure(services);
             services.addService(SQLExpressionInvokeFactory.class, projections);
             services.addService(ExpressionBuilderFactory.class, builders);
         });
-        var selected = client.queryable(TestProduct.class).select(p -> Select.DRAFT.of(p.id(), p.amount())).toCteAs("extension_rows");
-        var declaration = selected.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().getDeclareExpressions().get(0);
+        EntityQueryable<Draft2Proxy<Integer, BigDecimal>, Draft2<Integer, BigDecimal>> selected = client.queryable(TestProduct.class).select(p -> Select.DRAFT.of(p.id(), p.amount())).toCteAs("extension_rows");
+        ExpressionBuilder declaration = selected.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().getDeclareExpressions().get(0);
         assertInstanceOf(TrackingBuilderFactory.TrackingCte.class, declaration);
-        var cte = assertInstanceOf(EntityQueryExpressionBuilder.class, declaration);
+        EntityQueryExpressionBuilder cte = assertInstanceOf(EntityQueryExpressionBuilder.class, declaration);
         assertInstanceOf(TrackingBuilderFactory.TrackingCte.class, cte.cloneEntityExpressionBuilder());
         assertEquals(selected.toSQL(), selected.cloneQueryable().toSQL());
         assertTrue(projections.columns >= 2);

@@ -7,6 +7,7 @@ import com.easy.query.core.func.def.AnySQLFunction;
 import com.easy.query.core.func.def.impl.LengthSQLFunction;
 
 import java.util.List;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
 
 final class HanaStringFunctions {
     private HanaStringFunctions() {
@@ -53,7 +54,7 @@ final class HanaStringFunctions {
         String padded = left ? padding + " || " + text : text + " || " + padding;
         String template = "CASE WHEN {1} <= " + codePointCount(text) + " THEN " + prefix(text, "{1}")
                 + " WHEN LENGTH(" + pattern + ") = 0 THEN " + text + " ELSE (" + padded + ") END";
-        return new AnySQLFunction(template, List.copyOf(arguments));
+        return new AnySQLFunction(template, ImmutableCollections.listCopyOf(arguments));
     }
 
     private static String prefix(String text, String count) {
@@ -72,6 +73,6 @@ final class HanaStringFunctions {
 
     private static List<ColumnExpression> validated(String function, List<ColumnExpression> arguments, int count) {
         if (arguments.size() != count) throw new IllegalArgumentException(function + " requires " + count + " arguments");
-        return List.copyOf(arguments);
+        return ImmutableCollections.listCopyOf(arguments);
     }
 }

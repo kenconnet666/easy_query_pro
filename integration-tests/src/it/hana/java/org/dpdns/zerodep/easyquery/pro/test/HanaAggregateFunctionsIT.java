@@ -15,6 +15,17 @@ import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
+import com.easy.query.core.proxy.core.draft.Draft9;
+import com.easy.query.core.proxy.core.draft.Draft4;
+import com.easy.query.core.proxy.core.draft.proxy.Draft4Proxy;
+import com.easy.query.core.basic.api.select.Query;
+import java.util.stream.Collectors;
+import com.easy.query.core.proxy.core.draft.proxy.Draft1Proxy;
+import com.easy.query.core.proxy.core.draft.Draft1;
+import com.easy.query.core.proxy.core.draft.proxy.Draft2Proxy;
+import com.easy.query.core.proxy.core.draft.Draft2;
+import com.easy.query.core.proxy.core.draft.proxy.Draft8Proxy;
+import com.easy.query.core.proxy.core.draft.Draft8;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,7 +39,7 @@ class HanaAggregateFunctionsIT {
 
     @Test
     void basicAggregatesKeepDistinctNullAndEmptySetSemantics() {
-        var row = rows().select(p -> Select.DRAFT.of(p.expression().count(), p.amount().count(),
+        Draft9<Long, Long, Long, BigDecimal, BigDecimal, BigDecimal, BigDecimal, BigDecimal, BigDecimal> row = rows().select(p -> Select.DRAFT.of(p.expression().count(), p.amount().count(),
                 p.amount().count(true), p.amount().sumBigDecimal(), p.amount().sumBigDecimal(true),
                 p.amount().avg(), p.amount().avg(true), p.amount().max(), p.amount().min())).singleNotNull();
         assertEquals(5L, row.getValue1());
@@ -41,7 +52,7 @@ class HanaAggregateFunctionsIT {
         assertDecimal("20", row.getValue8());
         assertDecimal("5", row.getValue9());
 
-        var empty = rows().where(p -> p.id().lt(0)).select(p -> Select.DRAFT.of(
+        Draft4<Long, BigDecimal, BigDecimal, BigDecimal> empty = rows().where(p -> p.id().lt(0)).select(p -> Select.DRAFT.of(
                 p.expression().count(), p.amount().sumBigDecimal(), p.amount().avg(), p.amount().max())).singleNotNull();
         assertEquals(0L, empty.getValue1());
         assertNull(empty.getValue2());
@@ -51,13 +62,13 @@ class HanaAggregateFunctionsIT {
 
     @Test
     void groupingHavingAndConditionalAggregatesComposeWithClone() {
-        var selection = rows().groupBy(p -> GroupKeys.of(p.name()))
+        EntityQueryable<Draft4Proxy<String, BigDecimal, BigDecimal, Long>, Draft4<String, BigDecimal, BigDecimal, Long>> selection = rows().groupBy(p -> GroupKeys.of(p.name()))
                 .having(g -> g.groupTable().amount().sumBigDecimal().gt(BigDecimal.TEN))
                 .select(g -> Select.DRAFT.of(g.key1(), g.groupTable().amount().sumBigDecimal(),
                         g.groupTable().amount().sumBigDecimal().filter(() -> g.groupTable().id().le(2)),
                         g.groupTable().amount().count().filter(() -> g.groupTable().id().le(2))));
         assertEquals(selection.toSQL(), selection.cloneQueryable().toSQL());
-        var rows = selection.toList();
+        List<Draft4<String, BigDecimal, BigDecimal, Long>> rows = selection.toList();
         assertEquals(1, rows.size());
         assertEquals("A", rows.get(0).getValue1());
         assertDecimal("40", rows.get(0).getValue2());
@@ -68,7 +79,7 @@ class HanaAggregateFunctionsIT {
     @Test
     void stringAggregationBindsSeparatorsAndRetainsOrderingAndNulls() {
         String separator = "'中{0}";
-        var selection = rows().selectColumn(p -> new StringTypeExpressionImpl<String>(
+        Query<String> selection = rows().selectColumn(p -> new StringTypeExpressionImpl<String>(
                 p.getEntitySQLContext(), p.getTable(), null, fx -> fx.joining(args -> {
             args.value(separator);
             PropTypeColumn.columnFuncSelector(args, p.name());
@@ -77,10 +88,10 @@ class HanaAggregateFunctionsIT {
         assertEquals(String.join(separator, "B", "B", "A", "A", "A"), selection.toList().get(0));
         assertFalse(selection.toSQL().contains(separator));
         assertEquals(selection.toSQL(), selection.cloneQueryable().toSQL());
-        assertEquals(List.of("A", "A", "A", "B", "B"), Arrays.stream(rows()
-                .selectColumn(p -> p.name().joining(",")).toList().get(0).split(",")).sorted().toList());
+        assertEquals(Arrays.asList("A", "A", "A", "B", "B"), Arrays.stream(rows()
+                .selectColumn(p -> p.name().joining(",")).toList().get(0).split(",")).sorted().collect(Collectors.toList()));
         assertNull(rows().where(p -> p.id().lt(0)).selectColumn(p -> p.name().joining(",")).toList().get(0));
-        var nullable = query.queryable("SELECT 1 AS \"id\",CAST(NULL AS NVARCHAR(10)) AS \"name\" FROM DUMMY"
+        EntityQueryable<TestProductProxy, TestProduct> nullable = query.queryable("SELECT 1 AS \"id\",CAST(NULL AS NVARCHAR(10)) AS \"name\" FROM DUMMY"
                 + " UNION ALL SELECT 2, 'a' FROM DUMMY UNION ALL SELECT 3, '' FROM DUMMY", TestProduct.class);
         assertEquals("a,", nullable.selectColumn(p -> p.name().joining(",")).toList().get(0));
     }
@@ -89,8 +100,8 @@ class HanaAggregateFunctionsIT {
     void distinctStringAggregationUsesAnExplicitProjectedRelation() {
         String separator = "'中{0}";
         // 先投影真正需要去重的值；若携带 id 一起 DISTINCT，相同 name 仍会保留多行。
-        var unique = rows().select(p -> Select.DRAFT.of(p.name())).distinct().toCteAs("unique_names");
-        var joined = unique.selectColumn(p -> new StringTypeExpressionImpl<String>(
+        EntityQueryable<Draft1Proxy<String>, Draft1<String>> unique = rows().select(p -> Select.DRAFT.of(p.name())).distinct().toCteAs("unique_names");
+        Query<String> joined = unique.selectColumn(p -> new StringTypeExpressionImpl<String>(
                 p.getEntitySQLContext(), p.getTable(), null, fx -> fx.joining(args -> {
             args.value(separator);
             PropTypeColumn.columnFuncSelector(args, p.value1());
@@ -99,7 +110,7 @@ class HanaAggregateFunctionsIT {
         assertEquals("A" + separator + "B", joined.toList().get(0));
         assertFalse(joined.toSQL().contains(separator));
         assertEquals(joined.toSQL(), joined.cloneQueryable().toSQL());
-        var empty = rows().where(p -> p.id().lt(0)).select(p -> Select.DRAFT.of(p.name())).distinct().toCteAs("empty_names");
+        EntityQueryable<Draft1Proxy<String>, Draft1<String>> empty = rows().where(p -> p.id().lt(0)).select(p -> Select.DRAFT.of(p.name())).distinct().toCteAs("empty_names");
         assertNull(empty.selectColumn(p -> p.value1().asStr().joining(",")).toList().get(0));
         assertThrows(UnsupportedOperationException.class, () -> rows().selectColumn(p -> new StringTypeExpressionImpl<String>(
                 p.getEntitySQLContext(), p.getTable(), null, fx -> fx.joining(args -> {
@@ -110,12 +121,12 @@ class HanaAggregateFunctionsIT {
 
     @Test
     void columnExtremaIgnoreNullValuesAndRetainRowCorrelation() {
-        var selection = rows().orderBy(p -> p.id().asc()).select(p -> Select.DRAFT.of(
+        EntityQueryable<Draft2Proxy<BigDecimal, BigDecimal>, Draft2<BigDecimal, BigDecimal>> selection = rows().orderBy(p -> p.id().asc()).select(p -> Select.DRAFT.of(
                 p.expression().maxColumns(p.amount(), p.id().toNumber(BigDecimal.class)),
                 p.expression().minColumns(p.amount(), p.id().toNumber(BigDecimal.class))));
-        var result = selection.toList();
-        var high = List.of("10", "10", "20", "4", "5");
-        var low = List.of("1", "2", "3", "4", "5");
+        List<Draft2<BigDecimal, BigDecimal>> result = selection.toList();
+        List<String> high = Arrays.asList("10", "10", "20", "4", "5");
+        List<String> low = Arrays.asList("1", "2", "3", "4", "5");
         for (int i = 0; i < result.size(); i++) {
             assertDecimal(high.get(i), result.get(i).getValue1());
             assertDecimal(low.get(i), result.get(i).getValue2());
@@ -126,7 +137,7 @@ class HanaAggregateFunctionsIT {
 
     @Test
     void rankingAndAggregateWindowsUseExistingPartitionAndOrderApis() {
-        var selection = rows().where(p -> p.name().eq("A")).orderBy(p -> p.id().asc())
+        EntityQueryable<Draft8Proxy<Long, Long, Long, BigDecimal, Long, BigDecimal, BigDecimal, BigDecimal>, Draft8<Long, Long, Long, BigDecimal, Long, BigDecimal, BigDecimal, BigDecimal>> selection = rows().where(p -> p.name().eq("A")).orderBy(p -> p.id().asc())
                 .select(p -> Select.DRAFT.of(p.expression().rowNumberOver().partitionBy(p.name()).orderBy(p.id()),
                         p.expression().rankOver().partitionBy(p.name()).orderBy(p.amount()),
                         p.expression().denseRankOver().partitionBy(p.name()).orderBy(p.amount()),
@@ -136,9 +147,9 @@ class HanaAggregateFunctionsIT {
                         p.expression().minOver(p.amount()).partitionBy(p.name()),
                         p.expression().maxOver(p.amount()).partitionBy(p.name())));
         assertEquals(selection.toSQL(), selection.cloneQueryable().toSQL());
-        var result = selection.toList();
+        List<Draft8<Long, Long, Long, BigDecimal, Long, BigDecimal, BigDecimal, BigDecimal>> result = selection.toList();
         for (int i = 0; i < result.size(); i++) {
-            var row = result.get(i);
+            Draft8<Long, Long, Long, BigDecimal, Long, BigDecimal, BigDecimal, BigDecimal> row = result.get(i);
             assertEquals(i + 1L, row.getValue1());
             assertEquals(i == 2 ? 3L : 1L, row.getValue2());
             assertEquals(i == 2 ? 2L : 1L, row.getValue3());
@@ -152,7 +163,7 @@ class HanaAggregateFunctionsIT {
 
     @Test
     void orderedWindowUsesTheDatabaseDefaultPeerFrame() {
-        var sums = rows().where(p -> p.name().eq("A")).orderBy(p -> p.id().asc())
+        List<BigDecimal> sums = rows().where(p -> p.name().eq("A")).orderBy(p -> p.id().asc())
                 .selectColumn(p -> p.expression().sumOver(p.amount()).partitionBy(p.name()).orderBy(p.amount())).toList();
         assertEquals(3, sums.size());
         assertDecimal("20", sums.get(0));

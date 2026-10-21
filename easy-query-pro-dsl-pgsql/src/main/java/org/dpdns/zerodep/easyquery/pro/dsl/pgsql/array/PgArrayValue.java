@@ -16,7 +16,7 @@ public final class PgArrayValue<E> {
 
     PgArrayValue(PgArrayType<E> type, List<? extends E> elements) {
         this.type = type;
-        var copy = new ArrayList<E>(elements.size());
+        ArrayList<E> copy = new ArrayList<E>(elements.size());
         for (E value : elements) copy.add(type.prepareElement(value));
         this.elements = Collections.unmodifiableList(copy);
     }
@@ -31,7 +31,7 @@ public final class PgArrayValue<E> {
 
     @Override
     public boolean equals(Object other) {
-        return other instanceof PgArrayValue<?> value && type.equals(value.type) && elements.equals(value.elements);
+        return other instanceof PgArrayValue<?> && type.equals(((PgArrayValue<?>) other).type) && elements.equals(((PgArrayValue<?>) other).elements);
     }
 
     @Override

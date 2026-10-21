@@ -28,7 +28,7 @@ public final class MySqlDurationMetadataManager extends DefaultEntityMetadataMan
 
     @Override
     public List<EntityMetadata> getAllLoadedEntityMetadata() {
-        var result = new ArrayList<>(super.getAllLoadedEntityMetadata());
+        ArrayList<EntityMetadata> result = new ArrayList<>(super.getAllLoadedEntityMetadata());
         result.add(duration);
         return result;
     }

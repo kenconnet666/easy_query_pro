@@ -13,6 +13,12 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.Arrays;
 import java.util.stream.Stream;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft4Proxy;
+import com.easy.query.core.proxy.core.draft.Draft4;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -43,18 +49,18 @@ class BasicNumericTypeTest {
     @ParameterizedTest
     @MethodSource("backends")
     void typedParametersUseNativeTargetsAndKeepNullAndClone(DecimalDslTest.Backend backend) {
-        var client = backend.client();
-        var query = client.queryable(TestProduct.class).select(p -> {
-            var dsl = ProDsl.of(p);
+        DefaultEasyEntityQuery client = backend.client();
+        EntityQueryable<Draft4Proxy<Long, Float, Double, Float>, Draft4<Long, Float, Double, Float>> query = client.queryable(TestProduct.class).select(p -> {
+            ProDsl dsl = ProDsl.of(p);
             return Select.DRAFT.of(dsl.value(Long.MAX_VALUE, CommonTypes.bigint()),
                     dsl.value(Float.MIN_VALUE, CommonTypes.real()),
                     dsl.value(Double.MAX_VALUE, CommonTypes.doublePrecision()),
                     dsl.nullValue(CommonTypes.real()));
         });
-        var result = query.toSQLResult();
+        ToSQLResult result = query.toSQLResult();
         assertEquals(Arrays.asList(Long.MAX_VALUE, Float.MIN_VALUE, Double.MAX_VALUE, null),
-                result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
-        for (var type : new NumericType<?>[]{CommonTypes.bigint(), CommonTypes.real(), CommonTypes.doublePrecision()})
+                result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
+        for (NumericType<?> type : new NumericType<?>[]{CommonTypes.bigint(), CommonTypes.real(), CommonTypes.doublePrecision()})
             assertTrue(result.getSQL().contains(type.castTemplate(backend.dialect()).replace("{0}", "?")), result.getSQL());
         assertEquals(result.getSQL(), query.cloneQueryable().toSQL());
         assertThrows(IllegalArgumentException.class, () -> client.queryable(TestProduct.class)

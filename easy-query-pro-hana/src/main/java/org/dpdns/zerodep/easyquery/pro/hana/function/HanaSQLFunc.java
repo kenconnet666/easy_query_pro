@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
 
 /** 只覆盖 HANA 与上游默认 SQL 不同的函数，参数与表达式组合继续由上游处理。 */
 public class HanaSQLFunc extends SQLFuncImpl {
@@ -38,12 +39,12 @@ public class HanaSQLFunc extends SQLFuncImpl {
     public SQLFunction concat(List<ColumnExpression> expressions) {
         if (expressions.isEmpty()) throw new IllegalArgumentException("concat requires at least one argument");
         // HANA 的 CONCAT 只接受两个参数，连接运算符可保留任意参数数量与 NULL 传播。
-        return new AnySQLFunction("(" + placeholders(expressions.size(), " || ") + ")", List.copyOf(expressions));
+        return new AnySQLFunction("(" + placeholders(expressions.size(), " || ") + ")", ImmutableCollections.listCopyOf(expressions));
     }
 
     @Override
     public SQLFunction nullOrDefault(SQLActionExpression1<ColumnFuncSelector> arguments) {
-        var expressions = getColumnExpressions(arguments);
+        List<ColumnExpression> expressions = getColumnExpressions(arguments);
         if (expressions.size() < 2) throw new IllegalArgumentException("coalesce requires at least two arguments");
         return new AnySQLFunction("COALESCE(" + placeholders(expressions.size(), ",") + ")", expressions);
     }
@@ -101,28 +102,28 @@ public class HanaSQLFunc extends SQLFuncImpl {
 
     @Override
     public SQLFunction like(SQLActionExpression1<ColumnFuncSelector> arguments, boolean like, SQLLikeEnum mode) {
-        var function = new HanaLikeSQLFunction(getColumnExpressions(arguments), mode);
+        HanaLikeSQLFunction function = new HanaLikeSQLFunction(getColumnExpressions(arguments), mode);
         return like ? function : not(selector -> selector.sqlFunc(function));
     }
 
     @Override
     public SQLFunction now() {
-        return new AnySQLFunction("CURRENT_TIMESTAMP", List.of());
+        return new AnySQLFunction("CURRENT_TIMESTAMP", ImmutableCollections.listOf());
     }
 
     @Override
     public SQLFunction utcNow() {
-        return new AnySQLFunction("CURRENT_UTCTIMESTAMP", List.of());
+        return new AnySQLFunction("CURRENT_UTCTIMESTAMP", ImmutableCollections.listOf());
     }
 
     @Override
     public SQLFunction random() {
-        return new AnySQLFunction("RAND()", List.of());
+        return new AnySQLFunction("RAND()", ImmutableCollections.listOf());
     }
 
     @Override
     public SQLFunction booleanSQLFunction(String predicate, SQLActionExpression1<ColumnFuncSelector> arguments) {
-        var function = anySQLFunction(predicate, arguments);
+        SQLFunction function = anySQLFunction(predicate, arguments);
         // HANA 不能直接投影谓词；第二个 WHEN 保留 UNKNOWN，而不是把 SQL NULL 折成 false。
         return anySQLFunction("(CASE WHEN {0} THEN TRUE WHEN NOT ({0}) THEN FALSE ELSE NULL END)",
                 args -> args.sqlFunc(function));
@@ -130,15 +131,15 @@ public class HanaSQLFunc extends SQLFuncImpl {
 
     @Override
     public SQLFunction math(SQLActionExpression1<ColumnFuncSelector> arguments, MathMethodEnum method) {
-        String template = switch (method) {
-            case Log -> "LN({0})";
-            case Log10 -> "LOG(10,{0})";
-            case Pow -> "POWER({0},{1})";
-            case Ceiling -> "CEIL({0})";
-            // ROUND_DOWN 向零截断，FLOOR 对负数的结果不同；HANA 没有 TRUNC 函数。
-            case Truncate -> "ROUND({0},0,ROUND_DOWN)";
-            default -> null;
-        };
+        String template;
+        switch (method) {
+            case Log: template = "LN({0})"; break;
+            case Log10: template = "LOG(10,{0})"; break;
+            case Pow: template = "POWER({0},{1})"; break;
+            case Ceiling: template = "CEIL({0})"; break;
+            case Truncate: template = "ROUND({0},0,ROUND_DOWN)"; break;
+            default: template = null; break;
+        }
         return template == null ? super.math(arguments, method) : anySQLFunction(template, arguments);
     }
 
@@ -220,12 +221,12 @@ public class HanaSQLFunc extends SQLFuncImpl {
 
     @Override
     public SQLFunction jsonArrayLength(SQLActionExpression1<ColumnFuncSelector> arguments) {
-        var expressions = getColumnExpressions(arguments);
+        List<ColumnExpression> expressions = getColumnExpressions(arguments);
         if (expressions.size() != 1) throw new IllegalArgumentException("JSON array length requires one document");
         if (options.jsonSupportSchema() == null) {
             throw new IllegalStateException("HANA JSON array length requires explicit HanaJsonSupport deployment and jsonSupportSchema configuration");
         }
-        return new AnySQLFunction("{1}({0})", List.of(expressions.get(0),
+        return new AnySQLFunction("{1}({0})", ImmutableCollections.listOf(expressions.get(0),
                 new ColumnFuncFormatExpressionImpl(HanaJsonSupport.arrayLengthFunctionName(options.jsonSupportSchema()))));
     }
 

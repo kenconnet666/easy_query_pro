@@ -31,7 +31,7 @@ public final class HanaEntityMetadataManager extends DefaultEntityMetadataManage
 
     @Override
     public List<EntityMetadata> getAllLoadedEntityMetadata() {
-        var result = new ArrayList<>(super.getAllLoadedEntityMetadata());
+        ArrayList<EntityMetadata> result = new ArrayList<>(super.getAllLoadedEntityMetadata());
         result.add(instant);
         result.add(binary);
         return result;

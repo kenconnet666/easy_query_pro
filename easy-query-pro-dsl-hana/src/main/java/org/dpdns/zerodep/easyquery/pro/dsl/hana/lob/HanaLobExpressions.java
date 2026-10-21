@@ -25,6 +25,9 @@ import org.dpdns.zerodep.easyquery.pro.hana.expression.HanaLobSqlSupport;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Function;
+import com.easy.query.core.metadata.ColumnMetadata;
+import java.lang.reflect.Field;
+import com.easy.query.core.util.EasyStringUtil;
 
 public final class HanaLobExpressions {
     private HanaLobExpressions() {
@@ -58,14 +61,14 @@ public final class HanaLobExpressions {
         Objects.requireNonNull(type, "type");
         scope.requireSource(source);
         if (scope.dialect() != SqlDialect.HANA) throw new IllegalArgumentException("HANA LOB expressions require HANA");
-        if (source instanceof HanaLobExpression<?> known && known.sqlType() != type)
+        if (source instanceof HanaLobExpression<?> && ((HanaLobExpression<?>) source).sqlType() != type)
             throw new IllegalArgumentException("Use an explicit CAST between LOB storage types");
         if (source instanceof DSLSQLFunctionAvailable || source.getTable() == null || source.getValue() == null) return;
-        var column = source.getTable().getEntityMetadata().getColumnNotNull(source.getValue());
+        ColumnMetadata column = source.getTable().getEntityMetadata().getColumnNotNull(source.getValue());
         if (column.getColumnValueSQLConverter() != null) return;
-        var field = EasyClassUtil.getAllFieldsMap(source.getTable().getEntityClass()).get(column.getFieldName());
-        var annotation = field == null ? null : field.getAnnotation(Column.class);
-        if (annotation != null && !annotation.dbType().isBlank()) {
+        Field field = EasyClassUtil.getAllFieldsMap(source.getTable().getEntityClass()).get(column.getFieldName());
+        Column annotation = field == null ? null : field.getAnnotation(Column.class);
+        if (annotation != null && !EasyStringUtil.isBlank(annotation.dbType())) {
             String declared = annotation.dbType().trim().toUpperCase(Locale.ROOT).split("[\\s(]", 2)[0];
             if (!declared.equals(type.sqlName()))
                 throw new IllegalArgumentException("Column " + column.getPropertyName() + " declares " + declared + "; use an explicit " + type.sqlName() + " CAST");
@@ -109,9 +112,9 @@ public final class HanaLobExpressions {
 
         @Override
         public final Function<SQLFunc, SQLFunction> func() {
-            var function = super.func();
+            Function<SQLFunc, SQLFunction> function = super.func();
             return factory -> {
-                var value = function.apply(factory);
+                SQLFunction value = function.apply(factory);
                 return scope.operation(HanaLobSqlSupport.lobResult(value), AggregationType.UNKNOWN, value);
             };
         }

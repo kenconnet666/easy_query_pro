@@ -5,12 +5,13 @@ import com.easy.query.core.basic.jdbc.executor.internal.props.JdbcProperty;
 import com.easy.query.core.basic.jdbc.types.handler.ByteTypeHandler;
 
 import java.sql.SQLException;
+import java.math.BigDecimal;
 
 /** HANA TINYINT 无符号且 getByte 会回绕，读取 Java Byte 时必须独立检查范围。 */
 public final class HanaByteTypeHandler extends ByteTypeHandler {
     @Override
     public Object getValue(JdbcProperty property, StreamResultSet result) throws SQLException {
-        var value = result.getBigDecimal(property.getJdbcIndex());
+        BigDecimal value = result.getBigDecimal(property.getJdbcIndex());
         if (value == null) return property.isPrimitive() ? (byte) 0 : null;
         try {
             return value.byteValueExact();

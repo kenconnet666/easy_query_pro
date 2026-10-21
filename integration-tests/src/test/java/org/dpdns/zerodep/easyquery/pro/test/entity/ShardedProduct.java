@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.Collections;
 
 @Table(value = "eqp_sharded_product", shardingInitializer = ShardedProduct.Tables.class)
 @EntityProxy
@@ -80,9 +82,9 @@ public class ShardedProduct implements ProxyEntityAvailable<ShardedProduct, Shar
         private final Map<String, Collection<String>> tables;
 
         public Tables(Map<String, Collection<String>> tables) {
-            var snapshot = new LinkedHashMap<String, Collection<String>>();
-            tables.forEach((source, names) -> snapshot.put(source, List.copyOf(names)));
-            this.tables = Map.copyOf(snapshot);
+            LinkedHashMap<String, Collection<String>> snapshot = new LinkedHashMap<String, Collection<String>>();
+            tables.forEach((source, names) -> snapshot.put(source, new ArrayList<>(names)));
+            this.tables = Collections.unmodifiableMap(new LinkedHashMap<>(snapshot));
         }
 
         @Override
@@ -95,7 +97,7 @@ public class ShardedProduct implements ProxyEntityAvailable<ShardedProduct, Shar
         private final List<String> sources;
 
         public SourceRoute(List<String> sources) {
-            this.sources = List.copyOf(sources);
+            this.sources = new ArrayList<>(sources);
         }
 
         @Override
@@ -110,7 +112,7 @@ public class ShardedProduct implements ProxyEntityAvailable<ShardedProduct, Shar
         private final List<String> tables;
 
         public Route(List<String> tables) {
-            this.tables = List.copyOf(tables);
+            this.tables = new ArrayList<>(tables);
         }
 
         @Override

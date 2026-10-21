@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HanaConfigurationTest {
     @Test
     void quotesIdentifiersWithoutFoldingCaseOrInterpretingSql() {
-        var keyword = new HanaSQLKeyword();
+        HanaSQLKeyword keyword = new HanaSQLKeyword();
         assertEquals("\"Mixed中文\"", keyword.getQuoteName("Mixed中文"));
         assertEquals("\"order\"", keyword.getQuoteName("order"));
         assertEquals("\"a\"\"b\"", keyword.getQuoteName("a\"b"));
@@ -26,7 +26,7 @@ class HanaConfigurationTest {
 
     @Test
     void comparesNumericRevisionComponentsAndRejectsUnrecognizedVersions() {
-        var version = HanaVersion.parse("2.00.088.00.1760424921");
+        HanaVersion version = HanaVersion.parse("2.00.088.00.1760424921");
         assertEquals(new HanaVersion(2, 0, 88), version);
         assertTrue(version.compareTo(HanaVersion.parse("2.00.9")) > 0);
         assertTrue(version.compareTo(HanaVersion.parse("2.00.100")) < 0);

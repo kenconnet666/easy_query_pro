@@ -40,20 +40,24 @@ public final class CommonTypes {
         return new UnicodeText(maxUtf16Length);
     }
 
-    private record UnicodeText(int maxUtf16Length) implements TextType {
-        private UnicodeText {
+    private static final class UnicodeText implements TextType {
+        private final int maxUtf16Length;
+
+        private UnicodeText(int maxUtf16Length) {
             if (maxUtf16Length < 1 || maxUtf16Length > 5000) {
                 throw new IllegalArgumentException("Portable bounded Unicode text requires 1 <= maxUtf16Length <= 5000");
             }
+            this.maxUtf16Length = maxUtf16Length;
         }
 
         @Override
         public String ddlType(SqlDialect dialect) {
-            return switch (Objects.requireNonNull(dialect, "dialect")) {
-                case MYSQL -> "VARCHAR(" + maxUtf16Length + ") CHARACTER SET utf8mb4";
-                case POSTGRESQL -> "VARCHAR(" + maxUtf16Length + ")";
-                case HANA -> "NVARCHAR(" + maxUtf16Length + ")";
-            };
+            switch (Objects.requireNonNull(dialect, "dialect")) {
+                case MYSQL: return "VARCHAR(" + maxUtf16Length + ") CHARACTER SET utf8mb4";
+                case POSTGRESQL: return "VARCHAR(" + maxUtf16Length + ")";
+                case HANA: return "NVARCHAR(" + maxUtf16Length + ")";
+            }
+            throw new IllegalStateException("Unhandled value: " + Objects.requireNonNull(dialect, "dialect"));
         }
 
         @Override
@@ -70,14 +74,41 @@ public final class CommonTypes {
                 throw new IllegalArgumentException("Text exceeds " + maxUtf16Length + " UTF-16 code units");
             return UnicodeStrings.requirePortable(value, "Text");
         }
+
+        public int maxUtf16Length() {
+            return maxUtf16Length;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof UnicodeText)) return false;
+            UnicodeText other = (UnicodeText) o;
+            return maxUtf16Length == other.maxUtf16Length;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(maxUtf16Length);
+        }
+
+        @Override
+        public String toString() {
+            return "UnicodeText[maxUtf16Length=" + maxUtf16Length + "]";
+        }
     }
 
-    private record Decimal(int precision, int scale) implements NumericType<BigDecimal> {
-        private Decimal {
+    private static final class Decimal implements NumericType<BigDecimal> {
+        private final int precision;
+        private final int scale;
+
+        private Decimal(int precision, int scale) {
             // 只取三库共同的声明范围；PG 特殊 scale、MySQL 更大 precision 留给原生类型。
             if (precision < 1 || precision > 38 || scale < 0 || scale > 30 || scale > precision) {
                 throw new IllegalArgumentException("Portable DECIMAL requires 1 <= precision <= 38 and 0 <= scale <= min(precision,30)");
             }
+            this.precision = precision;
+            this.scale = scale;
         }
 
         @Override
@@ -99,6 +130,33 @@ public final class CommonTypes {
         @Override
         public BigDecimal prepareValue(BigDecimal value) {
             return DecimalValues.prepare(value, precision, scale);
+        }
+
+        public int precision() {
+            return precision;
+        }
+
+        public int scale() {
+            return scale;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Decimal)) return false;
+            Decimal other = (Decimal) o;
+            return precision == other.precision
+                    && scale == other.scale;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(precision, scale);
+        }
+
+        @Override
+        public String toString() {
+            return "Decimal[precision=" + precision + ", scale=" + scale + "]";
         }
     }
 
@@ -138,10 +196,11 @@ public final class CommonTypes {
 
         @Override
         public String ddlType(SqlDialect dialect) {
-            return switch (Objects.requireNonNull(dialect, "dialect")) {
-                case MYSQL -> "FLOAT";
-                case POSTGRESQL, HANA -> "REAL";
-            };
+            switch (Objects.requireNonNull(dialect, "dialect")) {
+                case MYSQL: return "FLOAT";
+                case POSTGRESQL: case HANA: return "REAL";
+            }
+            throw new IllegalStateException("Unhandled value: " + Objects.requireNonNull(dialect, "dialect"));
         }
 
         @Override
@@ -167,10 +226,11 @@ public final class CommonTypes {
 
         @Override
         public String ddlType(SqlDialect dialect) {
-            return switch (Objects.requireNonNull(dialect, "dialect")) {
-                case MYSQL, HANA -> "DOUBLE";
-                case POSTGRESQL -> "DOUBLE PRECISION";
-            };
+            switch (Objects.requireNonNull(dialect, "dialect")) {
+                case MYSQL: case HANA: return "DOUBLE";
+                case POSTGRESQL: return "DOUBLE PRECISION";
+            }
+            throw new IllegalStateException("Unhandled value: " + Objects.requireNonNull(dialect, "dialect"));
         }
 
         @Override

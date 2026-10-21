@@ -23,6 +23,11 @@ import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import com.easy.query.core.expression.sql.builder.EntityQueryExpressionBuilder;
+import com.easy.query.core.context.QueryRuntimeContext;
+import com.easy.query.core.expression.segment.condition.PredicateSegment;
+import com.easy.query.core.metadata.EntityMetadata;
+import com.easy.query.core.metadata.ColumnMetadata;
 
 /**
  * 原子地安装物理列 CONTAINS 与同一 SELECT 的 SCORE，结果继续使用原 EntityQueryable。
@@ -45,8 +50,8 @@ public final class HanaSearch {
     public static <P extends ProxyEntity<P, T>, T> HanaSearch from(
             EntityQueryable<P, T> source, SQLFuncExpression1<P, HanaSearchSpec> specification) {
         Objects.requireNonNull(source, "source");
-        var builder = source.getClientQueryable().getSQLEntityExpressionBuilder();
-        var runtime = builder.getRuntimeContext();
+        EntityQueryExpressionBuilder builder = source.getClientQueryable().getSQLEntityExpressionBuilder();
+        QueryRuntimeContext runtime = builder.getRuntimeContext();
         if (runtime.getService(SqlDialect.class) != SqlDialect.HANA)
             throw new IllegalArgumentException("HANA full-text search requires a HANA client");
         if (builder.getExpressionContext().isSharding())
@@ -57,11 +62,11 @@ public final class HanaSearch {
                 || builder.getFromTable().getEntityTable().isAnonymous()
                 || builder.getProjects().isNotEmpty() || builder.hasGroup() || builder.hasHaving() || builder.isDistinct())
             throw new IllegalArgumentException("HANA full-text search requires an unprojected single physical table");
-        var table = builder.getFromTable().getEntityTable();
-        var spec = Objects.requireNonNull(Objects.requireNonNull(specification, "specification").apply(source.get1Proxy()), "specification result");
-        for (var clause : spec.clauses()) {
-            var properties = new HashSet<String>();
-            for (var column : clause.columns()) {
+        TableAvailable table = builder.getFromTable().getEntityTable();
+        HanaSearchSpec spec = Objects.requireNonNull(Objects.requireNonNull(specification, "specification").apply(source.get1Proxy()), "specification result");
+        for (HanaSearchSpec.Clause clause : spec.clauses()) {
+            HashSet<String> properties = new HashSet<String>();
+            for (SQLColumn<?, String> column : clause.columns()) {
                 requireColumn(column, table);
                 if (!properties.add(column.getValue()))
                     throw new IllegalArgumentException("Duplicate HANA full-text column: " + column.getValue());
@@ -71,16 +76,16 @@ public final class HanaSearch {
             throw new IllegalArgumentException("HANA search source conflicts with generated column " + SCORE_COLUMN);
 
         // 仅克隆 ClientQueryable，避免重绑定调用者的可变 Proxy；原查询的参数和过滤器保留在同一表层。
-        var snapshot = source.getClientQueryable().cloneQueryable();
-        var where = snapshot.getSQLEntityExpressionBuilder().getWhere();
+        ClientQueryable<T> snapshot = source.getClientQueryable().cloneQueryable();
+        PredicateSegment where = snapshot.getSQLEntityExpressionBuilder().getWhere();
         if (where.isNotEmpty()) {
             // 原 WHERE 允许根级 OR。追加 AND 搜索前先整体包组，否则某个 OR 分支会绕过 CONTAINS。
-            var existing = new AndPredicateSegment(false);
+            AndPredicateSegment existing = new AndPredicateSegment(false);
             where.copyTo(existing);
             where.reset();
             where.addPredicateSegment(existing);
         }
-        for (var clause : spec.clauses()) {
+        for (HanaSearchSpec.Clause clause : spec.clauses()) {
             int count = clause.columns().size();
             String columns = IntStream.range(0, count).mapToObj(index -> "{" + index + "}").collect(Collectors.joining(","));
             if (count > 1) columns = "(" + columns + ")";
@@ -104,17 +109,17 @@ public final class HanaSearch {
      * 外层筛选、排序、CTE、count/page 都在评分投影之后进行，不重新定义搜索评分的查询层。
      */
     public <P extends ProxyEntity<P, T>, T> EntityQueryable<P, T> query(Supplier<P> proxyFactory) {
-        var proxy = Objects.requireNonNull(Objects.requireNonNull(proxyFactory, "proxyFactory").get(), "proxyFactory result");
+        P proxy = Objects.requireNonNull(Objects.requireNonNull(proxyFactory, "proxyFactory").get(), "proxyFactory result");
         if (proxy.getTableOrNull() != null)
             throw new IllegalArgumentException("The search result factory must return a fresh unbound proxy");
-        var runtime = searched.getRuntimeContext();
-        var metadata = runtime.getEntityMetadataManager().getEntityMetadata(proxy.getEntityClass());
-        var score = metadata.getProperty2ColumnMap().values().stream().filter(column -> column.getName().equals(SCORE_COLUMN)).findFirst()
+        QueryRuntimeContext runtime = searched.getRuntimeContext();
+        EntityMetadata metadata = runtime.getEntityMetadataManager().getEntityMetadata(proxy.getEntityClass());
+        ColumnMetadata score = metadata.getProperty2ColumnMap().values().stream().filter(column -> column.getName().equals(SCORE_COLUMN)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("The search result must map " + SCORE_COLUMN + " to a Double property"));
         if (score.getPropertyType() != Double.class)
             throw new IllegalArgumentException("The search result " + SCORE_COLUMN + " property must use Double");
-        var context = runtime.getExpressionBuilderFactory().createExpressionContext(runtime, ContextTypeEnum.QUERY);
-        var builder = new CapturedQuerySourceBuilder(searched, context, proxy.getEntityClass(), HanaSearch::checkRendering);
+        ExpressionContext context = runtime.getExpressionBuilderFactory().createExpressionContext(runtime, ContextTypeEnum.QUERY);
+        CapturedQuerySourceBuilder builder = new CapturedQuerySourceBuilder(searched, context, proxy.getEntityClass(), HanaSearch::checkRendering);
         return new EasyEntityQueryable<>(proxy, runtime.getSQLClientApiFactory().createQueryable(proxy.getEntityClass(), builder));
     }
 
@@ -126,7 +131,7 @@ public final class HanaSearch {
     private static void requireColumn(SQLColumn<?, String> column, TableAvailable source) {
         if (column instanceof DSLSQLFunctionAvailable || column.getTable() != source || column.getValue() == null)
             throw new IllegalArgumentException("HANA full-text search requires physical mapped columns of the current source");
-        var metadata = source.getEntityMetadata().getColumnNotNull(column.getValue());
+        ColumnMetadata metadata = source.getEntityMetadata().getColumnNotNull(column.getValue());
         if (metadata.getPropertyType() != String.class || metadata.getColumnValueSQLConverter() != null)
             throw new IllegalArgumentException("HANA full-text columns must map String without a SQL value converter");
     }

@@ -14,18 +14,20 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTsVector;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * Adds only the explicit PostgreSQL value types to EasyQuery's scalar metadata.
  */
 public final class PgScalarMetadataManager extends DefaultEntityMetadataManager {
-    private final Map<Class<?>, EntityMetadata> scalars = Map.of(
-            PgArrayValue.class, new ScalarMetadata(PgArrayValue.class),
-            PgInterval.class, new ScalarMetadata(PgInterval.class),
-            PgInterval.Finite.class, new ScalarMetadata(PgInterval.Finite.class),
-            PgInterval.Infinity.class, new ScalarMetadata(PgInterval.Infinity.class),
-            PgTsVector.class, new ScalarMetadata(PgTsVector.class),
-            PgTsQuery.class, new ScalarMetadata(PgTsQuery.class));
+    private final Map<Class<?>, EntityMetadata> scalars = ImmutableCollections.<Class<?>, EntityMetadata>mapBuilder()
+            .put(PgArrayValue.class, new ScalarMetadata(PgArrayValue.class))
+            .put(PgInterval.class, new ScalarMetadata(PgInterval.class))
+            .put(PgInterval.Finite.class, new ScalarMetadata(PgInterval.Finite.class))
+            .put(PgInterval.Infinity.class, new ScalarMetadata(PgInterval.Infinity.class))
+            .put(PgTsVector.class, new ScalarMetadata(PgTsVector.class))
+            .put(PgTsQuery.class, new ScalarMetadata(PgTsQuery.class))
+            .build();
 
     public PgScalarMetadataManager(ServiceProvider services, MapColumnNameChecker checker, MapKeyNameConversion conversion) {
         super(services, checker, conversion);
@@ -33,13 +35,13 @@ public final class PgScalarMetadataManager extends DefaultEntityMetadataManager 
 
     @Override
     public EntityMetadata getEntityMetadata(Class<?> type) {
-        var scalar = scalars.get(type);
+        EntityMetadata scalar = scalars.get(type);
         return scalar == null ? super.getEntityMetadata(type) : scalar;
     }
 
     @Override
     public List<EntityMetadata> getAllLoadedEntityMetadata() {
-        var result = new ArrayList<>(super.getAllLoadedEntityMetadata());
+        ArrayList<EntityMetadata> result = new ArrayList<>(super.getAllLoadedEntityMetadata());
         result.addAll(scalars.values());
         return result;
     }

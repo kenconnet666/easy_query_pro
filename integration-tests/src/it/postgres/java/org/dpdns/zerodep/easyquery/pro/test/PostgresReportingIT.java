@@ -10,6 +10,9 @@ import org.junit.jupiter.api.Test;
 import java.sql.SQLException;
 import java.util.function.BiConsumer;
 import javax.sql.DataSource;
+import org.postgresql.ds.PGSimpleDataSource;
+import java.sql.Statement;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -50,12 +53,12 @@ class PostgresReportingIT {
     }
 
     private void withSales(BiConsumer<EntityQueryable<ReportSaleProxy, ReportSale>, DataSource> contract) throws SQLException {
-        var source = PostgresTestDatabase.dataSource();
-        try (var schema = PostgresTestDatabase.createSchema(source, "eqp_window_")) {
-            try (var statement = schema.connection().createStatement()) {
+        PGSimpleDataSource source = PostgresTestDatabase.dataSource();
+        try (PostgresTestDatabase.Schema schema = PostgresTestDatabase.createSchema(source, "eqp_window_")) {
+            try (Statement statement = schema.connection().createStatement()) {
                 statement.execute("CREATE TABLE " + schema.qualified("eqp_report_sale") + " (id INTEGER PRIMARY KEY, region VARCHAR(20), report_day DATE, amount DECIMAL(19,4))");
             }
-            var query = TestClients.configured(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+            DefaultEasyEntityQuery query = TestClients.configured(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
             assertEquals(6L, query.insertable(WindowReportContract.sales()).executeRows());
             contract.accept(query.queryable(ReportSale.class), source);
         }

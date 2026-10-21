@@ -82,14 +82,14 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
 
         @Override
         public EntityQuerySQLExpression toExpression() {
-            var expression = super.toExpression();
+            EntityQuerySQLExpression expression = super.toExpression();
             ServerEvaluationVisitor.validate(this, expression);
             return expression;
         }
 
         @Override
         public void accept(TableVisitor visitor) {
-            if (visitor instanceof ServerEvaluationVisitor server) server.query(this, () -> super.accept(visitor));
+            if (visitor instanceof ServerEvaluationVisitor) ((ServerEvaluationVisitor) visitor).query(this, () -> super.accept(visitor));
             else super.accept(visitor);
         }
     }
@@ -101,8 +101,8 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
 
         @Override
         public void accept(TableVisitor visitor) {
-            if (visitor instanceof ServerEvaluationVisitor server)
-                server.query(this, () -> getEntityQueryExpressionBuilders().forEach(branch -> branch.accept(visitor)));
+            if (visitor instanceof ServerEvaluationVisitor)
+                ((ServerEvaluationVisitor) visitor).query(this, () -> getEntityQueryExpressionBuilders().forEach(branch -> branch.accept(visitor)));
             else super.accept(visitor);
         }
     }
@@ -117,7 +117,7 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
 
         @Override
         public void accept(TableVisitor visitor) {
-            if (visitor instanceof ServerEvaluationVisitor server) server.query(this, () -> source.accept(visitor));
+            if (visitor instanceof ServerEvaluationVisitor) ((ServerEvaluationVisitor) visitor).query(this, () -> source.accept(visitor));
             else super.accept(visitor);
         }
     }
@@ -137,8 +137,8 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
         protected Relation(TableAvailable table, MultiTableTypeEnum kind, EntityQueryExpressionBuilder source) {
             super(table, kind, source);
             // 先冻结注册来源；此时 Draft 的位置类型可能尚未补齐。
-            var current = source.getExpressionContext().getResultValueConverterMap(false);
-            registered = current == null ? Map.of() : Collections.unmodifiableMap(new HashMap<>(current));
+            Map<String, ColumnReader> current = source.getExpressionContext().getResultValueConverterMap(false);
+            registered = current == null ? Collections.emptyMap() : Collections.unmodifiableMap(new HashMap<>(current));
             if (source instanceof SQLAnonymousUnionEntityQueryExpressionBuilder)
                 readers = ColumnReaders.snapshot(source, getEntityMetadata());
         }
@@ -152,9 +152,9 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
 
         @Override
         public EntityTableExpressionBuilder copyEntityTableExpressionBuilder() {
-            var copy = super.copyEntityTableExpressionBuilder();
+            EntityTableExpressionBuilder copy = super.copyEntityTableExpressionBuilder();
             // 上游仍经 runtime factory 创建副本，再沿用已解析快照，避免重新读取被外层修改的 map。
-            if (copy instanceof Relation relation) relation.readers = readers();
+            if (copy instanceof Relation) ((Relation) copy).readers = readers();
             return copy;
         }
     }
@@ -173,7 +173,7 @@ public class ProExpressionBuilderFactory extends DefaultEasyExpressionBuilderFac
 
         @Override
         public void accept(TableVisitor visitor) {
-            if (visitor instanceof ServerEvaluationVisitor server) server.query(this, () -> source.accept(visitor));
+            if (visitor instanceof ServerEvaluationVisitor) ((ServerEvaluationVisitor) visitor).query(this, () -> source.accept(visitor));
             else super.accept(visitor);
         }
 

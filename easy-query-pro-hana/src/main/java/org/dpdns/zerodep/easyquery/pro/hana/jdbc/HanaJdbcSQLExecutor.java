@@ -23,6 +23,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import com.easy.query.core.basic.jdbc.types.JdbcTypeHandlerManager;
+import com.easy.query.core.context.QueryRuntimeContext;
+import com.easy.query.core.metadata.EntityMetadata;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
+import com.easy.query.core.basic.extension.listener.JdbcExecutorListener;
+import com.easy.query.core.basic.extension.generated.GeneratedKeySQLColumnGenerator;
 
 /**
  * 扩展回填插入生命周期和时间结果读取；查询执行、绑定、监听仍复用上游。
@@ -31,11 +37,11 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
     @Override
     public StreamResultSet query(ExecutorContext context, EasyConnection connection, String sql, List<SQLParameter> parameters,
                                  boolean sharding, boolean replica) throws SQLException {
-        var query = new QueryContext(context);
+        HanaJdbcSQLExecutor.QueryContext query = new QueryContext(context);
         StreamResultSet result = null;
-        try (var bindings = lobBindings(context)) {
+        try (HanaLobBindings.Scope bindings = lobBindings(context)) {
             result = super.query(query, connection, sql, parameters, sharding, replica);
-            var wrapped = HanaTemporalResultSet.wrap(result, query.statement.getResultSet());
+            StreamResultSet wrapped = HanaTemporalResultSet.wrap(result, query.statement.getResultSet());
             if (bindings != null) bindings.completed();
             return wrapped;
         } catch (SQLException | RuntimeException | Error failure) {
@@ -52,7 +58,7 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
     @Override
     public <T> int executeRows(ExecutorContext context, EasyConnection connection, String sql, List<T> entities,
                                List<SQLParameter> parameters, boolean sharding, boolean replica) throws SQLException {
-        try (var bindings = lobBindings(context)) {
+        try (HanaLobBindings.Scope bindings = lobBindings(context)) {
             int rows = super.executeRows(context, connection, sql, entities, parameters, sharding, replica);
             if (bindings != null) bindings.completed();
             return rows;
@@ -62,7 +68,7 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
     @Override
     public int executeRows(ExecutorContext context, EasyConnection connection, String sql, List<SQLParameter> parameters,
                            boolean sharding, boolean replica) throws SQLException {
-        try (var bindings = lobBindings(context)) {
+        try (HanaLobBindings.Scope bindings = lobBindings(context)) {
             int rows = super.executeRows(context, connection, sql, parameters, sharding, replica);
             if (bindings != null) bindings.completed();
             return rows;
@@ -70,8 +76,8 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
     }
 
     private static HanaLobBindings.Scope lobBindings(ExecutorContext context) {
-        var handlers = context.getRuntimeContext().getJdbcTypeHandlerManager();
-        return handlers instanceof HanaJdbcTypeHandlerManager hana ? hana.openLobBindings() : null;
+        JdbcTypeHandlerManager handlers = context.getRuntimeContext().getJdbcTypeHandlerManager();
+        return handlers instanceof HanaJdbcTypeHandlerManager ? ((HanaJdbcTypeHandlerManager) handlers).openLobBindings() : null;
     }
 
     private static final class QueryContext extends ExecutorContext {
@@ -86,7 +92,7 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
 
         @Override
         public SQLConsumer<Statement> getConfigurer(boolean sharding) {
-            var configure = original.getConfigurer(sharding);
+            SQLConsumer<Statement> configure = original.getConfigurer(sharding);
             return prepared -> {
                 // 上游分片结果不暴露原始 ResultSet；通过公开 Statement 配置钩子取得它，不读取私有字段。
                 statement = prepared;
@@ -114,7 +120,7 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
     public <T> int insert(ExecutorContext context, EasyConnection connection, String sql, List<T> entities,
                           List<SQLParameter> parameters, boolean fillKeys, boolean sharding, boolean replica)
             throws SQLException {
-        try (var bindings = lobBindings(context)) {
+        try (HanaLobBindings.Scope bindings = lobBindings(context)) {
             int rows = insertRows(context, connection, sql, entities, parameters, fillKeys, sharding, replica);
             if (bindings != null) bindings.completed();
             return rows;
@@ -133,7 +139,8 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
      */
     private <T> int insertRows(ExecutorContext context, EasyConnection connection, String sql, List<T> entities,
                                List<SQLParameter> parameters, boolean fillKeys, boolean sharding, boolean replica) throws SQLException {
-        if (context instanceof HanaInsertExecution.Context insertContext) {
+        if (context instanceof HanaInsertExecution.Context) {
+            HanaInsertExecution.Context insertContext = (HanaInsertExecution.Context) context;
             insertContext.checkConflictTarget(connection.getConnection());
         }
         if (!fillKeys || entities.isEmpty()) {
@@ -142,15 +149,15 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
         if (sharding) {
             throw new SQLException("HANA session-key backfill requires a resolved physical table; use application-generated keys for sharded writes", "0A000");
         }
-        var runtime = context.getRuntimeContext();
-        var metadata = runtime.getEntityMetadataManager().getEntityMetadata(entities.get(0).getClass());
+        QueryRuntimeContext runtime = context.getRuntimeContext();
+        EntityMetadata metadata = runtime.getEntityMetadataManager().getEntityMetadata(entities.get(0).getClass());
         List<ColumnMetadata> columns = metadata.getGeneratedKeyColumns().stream()
-                .map(name -> metadata.getColumnNotNull(metadata.getPropertyNameNotNull(name))).toList();
+                .map(name -> metadata.getColumnNotNull(metadata.getPropertyNameNotNull(name))).collect(ImmutableCollections.toList());
         String keyQuery = generatedKeyQuery(columns);
-        var listener = runtime.getJdbcExecutorListener();
+        JdbcExecutorListener listener = runtime.getJdbcExecutorListener();
         boolean listen = listener.enable() && context.getExpressionContext().getBehavior().hasBehavior(EasyBehaviorEnum.JDBC_LISTEN);
         boolean print = EasyJdbcExecutorUtil.isPrintSQL(context);
-        var handlers = runtime.getJdbcTypeHandlerManager();
+        JdbcTypeHandlerManager handlers = runtime.getJdbcTypeHandlerManager();
         EasyJdbcExecutorUtil.logSQL(print, sql, connection, sharding, replica);
         JdbcExecuteBeforeArg before = null;
         PreparedStatement insert = null;
@@ -164,15 +171,16 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
                 before = new JdbcExecuteBeforeArg(trace, sql, new ArrayList<>(entities.size()), context.getExecuteMethod());
                 listener.onExecuteBefore(before);
             }
-            if (!(context instanceof HanaInsertExecution.Context insertContext)) {
+            if (!(context instanceof HanaInsertExecution.Context)) {
                 throw new SQLException("HANA generated-key backfill requires HanaInsertExecution registration", "0A000");
             }
+            HanaInsertExecution.Context insertContext = (HanaInsertExecution.Context) context;
             insertContext.checkGeneratedKeySafety(connection.getConnection());
             // INSERT 与键读取之间不能调用用户监听器，否则嵌套 SQL 会覆盖当前连接的 session 值。
             // 同批复用两个 statement，但仍逐行读取键，避免 batch 只留下最后一个 identity。
             keys = connection.getConnection().prepareStatement(keyQuery);
             for (T entity : entities) {
-                var values = EasyJdbcExecutorUtil.extractParameters(entity, parameters, print,
+                List<SQLParameter> values = EasyJdbcExecutorUtil.extractParameters(entity, parameters, print,
                         runtime.getSQLParameterPrintFormat(), connection, sharding, replica);
                 if (before != null) before.getSqlParameters().add(values);
                 if (insert == null) {
@@ -212,11 +220,11 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
 
     private <T> void fillKeys(PreparedStatement statement, List<ColumnMetadata> columns, T entity) throws SQLException {
         // ResultSet 每行关闭；statement 留给下一行复用，由外层 finally 统一释放。
-        try (var result = new EasyStreamResultSet(statement.executeQuery(), null)) {
+        try (EasyStreamResultSet result = new EasyStreamResultSet(statement.executeQuery(), null)) {
             if (!result.next()) throw new SQLException("HANA did not return generated keys");
             for (int i = 0; i < columns.size(); i++) {
-                var column = columns.get(i);
-                var mapping = new EntityResultColumnMetadata(i, column.getEntityMetadata(), column);
+                ColumnMetadata column = columns.get(i);
+                EntityResultColumnMetadata mapping = new EntityResultColumnMetadata(i, column.getEntityMetadata(), column);
                 Object raw = mapping.getJdbcTypeHandler().getValue(mapping.getJdbcProperty(), result);
                 // 生成键也走普通读取的解密/ValueConverter 路径，不能把 JDBC 值直接塞入业务值对象。
                 Object key = EasyJdbcExecutorUtil.fromValue(mapping, raw);
@@ -235,14 +243,15 @@ public final class HanaJdbcSQLExecutor extends DefaultJdbcSQLExecutor {
         if (columns.isEmpty()) {
             throw new IllegalArgumentException("HANA key backfill requires @Column(generatedKey = true)");
         }
-        var expressions = new ArrayList<String>(columns.size());
-        var sources = new HashSet<String>();
-        for (var column : columns) {
-            var generator = column.getGeneratedSQLColumnGenerator();
+        ArrayList<String> expressions = new ArrayList<String>(columns.size());
+        HashSet<String> sources = new HashSet<String>();
+        for (ColumnMetadata column : columns) {
+            GeneratedKeySQLColumnGenerator generator = column.getGeneratedSQLColumnGenerator();
             String expression;
             if (generator == null) {
                 expression = "CURRENT_IDENTITY_VALUE()";
-            } else if (generator instanceof HanaSequenceGenerator sequence) {
+            } else if (generator instanceof HanaSequenceGenerator) {
+                HanaSequenceGenerator sequence = (HanaSequenceGenerator) generator;
                 expression = sequence.currentValueExpression();
             } else {
                 throw new UnsupportedOperationException("HANA cannot backfill custom generator "

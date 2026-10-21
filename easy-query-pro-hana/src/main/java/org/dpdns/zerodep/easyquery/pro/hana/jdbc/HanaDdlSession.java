@@ -4,6 +4,7 @@ import com.sap.db.jdbc.ConnectionSapDB;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 
 /**
  * JDBC 没有 DDL 自动提交属性，通过 SAP 的公开 unwrap API 保存和恢复。
@@ -20,7 +21,7 @@ final class HanaDdlSession implements AutoCloseable {
     static HanaDdlSession begin(Connection connection) throws SQLException {
         if (connection.getAutoCommit())
             throw new SQLException("HANA DDL scope requires a newly opened transaction", "25000");
-        var session = new HanaDdlSession(connection, connection.unwrap(ConnectionSapDB.class).isDDLAutoCommit());
+        HanaDdlSession session = new HanaDdlSession(connection, connection.unwrap(ConnectionSapDB.class).isDDLAutoCommit());
         try {
             if (session.previousDdlAutoCommit) setMode(connection, false);
             return session;
@@ -42,7 +43,7 @@ final class HanaDdlSession implements AutoCloseable {
     }
 
     private static void setMode(Connection connection, boolean enabled) throws SQLException {
-        try (var statement = connection.createStatement()) {
+        try (Statement statement = connection.createStatement()) {
             statement.execute("SET TRANSACTION AUTOCOMMIT DDL " + (enabled ? "ON" : "OFF"));
         }
     }

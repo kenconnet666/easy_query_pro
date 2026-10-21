@@ -47,11 +47,13 @@ public final class PgTextSearchTypeHandlers {
                 throw unreadableValue();
             }
             String encoded;
-            if (value instanceof PGobject nativeValue) {
+            if (value instanceof PGobject) {
+                PGobject nativeValue = (PGobject) value;
                 if (!type.sqlName().equals(nativeValue.getType()))
                     throw new SQLException("Expected PostgreSQL " + type.sqlName() + " object, found " + nativeValue.getType());
                 encoded = nativeValue.getValue();
-            } else if (value instanceof String text) {
+            } else if (value instanceof String) {
+                String text = (String) value;
                 encoded = text;
             } else {
                 throw new SQLException("Unsupported JDBC value for PostgreSQL " + type.sqlName() + ": " + value.getClass().getName());
@@ -69,7 +71,7 @@ public final class PgTextSearchTypeHandlers {
         @Override
         public void setParameter(EasyParameter parameter) throws SQLException {
             T value = type.javaType().cast(parameter.getValue());
-            var encoded = new PGobject();
+            PGobject encoded = new PGobject();
             encoded.setType(type.sqlName());
             encoded.setValue(value == null ? null : type.encode(value));
             parameter.getPs().setObject(parameter.getIndex(), encoded);

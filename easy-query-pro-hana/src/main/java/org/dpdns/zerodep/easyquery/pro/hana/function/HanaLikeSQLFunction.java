@@ -8,14 +8,15 @@ import com.easy.query.core.func.def.impl.AbstractLikeSQLFunction;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
 
 final class HanaLikeSQLFunction extends AbstractLikeSQLFunction {
     private final List<ColumnExpression> expressions;
     private final String template;
 
     HanaLikeSQLFunction(List<ColumnExpression> arguments, SQLLikeEnum mode) {
-        var prepared = new ArrayList<>(arguments);
-        var generator = new LikeFunctionTemplateGenerator(prepared, mode, this::getColumnFuncValueExpression,
+        ArrayList<ColumnExpression> prepared = new ArrayList<>(arguments);
+        LikeFunctionTemplateGenerator generator = new LikeFunctionTemplateGenerator(prepared, mode, this::getColumnFuncValueExpression,
                 "{0} LIKE ({1} || '%') ESCAPE '!'",
                 "{0} LIKE ('%' || {1}) ESCAPE '!'",
                 "{0} LIKE ('%' || {1} || '%') ESCAPE '!'",
@@ -29,7 +30,7 @@ final class HanaLikeSQLFunction extends AbstractLikeSQLFunction {
         };
         // 上游会改写待绑定值；构造时在私有副本上完成，避免多次渲染重复转义。
         template = generator.sqlSegment(null);
-        expressions = List.copyOf(prepared);
+        expressions = ImmutableCollections.listCopyOf(prepared);
     }
 
     @Override

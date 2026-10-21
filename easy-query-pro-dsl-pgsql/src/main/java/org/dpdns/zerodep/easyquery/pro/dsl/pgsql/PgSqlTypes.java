@@ -11,6 +11,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTsQuery;
 import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTsVector;
 
 import java.math.BigDecimal;
+import java.util.Objects;
 
 public final class PgSqlTypes {
     private static final Json JSON = new Json();
@@ -34,11 +35,16 @@ public final class PgSqlTypes {
         return UnconstrainedNumeric.INSTANCE;
     }
 
-    private record Numeric(int precision, int scale) implements NumericType<BigDecimal> {
-        private Numeric {
+    private static final class Numeric implements NumericType<BigDecimal> {
+        private final int precision;
+        private final int scale;
+
+        private Numeric(int precision, int scale) {
             if (precision < 1 || precision > 1000 || scale < -1000 || scale > 1000) {
                 throw new IllegalArgumentException("PostgreSQL NUMERIC requires 1 <= precision <= 1000 and -1000 <= scale <= 1000");
             }
+            this.precision = precision;
+            this.scale = scale;
         }
 
         @Override
@@ -60,6 +66,33 @@ public final class PgSqlTypes {
         @Override
         public BigDecimal prepareValue(BigDecimal value) {
             return DecimalValues.prepare(value, precision, scale);
+        }
+
+        public int precision() {
+            return precision;
+        }
+
+        public int scale() {
+            return scale;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Numeric)) return false;
+            Numeric other = (Numeric) o;
+            return precision == other.precision
+                    && scale == other.scale;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(precision, scale);
+        }
+
+        @Override
+        public String toString() {
+            return "Numeric[precision=" + precision + ", scale=" + scale + "]";
         }
     }
 
@@ -89,7 +122,7 @@ public final class PgSqlTypes {
             if ((long) value.precision() - value.scale() > 131072) {
                 throw new IllegalArgumentException("PostgreSQL NUMERIC exceeds 131072 integer digits");
             }
-            var normalized = value.stripTrailingZeros();
+            BigDecimal normalized = value.stripTrailingZeros();
             if (normalized.scale() > 16383)
                 throw new IllegalArgumentException("PostgreSQL NUMERIC exceeds 16383 fractional digits");
             return normalized;

@@ -10,6 +10,7 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.stream.Stream;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -18,9 +19,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class UpstreamRuntimeTest {
     @ParameterizedTest
     @MethodSource("databases")
-    void generatedProxyRendersBoundSqlOnJava17(DatabaseConfiguration configuration, String quote) {
-        assertEquals(17, Runtime.version().feature());
-        var query = TestClients.offline(configuration);
+    void generatedProxyRendersBoundSqlOnJava8(DatabaseConfiguration configuration, String quote) {
+        assertEquals("1.8", System.getProperty("java.specification.version"));
+        DefaultEasyEntityQuery query = TestClients.offline(configuration);
         String value = "O'Reilly 中文";
         String sql = query.queryable(TestProduct.class)
                 .where(p -> p.name().eq(value))

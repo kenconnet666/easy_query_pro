@@ -7,9 +7,9 @@ public enum TruncationUnit {
     YEAR, QUARTER, MONTH, ISO_WEEK, DAY, HOUR, MINUTE, SECOND;
 
     public boolean isDateUnit() {
-        return switch (this) {
-            case YEAR, QUARTER, MONTH, ISO_WEEK, DAY -> true;
-            default -> false;
-        };
+        switch (this) {
+            case YEAR: case QUARTER: case MONTH: case ISO_WEEK: case DAY: return true;
+            default: return false;
+        }
     }
 }

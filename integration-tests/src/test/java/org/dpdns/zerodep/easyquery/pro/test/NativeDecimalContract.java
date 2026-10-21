@@ -11,6 +11,9 @@ import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft3Proxy;
+import com.easy.query.core.proxy.core.draft.Draft3;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,20 +22,20 @@ final class NativeDecimalContract {
     }
 
     static void verify(DefaultEasyEntityQuery client, String table, NumericType<BigDecimal> type, List<BigDecimal> values) {
-        var entities = new ArrayList<TestProduct>();
+        ArrayList<TestProduct> entities = new ArrayList<TestProduct>();
         for (int i = 0; i < values.size(); i++)
             entities.add(new TestProduct(i + 1, "number", type.prepareValue(values.get(i))));
         entities.add(new TestProduct(entities.size() + 1, "null", null));
         assertEquals(entities.size(), client.insertable(entities).asTable(table).setSQLStrategy(SQLExecuteStrategyEnum.ALL_COLUMNS).executeRows());
-        var rows = client.queryable(TestProduct.class).asTable(table).orderBy(p -> p.id().asc()).toList();
+        List<TestProduct> rows = client.queryable(TestProduct.class).asTable(table).orderBy(p -> p.id().asc()).toList();
         for (int i = 0; i < values.size(); i++) equalValue(values.get(i), rows.get(i).getAmount());
         assertNull(rows.get(values.size()).getAmount());
-        for (var value : values) {
-            var selection = client.queryable(TestProduct.class).asTable(table).where(p -> p.id().eq(1)).select(p -> {
-                var common = ProDsl.of(p);
+        for (BigDecimal value : values) {
+            EntityQueryable<Draft3Proxy<BigDecimal, BigDecimal, BigDecimal>, Draft3<BigDecimal, BigDecimal, BigDecimal>> selection = client.queryable(TestProduct.class).asTable(table).where(p -> p.id().eq(1)).select(p -> {
+                ProDsl common = ProDsl.of(p);
                 return Select.DRAFT.of(common.value(value, type), common.nativeCast(p.amount(), type), common.nullValue(type));
             });
-            var result = selection.singleNotNull();
+            Draft3<BigDecimal, BigDecimal, BigDecimal> result = selection.singleNotNull();
             equalValue(value, result.getValue1());
             equalValue(values.get(0), result.getValue2());
             assertNull(result.getValue3());
@@ -42,8 +45,8 @@ final class NativeDecimalContract {
     }
 
     static void nativeRounding(DefaultEasyEntityQuery client, String table, NumericType<BigDecimal> type, String input, String expected) {
-        var result = client.queryable(TestProduct.class).asTable(table).where(p -> p.id().eq(1)).selectColumn(p -> {
-            var common = ProDsl.of(p);
+        BigDecimal result = client.queryable(TestProduct.class).asTable(table).where(p -> p.id().eq(1)).selectColumn(p -> {
+            ProDsl common = ProDsl.of(p);
             return common.nativeCast(common.value(input, CommonTypes.unicodeText(100)), type);
         }).singleNotNull();
         equalValue(new BigDecimal(expected), result);

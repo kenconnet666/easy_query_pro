@@ -20,6 +20,7 @@ import org.dpdns.zerodep.easyquery.pro.hana.expression.HanaQuerySQLContext;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 具有真实关系语义的匿名来源：内层不暴露可下推的投影，展示谓词不能变成构树前过滤。
@@ -41,7 +42,7 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
         this.source = source;
         this.spec = spec;
         this.navigation = navigation;
-        var nativeContext = new SQLNativeExpressionContextImpl(context, runtimeContext);
+        SQLNativeExpressionContextImpl nativeContext = new SQLNativeExpressionContextImpl(context, runtimeContext);
         // 在最外层 ToSQLContext 创建前提取 CTE/tableContext，不能等到 toSQL 时才追加依赖。
         nativeContext.expression(source);
         sourceSegment = runtimeContext.getSQLSegmentFactory().createSQLNativeSegment(context, "{0}", nativeContext);
@@ -54,21 +55,21 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
     }
 
     private List<SQLNativeSegment> bindKeys(Collection<?> keys) {
-        if (keys == null) return List.of();
-        var segments = new ArrayList<SQLNativeSegment>();
-        for (var key : keys) {
-            var valueContext = new SQLNativeExpressionContextImpl(expressionContext, runtimeContext);
+        if (keys == null) return ImmutableCollections.listOf();
+        ArrayList<SQLNativeSegment> segments = new ArrayList<SQLNativeSegment>();
+        for (Object key : keys) {
+            SQLNativeExpressionContextImpl valueContext = new SQLNativeExpressionContextImpl(expressionContext, runtimeContext);
             // 比较值沿原列的 SQL converter、JDBC handler 与业务 converter 路径绑定。
             valueContext.sql(EasyColumnSegmentUtil.createColumnCompareValue2Segment(spec.node().getTable(),
                     spec.node().getTable().getEntityMetadata().getColumnNotNull(spec.node().getValue()), expressionContext, key));
             segments.add(runtimeContext.getSQLSegmentFactory().createSQLNativeSegment(expressionContext, "{0}", valueContext));
         }
-        return List.copyOf(segments);
+        return ImmutableCollections.listCopyOf(segments);
     }
 
     private SQLNativeSegment bindDistance(Integer value) {
         if (value == null) return null;
-        var valueContext = new SQLNativeExpressionContextImpl(expressionContext, runtimeContext);
+        SQLNativeExpressionContextImpl valueContext = new SQLNativeExpressionContextImpl(expressionContext, runtimeContext);
         valueContext.value(value);
         return runtimeContext.getSQLSegmentFactory().createSQLNativeSegment(expressionContext, "{0}", valueContext);
     }
@@ -109,11 +110,11 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
                                     List<SQLNativeSegment> roots, List<SQLNativeSegment> starts,
                                     SQLNativeSegment minimumDistance, SQLNativeSegment maximumDistance,
                                     HanaHierarchySpec<?> spec, HanaHierarchy.Navigation<?> navigation) {
-            super(metadata, "", List.of());
+            super(metadata, "", ImmutableCollections.listOf());
             this.metadata = metadata;
             this.source = source;
-            this.roots = List.copyOf(roots);
-            this.starts = List.copyOf(starts);
+            this.roots = ImmutableCollections.listCopyOf(roots);
+            this.starts = ImmutableCollections.listCopyOf(starts);
             this.minimumDistance = minimumDistance;
             this.maximumDistance = maximumDistance;
             this.spec = spec;
@@ -128,7 +129,7 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
             String generator = generator(context);
             if (navigation == null) return "SELECT * FROM " + generator;
             // 导航 SOURCE 接受生成函数，不能把 SELECT 子查询直接放进去；这里组合受控函数节点。
-            var sql = new StringBuilder("SELECT * FROM HIERARCHY_").append(navigation.direction().name())
+            StringBuilder sql = new StringBuilder("SELECT * FROM HIERARCHY_").append(navigation.direction().name())
                     .append("(SOURCE ").append(generator).append(" START WHERE \"NODE_ID\" IN (");
             appendKeys(sql, starts, context);
             sql.append(')');
@@ -142,7 +143,7 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
         private String generator(ToSQLContext context) {
             String node = HanaHierarchy.columnName(spec.node());
             String parent = HanaHierarchy.columnName(spec.parent());
-            var sql = new StringBuilder("HIERARCHY(SOURCE (SELECT * FROM (SELECT \"_EQH_DATA\".*");
+            StringBuilder sql = new StringBuilder("HIERARCHY(SOURCE (SELECT * FROM (SELECT \"_EQH_DATA\".*");
             if (!node.equals("NODE_ID"))
                 sql.append(",\"_EQH_DATA\".").append(quote(node)).append(" AS \"NODE_ID\"");
             if (!parent.equals("PARENT_ID"))
@@ -155,7 +156,7 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
                 sql.append(')');
             }
             sql.append(" SIBLING ORDER BY ");
-            for (var sibling : spec.siblings()) {
+            for (HanaHierarchySpec.Sibling sibling : spec.siblings()) {
                 sql.append(quote(HanaHierarchy.columnName(sibling.column())))
                         .append(sibling.ascending() ? " ASC," : " DESC,");
             }
@@ -182,8 +183,8 @@ final class HanaHierarchyQueryBuilder extends QueryExpressionBuilder implements 
         @Override
         public EntityQuerySQLExpression cloneSQLExpression() {
             return new HierarchyExpression(metadata, source.cloneSQLColumnSegment(),
-                    roots.stream().map(SQLNativeSegment::cloneSQLColumnSegment).toList(),
-                    starts.stream().map(SQLNativeSegment::cloneSQLColumnSegment).toList(),
+                    roots.stream().map(SQLNativeSegment::cloneSQLColumnSegment).collect(ImmutableCollections.toList()),
+                    starts.stream().map(SQLNativeSegment::cloneSQLColumnSegment).collect(ImmutableCollections.toList()),
                     minimumDistance == null ? null : minimumDistance.cloneSQLColumnSegment(),
                     maximumDistance == null ? null : maximumDistance.cloneSQLColumnSegment(), spec, navigation);
         }

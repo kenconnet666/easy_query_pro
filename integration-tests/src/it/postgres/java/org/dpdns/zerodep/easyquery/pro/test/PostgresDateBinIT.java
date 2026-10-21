@@ -20,6 +20,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.stream.IntStream;
+import com.easy.query.core.proxy.core.draft.proxy.Draft2Proxy;
+import com.easy.query.core.proxy.core.draft.Draft2;
+import java.util.stream.Collectors;
+import com.easy.query.core.api.pagination.EasyPageResult;
+import org.postgresql.ds.PGSimpleDataSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,11 +33,11 @@ class PostgresDateBinIT {
     @ParameterizedTest
     @ValueSource(ints = {0, -1})
     void fixedBinsKeepNegativeBoundariesNullsAndLocalClockFields(int prepareThreshold) {
-        var previousZone = TimeZone.getDefault();
+        TimeZone previousZone = TimeZone.getDefault();
         TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"));
         try {
-            var query = query(prepareThreshold);
-            var source = rows(query, Arrays.asList(
+            DefaultEasyEntityQuery query = query(prepareThreshold);
+            EntityQueryable<TestEventProxy, TestEvent> source = rows(query, Arrays.asList(
                     LocalDateTime.parse("2024-01-01T12:34:56.123456"),
                     LocalDateTime.parse("2024-01-01T12:32:30"),
                     LocalDateTime.parse("1969-12-31T23:59:59.999999"),
@@ -40,10 +45,10 @@ class PostgresDateBinIT {
                     null,
                     LocalDateTime.parse("2024-03-10T02:30:00.123456"),
                     LocalDateTime.parse("2024-11-03T01:30:00.123456")));
-            var origin = LocalDateTime.of(1970, 1, 1, 0, 2, 30);
-            var selected = source.select(p -> Select.DRAFT.of(p.delta(),
+            LocalDateTime origin = LocalDateTime.of(1970, 1, 1, 0, 2, 30);
+            EntityQueryable<Draft2Proxy<Integer, LocalDateTime>, Draft2<Integer, LocalDateTime>> selected = source.select(p -> Select.DRAFT.of(p.delta(),
                     PgSqlDsl.of(p).dateBin(p.occurred(), Duration.ofMinutes(15), origin)));
-            var actual = selected.cloneQueryable().orderBy(p -> p.value1().asc()).toList();
+            List<Draft2<Integer, LocalDateTime>> actual = selected.cloneQueryable().orderBy(p -> p.value1().asc()).toList();
             assertEquals(Arrays.asList(
                             LocalDateTime.parse("2024-01-01T12:32:30"),
                             LocalDateTime.parse("2024-01-01T12:32:30"),
@@ -52,20 +57,20 @@ class PostgresDateBinIT {
                             null,
                             LocalDateTime.parse("2024-03-10T02:17:30"),
                             LocalDateTime.parse("2024-11-03T01:17:30")),
-                    actual.stream().map(row -> row.getValue2()).toList());
+                    actual.stream().map(row -> row.getValue2()).collect(Collectors.toList()));
             assertEquals(selected.cloneQueryable().toSQL(), selected.cloneQueryable().toSQL());
 
             // 先把含绑定参数的函数固定为列，避免 SELECT/GROUP BY 出现不同参数位置的等价表达式。
-            var bins = selected.cloneQueryable().toCteAs("fixed_bins");
-            var grouped = bins.groupBy(p -> GroupKeys.of(p.value2()))
+            EntityQueryable<Draft2Proxy<Integer, LocalDateTime>, Draft2<Integer, LocalDateTime>> bins = selected.cloneQueryable().toCteAs("fixed_bins");
+            EntityQueryable<Draft2Proxy<LocalDateTime, Long>, Draft2<LocalDateTime, Long>> grouped = bins.groupBy(p -> GroupKeys.of(p.value2()))
                     .select(g -> Select.DRAFT.of(g.key1(), g.count()));
             assertEquals(5L, grouped.cloneQueryable().count());
             assertEquals(7L, grouped.cloneQueryable().toList().stream().mapToLong(row -> row.getValue2()).sum());
-            var visible = grouped.cloneQueryable().where(p -> p.value1().isNotNull()).orderBy(p -> p.value1().asc());
-            var page = visible.cloneQueryable().toPageResult(2, 2);
+            EntityQueryable<Draft2Proxy<LocalDateTime, Long>, Draft2<LocalDateTime, Long>> visible = grouped.cloneQueryable().where(p -> p.value1().isNotNull()).orderBy(p -> p.value1().asc());
+            EasyPageResult<Draft2<LocalDateTime, Long>> page = visible.cloneQueryable().toPageResult(2, 2);
             assertEquals(4L, page.getTotal());
-            assertEquals(List.of(LocalDateTime.parse("2024-03-10T02:17:30"), LocalDateTime.parse("2024-11-03T01:17:30")),
-                    page.getData().stream().map(row -> row.getValue1()).toList());
+            assertEquals(Arrays.asList(LocalDateTime.parse("2024-03-10T02:17:30"), LocalDateTime.parse("2024-11-03T01:17:30")),
+                    page.getData().stream().map(row -> row.getValue1()).collect(Collectors.toList()));
         } finally {
             TimeZone.setDefault(previousZone);
         }
@@ -74,22 +79,22 @@ class PostgresDateBinIT {
     @ParameterizedTest
     @ValueSource(ints = {0, -1})
     void microsecondBinsFloorBeforeOriginWithoutRounding(int prepareThreshold) {
-        var query = query(prepareThreshold);
-        var origin = LocalDateTime.parse("2024-01-01T00:00:00.000001");
-        var result = rows(query, List.of(origin.plusNanos(1_000), origin.minusNanos(1_000),
+        DefaultEasyEntityQuery query = query(prepareThreshold);
+        LocalDateTime origin = LocalDateTime.parse("2024-01-01T00:00:00.000001");
+        List<Draft2<Integer, LocalDateTime>> result = rows(query, Arrays.asList(origin.plusNanos(1_000), origin.minusNanos(1_000),
                 origin.plusNanos(2_000), origin.plusNanos(3_000)))
                 .select(p -> Select.DRAFT.of(p.delta(), PgSqlDsl.of(p).dateBin(p.occurred(), Duration.ofNanos(2_000), origin)))
                 .orderBy(p -> p.value1().asc()).toList();
-        assertEquals(List.of(origin, LocalDateTime.parse("2023-12-31T23:59:59.999999"),
+        assertEquals(Arrays.asList(origin, LocalDateTime.parse("2023-12-31T23:59:59.999999"),
                         origin.plusNanos(2_000), origin.plusNanos(2_000)),
-                result.stream().map(row -> row.getValue2()).toList());
+                result.stream().map(row -> row.getValue2()).collect(Collectors.toList()));
     }
 
     private static DefaultEasyEntityQuery query(int prepareThreshold) {
-        var source = PostgresTestDatabase.dataSource();
+        PGSimpleDataSource source = PostgresTestDatabase.dataSource();
         source.setPrepareThreshold(prepareThreshold);
         source.setOptions("-c TimeZone=Asia/Tokyo");
-        var query = TestClients.configured(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+        DefaultEasyEntityQuery query = TestClients.configured(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
         PgSqlExtensions.configureTypeHandlers(query.getEasyQueryClient().getRuntimeContext().getJdbcTypeHandlerManager());
         return query;
     }

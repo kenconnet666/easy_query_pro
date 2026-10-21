@@ -31,8 +31,8 @@ class PgTemporalResultSet implements StreamResultSet {
     }
 
     static StreamResultSet wrap(StreamResultSet source) throws SQLException {
-        var metadata = source.getMetaData();
-        var timestamps = new boolean[metadata.getColumnCount()];
+        ResultSetMetaData metadata = source.getMetaData();
+        boolean[] timestamps = new boolean[metadata.getColumnCount()];
         boolean present = false;
         for (int i = 0; i < timestamps.length; i++) {
             timestamps[i] = isLocalTimestamp(metadata, i + 1);

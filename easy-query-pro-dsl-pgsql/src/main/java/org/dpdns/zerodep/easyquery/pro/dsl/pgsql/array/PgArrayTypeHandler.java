@@ -10,6 +10,7 @@ import java.nio.ByteBuffer;
 import java.sql.Array;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.sql.ResultSet;
 
 /**
  * 仅为 PgArrayValue 注册的 pgJDBC 数组映射，负责形状检查及 JDBC Array 释放。
@@ -24,8 +25,9 @@ public final class PgArrayTypeHandler implements JdbcTypeHandler {
     public Object getValue(JdbcProperty property, StreamResultSet result) throws SQLException {
         Object raw = result.getObject(property.getJdbcIndex());
         if (raw == null) return null;
-        if (!(raw instanceof Array array))
+        if (!(raw instanceof Array))
             throw new SQLException("Expected a JDBC Array for " + property.getPropertyType().getTypeName());
+        Array array = (Array) raw;
         PgArrayValue<?> value;
         try {
             requireSupportedShape(array);
@@ -43,20 +45,21 @@ public final class PgArrayTypeHandler implements JdbcTypeHandler {
     }
 
     private static <E> PgArrayValue<E> read(Array array, PgArrayType<E> type) throws SQLException {
-        var values = new ArrayList<E>();
-        try (var elements = array.getResultSet()) {
+        ArrayList<E> values = new ArrayList<E>();
+        try (ResultSet elements = array.getResultSet()) {
             while (elements.next()) values.add(elements.getObject(2, type.elementType()));
         }
         return type.value(values);
     }
 
     private static void requireSupportedShape(Array array) throws SQLException {
-        if (!(array instanceof PgArray pg))
+        if (!(array instanceof PgArray))
             throw new SQLException("PostgreSQL array mapping requires pgJDBC to validate dimensions and lower bounds");
+        PgArray pg = (PgArray) array;
         byte[] bytes = pg.toBytes();
         if (bytes != null) {
             if (bytes.length < HEADER_BYTES) throw new SQLException("Truncated PostgreSQL binary array header");
-            var header = ByteBuffer.wrap(bytes);
+            ByteBuffer header = ByteBuffer.wrap(bytes);
             int dimensions = header.getInt(0);
             if (dimensions == 0) return;
             if (dimensions != 1)
@@ -92,7 +95,7 @@ public final class PgArrayTypeHandler implements JdbcTypeHandler {
 
     @Override
     public void setParameter(EasyParameter parameter) throws SQLException {
-        var value = (PgArrayValue<?>) parameter.getValue();
+        PgArrayValue<?> value = (PgArrayValue<?>) parameter.getValue();
         Object[] elements = value.elements().stream().map(value.type()::jdbcElement).toArray();
         Array array = parameter.getPs().getConnection().createArrayOf(value.type().elementSqlName(), elements);
         try {

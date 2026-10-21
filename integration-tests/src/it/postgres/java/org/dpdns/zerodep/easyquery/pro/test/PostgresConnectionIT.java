@@ -8,13 +8,16 @@ import org.dpdns.zerodep.easyquery.pro.dsl.type.CommonTypes;
 
 import java.sql.SQLException;
 import java.util.UUID;
+import org.postgresql.ds.PGSimpleDataSource;
+import java.sql.Connection;
+import java.sql.Statement;
 
 class PostgresConnectionIT {
     @Test
     void upstreamAdapterWorksWithTheConfiguredPostgres() throws SQLException {
-        var dataSource = PostgresTestDatabase.dataSource();
+        PGSimpleDataSource dataSource = PostgresTestDatabase.dataSource();
         String schema = "eqp_" + UUID.randomUUID().toString().replace("-", "");
-        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA " + schema);
             try {
                 dataSource.setCurrentSchema(schema);

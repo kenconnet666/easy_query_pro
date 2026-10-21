@@ -34,7 +34,7 @@ public final class HanaQuerySQLContext implements ToSQLContext {
     }
 
     public static boolean isSharding(ToSQLContext context) {
-        return context instanceof HanaQuerySQLContext hana && hana.sharding;
+        return context instanceof HanaQuerySQLContext && ((HanaQuerySQLContext) context).sharding;
     }
 
     @Override

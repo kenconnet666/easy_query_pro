@@ -6,12 +6,13 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.sql.SQLException;
+import com.mysql.cj.jdbc.MysqlDataSource;
 
 class MySqlJsonPathIT {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void keysRemainDataWithNoBackslashEscapesAndEitherPreparationMode(boolean serverPrepared) throws SQLException {
-        var dataSource = MySqlTestDatabase.dataSource();
+        MysqlDataSource dataSource = MySqlTestDatabase.dataSource();
         dataSource.setUseServerPrepStmts(serverPrepared);
         dataSource.setSessionVariables("sql_mode='NO_BACKSLASH_ESCAPES'");
         JsonPathDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);

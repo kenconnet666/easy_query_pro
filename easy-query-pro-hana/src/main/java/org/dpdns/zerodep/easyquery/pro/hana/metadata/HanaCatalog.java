@@ -22,6 +22,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
+import java.sql.Statement;
+import java.sql.PreparedStatement;
 
 /**
  * 只读目录访问。schema/name 接收原始标识符，由本层引用；null schema 在当前连接解析。
@@ -38,7 +41,7 @@ public final class HanaCatalog {
 
     public List<String> schemas() {
         return connected("list HANA schemas", connection -> query(connection,
-                "SELECT SCHEMA_NAME FROM SYS.SCHEMAS ORDER BY SCHEMA_NAME", List.of(), rows -> rows.getString(1)));
+                "SELECT SCHEMA_NAME FROM SYS.SCHEMAS ORDER BY SCHEMA_NAME", ImmutableCollections.listOf(), rows -> rows.getString(1)));
     }
 
     public String currentSchema() {
@@ -61,12 +64,12 @@ public final class HanaCatalog {
         keyword.quoteUnquotedName(name);
         return connected("describe HANA relation " + name, connection -> {
             String selected = schema(connection, schema);
-            var relation = find(connection, selected, name);
-            if (relation.isEmpty()) return Optional.empty();
-            var object = relation.get();
+            Optional<Relation> relation = find(connection, selected, name);
+            if (!relation.isPresent()) return Optional.empty();
+            Relation object = relation.get();
             return Optional.of(new HanaRelationMetadata(object, columns(connection, object),
-                    object.kind() == Kind.TABLE ? indexes(connection, selected, name) : List.of(),
-                    object.kind() == Kind.TABLE ? foreignKeys(connection, selected, name) : List.of()));
+                    object.kind() == Kind.TABLE ? indexes(connection, selected, name) : ImmutableCollections.listOf(),
+                    object.kind() == Kind.TABLE ? foreignKeys(connection, selected, name) : ImmutableCollections.listOf()));
         });
     }
 
@@ -76,11 +79,11 @@ public final class HanaCatalog {
      * 防止 Code First 在不可判定状态下误执行创建或覆盖操作。
      */
     private Optional<Relation> find(Connection connection, String schema, String name) throws SQLException {
-        var relations = relations(connection, schema, name);
+        List<Relation> relations = relations(connection, schema, name);
         if (!relations.isEmpty()) return Optional.of(relations.get(0));
         // 目录受权限过滤。探测对象本身，不能把不可见或查询错误误当成“不存在”。
         String sql = "SELECT * FROM " + keyword.quoteUnquotedName(schema) + "." + keyword.quoteUnquotedName(name) + " WHERE 1=0";
-        try (var statement = connection.createStatement(); var ignored = statement.executeQuery(sql)) {
+        try (Statement statement = connection.createStatement(); ResultSet ignored = statement.executeQuery(sql)) {
             throw new SQLException("HANA object exists without visible table/view metadata: " + schema + "." + name, "42501");
         } catch (SQLException failure) {
             if (failure.getErrorCode() == 259) return Optional.empty();
@@ -95,7 +98,7 @@ public final class HanaCatalog {
                 + "CAST(NULL AS NVARCHAR(32)) AS VIEW_TYPE,COMMENTS,IS_TEMPORARY FROM SYS.TABLES WHERE SCHEMA_NAME=?" + tableFilter
                 + " UNION ALL SELECT SCHEMA_NAME,VIEW_NAME,'VIEW',NULL,VIEW_TYPE,COMMENTS,'FALSE' FROM SYS.VIEWS WHERE SCHEMA_NAME=?" + viewFilter
                 + " ORDER BY OBJECT_NAME";
-        var parameters = name == null ? List.of(schema, schema) : List.of(schema, name, schema, name);
+        List<String> parameters = name == null ? ImmutableCollections.listOf(schema, schema) : ImmutableCollections.listOf(schema, name, schema, name);
         return query(connection, sql, parameters, rows -> new Relation(rows.getString("SCHEMA_NAME"), rows.getString("OBJECT_NAME"),
                 Kind.valueOf(rows.getString("KIND")), rows.getString("STORAGE_TYPE"), rows.getString("VIEW_TYPE"),
                 rows.getString("COMMENTS"), "TRUE".equals(rows.getString("IS_TEMPORARY"))));
@@ -110,13 +113,13 @@ public final class HanaCatalog {
         String sql = "SELECT COLUMN_NAME,POSITION,DATA_TYPE_NAME,LENGTH,SCALE,IS_NULLABLE,DEFAULT_VALUE,GENERATION_TYPE,GENERATED_ALWAYS_AS,COMMENTS"
                 + " FROM SYS." + (table ? "TABLE_COLUMNS" : "VIEW_COLUMNS") + " WHERE SCHEMA_NAME=? AND "
                 + (table ? "TABLE_NAME" : "VIEW_NAME") + "=? AND IS_HIDDEN='FALSE' ORDER BY POSITION";
-        return query(connection, sql, List.of(relation.schema(), relation.name()), rows -> {
+        return query(connection, sql, ImmutableCollections.listOf(relation.schema(), relation.name()), rows -> {
             int scale = rows.getInt("SCALE");
             Integer nullableScale = rows.wasNull() ? null : scale;
             long length = rows.getLong("LENGTH");
             Long nullableLength = rows.wasNull() ? null : length;
             String nullable = rows.getString("IS_NULLABLE");
-            var nullability = "TRUE".equals(nullable) ? Nullability.NULLABLE : "FALSE".equals(nullable) ? Nullability.NOT_NULL : Nullability.UNKNOWN;
+            Nullability nullability = "TRUE".equals(nullable) ? Nullability.NULLABLE : "FALSE".equals(nullable) ? Nullability.NOT_NULL : Nullability.UNKNOWN;
             return new Column(rows.getString("COLUMN_NAME"), rows.getInt("POSITION"), rows.getString("DATA_TYPE_NAME"),
                     nullableLength, nullableScale, nullability, rows.getString("DEFAULT_VALUE"),
                     rows.getString("GENERATION_TYPE"), rows.getString("GENERATED_ALWAYS_AS"), rows.getString("COMMENTS"));
@@ -127,29 +130,29 @@ public final class HanaCatalog {
         String sql = "SELECT i.INDEX_NAME,i.INDEX_TYPE,i.\"CONSTRAINT\",c.COLUMN_NAME,c.POSITION,c.ASCENDING_ORDER"
                 + " FROM SYS.INDEXES i JOIN SYS.INDEX_COLUMNS c ON i.SCHEMA_NAME=c.SCHEMA_NAME AND i.TABLE_NAME=c.TABLE_NAME AND i.INDEX_NAME=c.INDEX_NAME"
                 + " WHERE i.SCHEMA_NAME=? AND i.TABLE_NAME=? ORDER BY i.INDEX_NAME,c.POSITION";
-        var rows = query(connection, sql, List.of(schema, table), result -> new IndexRow(result.getString("INDEX_NAME"),
+        List<HanaCatalog.IndexRow> rows = query(connection, sql, ImmutableCollections.listOf(schema, table), result -> new IndexRow(result.getString("INDEX_NAME"),
                 result.getString("INDEX_TYPE"), result.getString("CONSTRAINT"),
                 new IndexColumn(result.getString("COLUMN_NAME"), result.getInt("POSITION"), result.getString("ASCENDING_ORDER"))));
-        var grouped = rows.stream().collect(Collectors.groupingBy(IndexRow::name, LinkedHashMap::new, Collectors.toList()));
+        LinkedHashMap<String, List<HanaCatalog.IndexRow>> grouped = rows.stream().collect(Collectors.groupingBy(IndexRow::name, LinkedHashMap::new, Collectors.toList()));
         return grouped.values().stream().map(group -> {
-            var first = group.get(0);
-            return new Index(first.name(), first.type(), first.constraint(), group.stream().map(IndexRow::column).toList());
-        }).toList();
+            HanaCatalog.IndexRow first = group.get(0);
+            return new Index(first.name(), first.type(), first.constraint(), group.stream().map(IndexRow::column).collect(ImmutableCollections.toList()));
+        }).collect(ImmutableCollections.toList());
     }
 
     private List<ForeignKey> foreignKeys(Connection connection, String schema, String table) throws SQLException {
         String sql = "SELECT CONSTRAINT_NAME,REFERENCED_SCHEMA_NAME,REFERENCED_TABLE_NAME,UPDATE_RULE,DELETE_RULE,IS_ENFORCED,IS_VALIDATED,"
                 + "COLUMN_NAME,REFERENCED_COLUMN_NAME,POSITION FROM SYS.REFERENTIAL_CONSTRAINTS WHERE SCHEMA_NAME=? AND TABLE_NAME=? ORDER BY CONSTRAINT_NAME,POSITION";
-        var rows = query(connection, sql, List.of(schema, table), result -> new ForeignKeyRow(result.getString("CONSTRAINT_NAME"),
+        List<HanaCatalog.ForeignKeyRow> rows = query(connection, sql, ImmutableCollections.listOf(schema, table), result -> new ForeignKeyRow(result.getString("CONSTRAINT_NAME"),
                 result.getString("REFERENCED_SCHEMA_NAME"), result.getString("REFERENCED_TABLE_NAME"), result.getString("UPDATE_RULE"),
                 result.getString("DELETE_RULE"), "TRUE".equals(result.getString("IS_ENFORCED")), "TRUE".equals(result.getString("IS_VALIDATED")),
                 new ReferenceColumn(result.getString("COLUMN_NAME"), result.getString("REFERENCED_COLUMN_NAME"), result.getInt("POSITION"))));
-        var grouped = rows.stream().collect(Collectors.groupingBy(ForeignKeyRow::name, LinkedHashMap::new, Collectors.toList()));
+        LinkedHashMap<String, List<HanaCatalog.ForeignKeyRow>> grouped = rows.stream().collect(Collectors.groupingBy(ForeignKeyRow::name, LinkedHashMap::new, Collectors.toList()));
         return grouped.values().stream().map(group -> {
-            var first = group.get(0);
+            HanaCatalog.ForeignKeyRow first = group.get(0);
             return new ForeignKey(first.name(), first.schema(), first.table(), first.update(), first.delete(), first.enforced(), first.validated(),
-                    group.stream().map(ForeignKeyRow::column).toList());
-        }).toList();
+                    group.stream().map(ForeignKeyRow::column).collect(ImmutableCollections.toList()));
+        }).collect(ImmutableCollections.toList());
     }
 
     /**
@@ -158,16 +161,16 @@ public final class HanaCatalog {
     private String schema(Connection connection, String requested) throws SQLException {
         String schema = requested;
         if (schema == null)
-            schema = query(connection, "SELECT CURRENT_SCHEMA FROM DUMMY", List.of(), rows -> rows.getString(1)).get(0);
+            schema = query(connection, "SELECT CURRENT_SCHEMA FROM DUMMY", ImmutableCollections.listOf(), rows -> rows.getString(1)).get(0);
         keyword.quoteUnquotedName(schema);
-        if (query(connection, "SELECT SCHEMA_NAME FROM SYS.SCHEMAS WHERE SCHEMA_NAME=?", List.of(schema), rows -> rows.getString(1)).isEmpty()) {
+        if (query(connection, "SELECT SCHEMA_NAME FROM SYS.SCHEMAS WHERE SCHEMA_NAME=?", ImmutableCollections.listOf(schema), rows -> rows.getString(1)).isEmpty()) {
             throw new SQLException("HANA schema is missing or not visible: " + schema, "42501");
         }
         return schema;
     }
 
     private <T> T connected(String operation, SQLResultSetFunc<Connection, T> action) {
-        try (var connection = dataSource.getConnection()) {
+        try (Connection connection = dataSource.getConnection()) {
             return action.apply(connection);
         } catch (SQLException failure) {
             throw new EasyQuerySQLCommandException("Unable to " + operation, failure);
@@ -175,21 +178,143 @@ public final class HanaCatalog {
     }
 
     private static <T> List<T> query(Connection connection, String sql, List<String> parameters, SQLResultSetFunc<ResultSet, T> mapper) throws SQLException {
-        try (var statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (int i = 0; i < parameters.size(); i++) statement.setString(i + 1, parameters.get(i));
-            try (var rows = statement.executeQuery()) {
-                var result = new ArrayList<T>();
+            try (ResultSet rows = statement.executeQuery()) {
+                ArrayList<T> result = new ArrayList<T>();
                 while (rows.next()) result.add(mapper.apply(rows));
-                return List.copyOf(result);
+                return ImmutableCollections.listCopyOf(result);
             }
         }
     }
 
-    private record IndexRow(String name, String type, String constraint, IndexColumn column) {
+    private static final class IndexRow {
+        private final String name;
+        private final String type;
+        private final String constraint;
+        private final IndexColumn column;
+
+        private IndexRow(String name, String type, String constraint, IndexColumn column) {
+            this.name = name;
+            this.type = type;
+            this.constraint = constraint;
+            this.column = column;
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public String type() {
+            return type;
+        }
+
+        public String constraint() {
+            return constraint;
+        }
+
+        public IndexColumn column() {
+            return column;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof IndexRow)) return false;
+            IndexRow other = (IndexRow) o;
+            return Objects.equals(name, other.name)
+                    && Objects.equals(type, other.type)
+                    && Objects.equals(constraint, other.constraint)
+                    && Objects.equals(column, other.column);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name, type, constraint, column);
+        }
+
+        @Override
+        public String toString() {
+            return "IndexRow[name=" + name + ", type=" + type + ", constraint=" + constraint + ", column=" + column + "]";
+        }
     }
 
-    private record ForeignKeyRow(String name, String schema, String table, String update, String delete,
-                                 boolean enforced,
-                                 boolean validated, ReferenceColumn column) {
+    private static final class ForeignKeyRow {
+        private final String name;
+        private final String schema;
+        private final String table;
+        private final String update;
+        private final String delete;
+        private final boolean enforced;
+        private final boolean validated;
+        private final ReferenceColumn column;
+
+        private ForeignKeyRow(String name, String schema, String table, String update, String delete, boolean enforced, boolean validated, ReferenceColumn column) {
+            this.name = name;
+            this.schema = schema;
+            this.table = table;
+            this.update = update;
+            this.delete = delete;
+            this.enforced = enforced;
+            this.validated = validated;
+            this.column = column;
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public String schema() {
+            return schema;
+        }
+
+        public String table() {
+            return table;
+        }
+
+        public String update() {
+            return update;
+        }
+
+        public String delete() {
+            return delete;
+        }
+
+        public boolean enforced() {
+            return enforced;
+        }
+
+        public boolean validated() {
+            return validated;
+        }
+
+        public ReferenceColumn column() {
+            return column;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof ForeignKeyRow)) return false;
+            ForeignKeyRow other = (ForeignKeyRow) o;
+            return Objects.equals(name, other.name)
+                    && Objects.equals(schema, other.schema)
+                    && Objects.equals(table, other.table)
+                    && Objects.equals(update, other.update)
+                    && Objects.equals(delete, other.delete)
+                    && enforced == other.enforced
+                    && validated == other.validated
+                    && Objects.equals(column, other.column);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name, schema, table, update, delete, enforced, validated, column);
+        }
+
+        @Override
+        public String toString() {
+            return "ForeignKeyRow[name=" + name + ", schema=" + schema + ", table=" + table + ", update=" + update + ", delete=" + delete + ", enforced=" + enforced + ", validated=" + validated + ", column=" + column + "]";
+        }
     }
 }

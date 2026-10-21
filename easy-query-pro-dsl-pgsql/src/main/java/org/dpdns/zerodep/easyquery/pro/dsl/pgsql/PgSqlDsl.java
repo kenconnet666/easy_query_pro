@@ -37,6 +37,7 @@ import java.util.function.Function;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 public class PgSqlDsl extends ProDsl {
 
@@ -87,7 +88,7 @@ public class PgSqlDsl extends ProDsl {
         Objects.requireNonNull(origin, "origin");
         if (origin.equals(LocalDateTime.MIN) || origin.equals(LocalDateTime.MAX) || origin.getNano() % 1_000 != 0)
             throw new IllegalArgumentException("date_bin origin must be finite and exact to microseconds");
-        var interval = PgInterval.of(0, 0, fixedMicroseconds(stride));
+        PgInterval.Finite interval = PgInterval.of(0, 0, fixedMicroseconds(stride));
         return new DateTimeTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
                 factory -> scope.scalar(factory, source, value -> factory.anySQLFunction(
                         "date_bin(CAST({0} AS INTERVAL),CAST({1} AS TIMESTAMP WITHOUT TIME ZONE),CAST({2} AS TIMESTAMP WITHOUT TIME ZONE))",
@@ -144,22 +145,22 @@ public class PgSqlDsl extends ProDsl {
     }
 
     public PgJsonExpression<String> nativeCast(PropTypeColumn<?> source, PgSqlTypes.Json type) {
-        var converted = AbstractJsonExpression.cast(scope, Objects.requireNonNull(type, "type"), source);
+        PropTypeColumn<String> converted = AbstractJsonExpression.cast(scope, Objects.requireNonNull(type, "type"), source);
         return new Json<>(scope, this, converted, factory -> scope.operand(converted, factory));
     }
 
     public PgJsonbExpression<String> nativeCast(PropTypeColumn<?> source, PgSqlTypes.Jsonb type) {
-        var converted = AbstractJsonExpression.cast(scope, Objects.requireNonNull(type, "type"), source);
+        PropTypeColumn<String> converted = AbstractJsonExpression.cast(scope, Objects.requireNonNull(type, "type"), source);
         return new Jsonb<>(scope, this, converted, factory -> scope.operand(converted, factory));
     }
 
     public PgJsonExpression<String> value(JsonInput input, PgSqlTypes.Json type) {
-        var value = AbstractJsonExpression.literal(scope, Objects.requireNonNull(type, "type"), input);
+        PropTypeColumn<String> value = AbstractJsonExpression.literal(scope, Objects.requireNonNull(type, "type"), input);
         return new Json<>(scope, this, value, factory -> scope.operand(value, factory));
     }
 
     public PgJsonbExpression<String> value(JsonInput input, PgSqlTypes.Jsonb type) {
-        var value = AbstractJsonExpression.literal(scope, Objects.requireNonNull(type, "type"), input);
+        PropTypeColumn<String> value = AbstractJsonExpression.literal(scope, Objects.requireNonNull(type, "type"), input);
         return new Jsonb<>(scope, this, value, factory -> scope.operand(value, factory));
     }
 
@@ -199,7 +200,7 @@ public class PgSqlDsl extends ProDsl {
         }
 
         private BooleanTypeExpression<Boolean> jsonComparison(JsonInput value, String operator) {
-            var parameter = AbstractJsonExpression.literal(scope, PgSqlTypes.jsonb(), value);
+            PropTypeColumn<String> parameter = AbstractJsonExpression.literal(scope, PgSqlTypes.jsonb(), value);
             return predicate((factory, document) -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
                     args.sqlFunc(document).sqlFunc(scope.operand(parameter, factory))));
         }
@@ -222,7 +223,7 @@ public class PgSqlDsl extends ProDsl {
         }
 
         private BooleanTypeExpression<Boolean> keys(String[] keys, String operator) {
-            var checked = textValues(Arrays.asList(Objects.requireNonNull(keys, "keys").clone()));
+            List<String> checked = textValues(Arrays.asList(Objects.requireNonNull(keys, "keys").clone()));
             return predicate((factory, document) -> factory.anySQLFunction("({0} " + operator + " {1})", args ->
                     args.sqlFunc(document).sqlFunc(textArray(factory, checked))));
         }
@@ -237,15 +238,15 @@ public class PgSqlDsl extends ProDsl {
         @Override
         public BooleanTypeExpression<Boolean> pathExists(PgJsonPath path, JsonInput variables, boolean silent) {
             Objects.requireNonNull(path, "path");
-            var parameter = AbstractJsonExpression.literal(scope, PgSqlTypes.jsonb(), variables);
+            PropTypeColumn<String> parameter = AbstractJsonExpression.literal(scope, PgSqlTypes.jsonb(), variables);
             return predicate((factory, document) -> factory.anySQLFunction("jsonb_path_exists({0},CAST({1} AS JSONPATH),{2},{3})", args ->
                     args.sqlFunc(document).value(path.expression()).sqlFunc(scope.operand(parameter, factory)).value(silent)));
         }
 
         @Override
         public PgJsonbExpression<T> setPath(List<String> path, JsonInput value, boolean createMissing) {
-            var checked = textValues(path);
-            var parameter = AbstractJsonExpression.literal(scope, PgSqlTypes.jsonb(), value);
+            List<String> checked = textValues(path);
+            PropTypeColumn<String> parameter = AbstractJsonExpression.literal(scope, PgSqlTypes.jsonb(), value);
             return new Jsonb<>(scope, portable, this, factory -> scope.scalar(factory, this, document -> factory.anySQLFunction("jsonb_set({0},{1},{2},{3})", args ->
                     args.sqlFunc(document).sqlFunc(textArray(factory, checked)).sqlFunc(scope.operand(parameter, factory)).value(createMissing))));
         }
@@ -258,7 +259,7 @@ public class PgSqlDsl extends ProDsl {
 
         @Override
         public PgJsonbExpression<T> removePath(List<String> path) {
-            var checked = textValues(path);
+            List<String> checked = textValues(path);
             return new Jsonb<>(scope, portable, this, factory -> scope.scalar(factory, this, document -> factory.anySQLFunction("({0} #- {1})", args -> args.sqlFunc(document).sqlFunc(textArray(factory, checked)))));
         }
 
@@ -273,7 +274,7 @@ public class PgSqlDsl extends ProDsl {
 
         private static List<String> textValues(List<String> values) {
             Objects.requireNonNull(values, "path or keys");
-            return values.stream().map(Jsonb::checkedKey).toList();
+            return values.stream().map(Jsonb::checkedKey).collect(ImmutableCollections.toList());
         }
 
         private static SQLFunction textArray(SQLFunc factory, List<String> values) {

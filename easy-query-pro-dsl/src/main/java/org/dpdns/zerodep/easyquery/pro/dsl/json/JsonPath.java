@@ -6,16 +6,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * Immutable, single-value navigation. Keys are literal names; indexes are zero-based.
  */
 public final class JsonPath {
-    private static final JsonPath ROOT = new JsonPath(List.of());
+    private static final JsonPath ROOT = new JsonPath(ImmutableCollections.listOf());
     private final List<Segment> segments;
 
     private JsonPath(List<Segment> segments) {
-        this.segments = List.copyOf(segments);
+        this.segments = ImmutableCollections.listCopyOf(segments);
     }
 
     public static JsonPath root() {
@@ -37,7 +38,7 @@ public final class JsonPath {
     private JsonPath append(Segment segment) {
         if (segments.size() >= 100)
             throw new IllegalArgumentException("A portable JSON path supports at most 100 segments");
-        var copy = new ArrayList<>(segments);
+        ArrayList<JsonPath.Segment> copy = new ArrayList<>(segments);
         copy.add(segment);
         return new JsonPath(copy);
     }
@@ -46,9 +47,10 @@ public final class JsonPath {
      * SQL/JSON dot-quoted notation. Bind this value as data; it is not an SQL literal.
      */
     public String toSqlJsonPath() {
-        var result = new StringBuilder("$");
-        for (var segment : segments) {
-            if (segment instanceof Key key) {
+        StringBuilder result = new StringBuilder("$");
+        for (JsonPath.Segment segment : segments) {
+            if (segment instanceof Key) {
+                Key key = (Key) segment;
                 result.append(".\"");
                 for (int i = 0; i < key.name().length(); i++) {
                     char c = key.name().charAt(i);
@@ -76,22 +78,72 @@ public final class JsonPath {
 
     @Override
     public boolean equals(Object other) {
-        return other instanceof JsonPath path && segments.equals(path.segments);
+        return other instanceof JsonPath && segments.equals(((JsonPath) other).segments);
     }
 
-    public sealed interface Segment permits Key, Index {
+    public interface Segment {
     }
 
-    public record Key(String name) implements Segment {
-        public Key {
+    public static final class Key implements Segment {
+        private final String name;
+
+        public Key(String name) {
             Objects.requireNonNull(name, "name");
             UnicodeStrings.requirePortable(name, "JSON key");
+            this.name = name;
+        }
+
+        public String name() {
+            return name;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Key)) return false;
+            Key other = (Key) o;
+            return Objects.equals(name, other.name);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name);
+        }
+
+        @Override
+        public String toString() {
+            return "Key[name=" + name + "]";
         }
     }
 
-    public record Index(int value) implements Segment {
-        public Index {
+    public static final class Index implements Segment {
+        private final int value;
+
+        public Index(int value) {
             if (value < 0) throw new IllegalArgumentException("A portable JSON index must be nonnegative");
+            this.value = value;
+        }
+
+        public int value() {
+            return value;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Index)) return false;
+            Index other = (Index) o;
+            return value == other.value;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(value);
+        }
+
+        @Override
+        public String toString() {
+            return "Index[value=" + value + "]";
         }
     }
 }

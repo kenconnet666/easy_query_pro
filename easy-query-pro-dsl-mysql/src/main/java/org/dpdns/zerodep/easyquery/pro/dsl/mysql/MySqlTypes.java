@@ -9,6 +9,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationType;
 
 import java.math.BigInteger;
 import java.math.BigDecimal;
+import java.util.Objects;
 
 public final class MySqlTypes {
     private static final Json JSON = new Json();
@@ -29,11 +30,16 @@ public final class MySqlTypes {
         return new Decimal(precision, scale);
     }
 
-    private record Decimal(int precision, int scale) implements NumericType<BigDecimal> {
-        private Decimal {
+    private static final class Decimal implements NumericType<BigDecimal> {
+        private final int precision;
+        private final int scale;
+
+        private Decimal(int precision, int scale) {
             if (precision < 1 || precision > 65 || scale < 0 || scale > 30 || scale > precision) {
                 throw new IllegalArgumentException("MySQL DECIMAL requires 1 <= precision <= 65 and 0 <= scale <= min(precision,30)");
             }
+            this.precision = precision;
+            this.scale = scale;
         }
 
         @Override
@@ -55,6 +61,33 @@ public final class MySqlTypes {
         @Override
         public BigDecimal prepareValue(BigDecimal value) {
             return DecimalValues.prepare(value, precision, scale);
+        }
+
+        public int precision() {
+            return precision;
+        }
+
+        public int scale() {
+            return scale;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Decimal)) return false;
+            Decimal other = (Decimal) o;
+            return precision == other.precision
+                    && scale == other.scale;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(precision, scale);
+        }
+
+        @Override
+        public String toString() {
+            return "Decimal[precision=" + precision + ", scale=" + scale + "]";
         }
     }
 
@@ -85,7 +118,7 @@ public final class MySqlTypes {
     /**
      * Storage and validated parameters for a declared unsigned width; narrower widths are not native CAST targets.
      */
-    public static sealed class Unsigned<N extends Number> implements StorageType<N> permits UnsignedBigint {
+    public static class Unsigned<N extends Number> implements StorageType<N> {
         private final Class<N> javaType;
         private final String name;
         private final BigInteger maximum;
@@ -108,7 +141,7 @@ public final class MySqlTypes {
         public final N prepareValue(N value) {
             if (value == null) return null;
             if (!javaType.isInstance(value)) throw new IllegalArgumentException("Expected " + javaType.getTypeName());
-            var integer = value instanceof BigInteger big ? big : BigInteger.valueOf(value.longValue());
+            BigInteger integer = value instanceof BigInteger ? ((BigInteger) value) : BigInteger.valueOf(value.longValue());
             if (integer.signum() < 0 || integer.compareTo(maximum) > 0) {
                 throw new IllegalArgumentException(name + " requires a value between 0 and " + maximum);
             }

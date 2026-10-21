@@ -19,6 +19,13 @@ import org.dpdns.zerodep.easyquery.pro.dsl.spi.ProQuerySQLContext;
 
 import java.util.Objects;
 import java.util.function.Supplier;
+import com.easy.query.core.expression.sql.builder.EntityQueryExpressionBuilder;
+import com.easy.query.core.context.QueryRuntimeContext;
+import com.easy.query.core.expression.parser.core.available.TableAvailable;
+import com.easy.query.core.proxy.SQLColumn;
+import com.easy.query.core.metadata.ColumnMetadata;
+import com.easy.query.core.expression.segment.condition.PredicateSegment;
+import com.easy.query.core.metadata.EntityMetadata;
 
 /**
  * 同时装配 PostgreSQL @@ 筛选与 rank 投影，再交原 EntityQueryable 继续组合。
@@ -41,8 +48,8 @@ public final class PgSearch {
     public static <P extends ProxyEntity<P, T>, T> PgSearch from(
             EntityQueryable<P, T> source, SQLFuncExpression1<P, PgSearchSpec> specification) {
         Objects.requireNonNull(source, "source");
-        var builder = source.getClientQueryable().getSQLEntityExpressionBuilder();
-        var runtime = builder.getRuntimeContext();
+        EntityQueryExpressionBuilder builder = source.getClientQueryable().getSQLEntityExpressionBuilder();
+        QueryRuntimeContext runtime = builder.getRuntimeContext();
         if (runtime.getService(SqlDialect.class) != SqlDialect.POSTGRESQL)
             throw new IllegalArgumentException("PostgreSQL full-text search requires a PostgreSQL client");
         if (builder.getExpressionContext().isSharding())
@@ -52,21 +59,21 @@ public final class PgSearch {
                 || builder.getFromTable().getEntityTable().isAnonymous() || builder.getProjects().isNotEmpty()
                 || builder.hasGroup() || builder.hasHaving() || builder.isDistinct())
             throw new IllegalArgumentException("PostgreSQL full-text search requires an unprojected single physical table");
-        var spec = Objects.requireNonNull(Objects.requireNonNull(specification, "specification").apply(source.get1Proxy()), "specification result");
-        var table = builder.getFromTable().getEntityTable();
-        var vector = spec.vector();
+        PgSearchSpec spec = Objects.requireNonNull(Objects.requireNonNull(specification, "specification").apply(source.get1Proxy()), "specification result");
+        TableAvailable table = builder.getFromTable().getEntityTable();
+        SQLColumn<?, PgTsVector> vector = spec.vector();
         if (vector instanceof DSLSQLFunctionAvailable || vector.getTable() != table || vector.getValue() == null)
             throw new IllegalArgumentException("PostgreSQL full-text search requires a physical mapped vector of the current source");
-        var column = table.getEntityMetadata().getColumnNotNull(vector.getValue());
+        ColumnMetadata column = table.getEntityMetadata().getColumnNotNull(vector.getValue());
         if (column.getPropertyType() != PgTsVector.class || column.getColumnValueSQLConverter() != null)
             throw new IllegalArgumentException("PostgreSQL full-text columns must map PgTsVector without a SQL value converter");
         if (table.getEntityMetadata().getProperty2ColumnMap().values().stream().anyMatch(mapped -> mapped.getName().equals(SCORE_COLUMN)))
             throw new IllegalArgumentException("PostgreSQL search source conflicts with generated column " + SCORE_COLUMN);
-        var snapshot = source.getClientQueryable().cloneQueryable();
-        var where = snapshot.getSQLEntityExpressionBuilder().getWhere();
+        ClientQueryable<T> snapshot = source.getClientQueryable().cloneQueryable();
+        PredicateSegment where = snapshot.getSQLEntityExpressionBuilder().getWhere();
         if (where.isNotEmpty()) {
             // 原 WHERE 先作为整体，根级 OR 才不会绕过新加入的全文条件。
-            var existing = new AndPredicateSegment(false);
+            AndPredicateSegment existing = new AndPredicateSegment(false);
             where.copyTo(existing);
             where.reset();
             where.addPredicateSegment(existing);
@@ -86,17 +93,17 @@ public final class PgSearch {
      * 独立输出元数据不会继承来源查询的临时 reader；每次调用必须返回新的未绑定 Proxy。
      */
     public <P extends ProxyEntity<P, T>, T> EntityQueryable<P, T> query(Supplier<P> proxyFactory) {
-        var proxy = Objects.requireNonNull(Objects.requireNonNull(proxyFactory, "proxyFactory").get(), "proxyFactory result");
+        P proxy = Objects.requireNonNull(Objects.requireNonNull(proxyFactory, "proxyFactory").get(), "proxyFactory result");
         if (proxy.getTableOrNull() != null)
             throw new IllegalArgumentException("The search result factory must return a fresh unbound proxy");
-        var runtime = searched.getRuntimeContext();
-        var metadata = runtime.getEntityMetadataManager().getEntityMetadata(proxy.getEntityClass());
-        var score = metadata.getProperty2ColumnMap().values().stream().filter(column -> column.getName().equals(SCORE_COLUMN)).findFirst()
+        QueryRuntimeContext runtime = searched.getRuntimeContext();
+        EntityMetadata metadata = runtime.getEntityMetadataManager().getEntityMetadata(proxy.getEntityClass());
+        ColumnMetadata score = metadata.getProperty2ColumnMap().values().stream().filter(column -> column.getName().equals(SCORE_COLUMN)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("The search result must map " + SCORE_COLUMN + " to a Double property"));
         if (score.getPropertyType() != Double.class)
             throw new IllegalArgumentException("The search result " + SCORE_COLUMN + " property must use Double");
-        var context = runtime.getExpressionBuilderFactory().createExpressionContext(runtime, ContextTypeEnum.QUERY);
-        var builder = new CapturedQuerySourceBuilder(searched, context, proxy.getEntityClass(), PgSearch::checkRendering);
+        ExpressionContext context = runtime.getExpressionBuilderFactory().createExpressionContext(runtime, ContextTypeEnum.QUERY);
+        CapturedQuerySourceBuilder builder = new CapturedQuerySourceBuilder(searched, context, proxy.getEntityClass(), PgSearch::checkRendering);
         return new EasyEntityQueryable<>(proxy, runtime.getSQLClientApiFactory().createQueryable(proxy.getEntityClass(), builder));
     }
 

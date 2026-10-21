@@ -22,6 +22,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
+import com.easy.query.core.basic.api.select.Query;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.stream.Collectors;
+import com.easy.query.core.func.SQLFunc;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -35,26 +39,26 @@ class HanaDateTimeFunctionsIT {
 
     @Test
     void calendarArithmeticHandlesLeapYearsMonthEndsColumnsAndSubseconds() {
-        var timestamp = LocalDateTime.of(2024, 1, 31, 12, 34, 56, 123_456_700);
+        LocalDateTime timestamp = LocalDateTime.of(2024, 1, 31, 12, 34, 56, 123_456_700);
         assertEquals(timestamp.plusMonths(1), source(timestamp, 1).selectColumn(e -> e.occurred().plusMonths(1)).toList().get(0));
         assertEquals(timestamp.plusMonths(-1), source(timestamp, -1).selectColumn(e -> e.occurred().plusMonths(e.delta())).toList().get(0));
         assertEquals(timestamp.plusDays(2), source(timestamp, 2).selectColumn(e -> e.occurred().plusDays(e.delta())).toList().get(0));
         assertEquals(timestamp.plusHours(-3), source(timestamp, 0).selectColumn(e -> e.occurred().plusHours(-3)).toList().get(0));
         assertEquals(timestamp.plusNanos(1_000_000), source(timestamp, 1).selectColumn(e -> e.occurred().plus(e.delta(), TimeUnitEnum.MILLISECONDS)).toList().get(0));
-        var leapDay = timestamp.withMonth(2).withDayOfMonth(29);
+        LocalDateTime leapDay = timestamp.withMonth(2).withDayOfMonth(29);
         assertEquals(leapDay.plusYears(1), source(leapDay, 0).selectColumn(e -> e.occurred().plusYears(1)).toList().get(0));
         assertEquals(timestamp.toLocalDate().plusMonths(1), source(timestamp, 0).selectColumn(e -> e.eventDate().plusMonths(1)).toList().get(0));
     }
 
     @Test
     void componentsMatchTheExistingSundayAndMondayNumberingContracts() {
-        var sunday = LocalDateTime.of(2024, 3, 3, 15, 4, 5, 900_000_000);
-        var expected = List.of(2024, 3, 3, 15, 4, 5, 63, 0, 7);
-        var units = List.of(DateTimeUnitEnum.Year, DateTimeUnitEnum.Month, DateTimeUnitEnum.Day,
+        LocalDateTime sunday = LocalDateTime.of(2024, 3, 3, 15, 4, 5, 900_000_000);
+        List<Integer> expected = Arrays.asList(2024, 3, 3, 15, 4, 5, 63, 0, 7);
+        List<DateTimeUnitEnum> units = Arrays.asList(DateTimeUnitEnum.Year, DateTimeUnitEnum.Month, DateTimeUnitEnum.Day,
                 DateTimeUnitEnum.Hour, DateTimeUnitEnum.Minute, DateTimeUnitEnum.Second,
                 DateTimeUnitEnum.DayOfYear, DateTimeUnitEnum.DayOfWeek, DateTimeUnitEnum.DayOfWeekSunDayLastDay);
         for (int i = 0; i < units.size(); i++) {
-            var unit = units.get(i);
+            DateTimeUnitEnum unit = units.get(i);
             assertEquals(expected.get(i), source(sunday, 0).selectColumn(e -> e.occurred().dateTimeProp(unit)).toList().get(0), unit.name());
         }
     }
@@ -62,8 +66,8 @@ class HanaDateTimeFunctionsIT {
     @Test
     @SuppressWarnings("deprecation") // 旧 duration 的方向仍是公开兼容契约，不能仅验证新的 duration2。
     void elapsedUnitsTruncateTowardZeroAndKeepBothDurationDirections() {
-        var before = LocalDateTime.of(2024, 1, 1, 0, 0);
-        var after = before.plusHours(47).plusMinutes(30).plusNanos(500_000_000);
+        LocalDateTime before = LocalDateTime.of(2024, 1, 1, 0, 0);
+        LocalDateTime after = before.plusHours(47).plusMinutes(30).plusNanos(500_000_000);
         assertEquals(1L, source(before, 0).selectColumn(e -> e.occurred().duration(after).toDays()).toList().get(0));
         assertEquals(-47L, source(after, 0).selectColumn(e -> e.occurred().duration(before).toHours()).toList().get(0));
         assertEquals(0L, source(before.plusNanos(500_000_000), 0).selectColumn(e -> e.occurred().duration(before).toSeconds()).toList().get(0));
@@ -78,17 +82,17 @@ class HanaDateTimeFunctionsIT {
 
     @Test
     void datePatternsBindTextAndSupportQuotedLiteralsAndFractionalPrecision() {
-        var value = LocalDateTime.of(2024, 3, 3, 15, 4, 5, 123_456_700);
-        for (String pattern : List.of("yyyy-MM-dd HH:mm:ss", "yyyy年M月d日 H:m:s", "yyMMddHHmmss",
+        LocalDateTime value = LocalDateTime.of(2024, 3, 3, 15, 4, 5, 123_456_700);
+        for (String pattern : Arrays.asList("yyyy-MM-dd HH:mm:ss", "yyyy年M月d日 H:m:s", "yyMMddHHmmss",
                 "yyyy-MM-dd'T'HH:mm:ss.SSSSSSS", "h:mm a", "SSSSSSSSS", "'O''Reilly 中文'", "''", "")) {
-            var selection = source(value, 0).selectColumn(e -> e.occurred().format(pattern));
+            Query<String> selection = source(value, 0).selectColumn(e -> e.occurred().format(pattern));
             assertEquals(value.format(DateTimeFormatter.ofPattern(pattern, Locale.ROOT)), selection.toList().get(0), pattern);
-            var first = selection.toSQLResult();
-            var repeated = selection.cloneQueryable().toSQLResult();
+            ToSQLResult first = selection.toSQLResult();
+            ToSQLResult repeated = selection.cloneQueryable().toSQLResult();
             assertFalse(first.getSQL().contains("Reilly"));
             assertEquals(first.getSQL(), repeated.getSQL());
-            assertEquals(first.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList(),
-                    repeated.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+            assertEquals(first.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()),
+                    repeated.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         }
         assertNull(source(null, 0).selectColumn(e -> e.occurred().format("yyyy-MM-dd")).toList().get(0));
         assertNull(source(null, 0).selectColumn(e -> e.occurred().format("'literal'")).toList().get(0));
@@ -103,11 +107,11 @@ class HanaDateTimeFunctionsIT {
 
     @Test
     void coreTimeUnitAdditionPreservesNativePrecisionAndRejectsOverflow() {
-        var value = LocalDateTime.of(2024, 1, 1, 0, 0);
+        LocalDateTime value = LocalDateTime.of(2024, 1, 1, 0, 0);
         assertEquals(value.plusNanos(100), source(value, 0).selectColumn(e -> new DateTimeTypeExpressionImpl<LocalDateTime>(
                 e.getEntitySQLContext(), e.getTable(), null, fx -> fx.plusDateTime(args ->
                 PropTypeColumn.columnFuncSelector(args, e.occurred()), 100, TimeUnit.NANOSECONDS), LocalDateTime.class)).toList().get(0));
-        var functions = query.getRuntimeContext().fx();
+        SQLFunc functions = query.getRuntimeContext().fx();
         assertThrows(IllegalArgumentException.class, () -> functions.plusDateTime(args -> args.value(value), 1, TimeUnit.NANOSECONDS));
         assertThrows(ArithmeticException.class, () -> functions.plusDateTime(args -> args.value(value), Long.MAX_VALUE, TimeUnit.HOURS));
     }

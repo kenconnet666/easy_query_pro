@@ -1,6 +1,7 @@
 package org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval;
 
 import java.time.Duration;
+import java.util.Objects;
 
 /**
  * PostgreSQL interval 的三分量值：日历月份、日历天数和微秒时间部分各自保留，不自动归一化。
@@ -9,7 +10,7 @@ import java.time.Duration;
  * 例如“一个月”和“三十天”是否比较相等，与它们加到月末日期后是否得到同一天，是两个不同问题。
  * Infinity 独立建模，不能用极大的有限分量冒充。
  */
-public sealed interface PgInterval permits PgInterval.Finite, PgInterval.Infinity {
+public interface PgInterval {
     /**
      * 保留服务器的月/日/时间分量，包括合法负值；具体操作可以另行限制其允许的符号组合。
      */
@@ -25,12 +26,19 @@ public sealed interface PgInterval permits PgInterval.Finite, PgInterval.Infinit
         return Infinity.NEGATIVE;
     }
 
-    record Finite(int months, int days, long microseconds) implements PgInterval {
-        public Finite {
+    static final class Finite implements PgInterval {
+        private final int months;
+        private final int days;
+        private final long microseconds;
+
+        public Finite(int months, int days, long microseconds) {
             if ((months == Integer.MAX_VALUE && days == Integer.MAX_VALUE && microseconds == Long.MAX_VALUE)
                     || (months == Integer.MIN_VALUE && days == Integer.MIN_VALUE && microseconds == Long.MIN_VALUE)) {
                 throw new IllegalArgumentException("This component tuple is reserved for PostgreSQL interval infinity");
             }
+            this.months = months;
+            this.days = days;
+            this.microseconds = microseconds;
         }
 
         /**
@@ -43,6 +51,38 @@ public sealed interface PgInterval permits PgInterval.Finite, PgInterval.Infinit
             if (months != 0 || days != 0)
                 throw new IllegalStateException("A fixed duration requires zero calendar months and days");
             return Duration.ofSeconds(Math.floorDiv(microseconds, 1_000_000), Math.floorMod(microseconds, 1_000_000) * 1_000);
+        }
+
+        public int months() {
+            return months;
+        }
+
+        public int days() {
+            return days;
+        }
+
+        public long microseconds() {
+            return microseconds;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Finite)) return false;
+            Finite other = (Finite) o;
+            return months == other.months
+                    && days == other.days
+                    && microseconds == other.microseconds;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(months, days, microseconds);
+        }
+
+        @Override
+        public String toString() {
+            return "Finite[months=" + months + ", days=" + days + ", microseconds=" + microseconds + "]";
         }
     }
 

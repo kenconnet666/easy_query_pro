@@ -36,8 +36,8 @@ final class HanaQuerySource<P extends ProxyEntity<P, T>, T> {
         this.kind = Objects.requireNonNull(kind, "kind");
         qualifiedName = KEYWORDS.quoteUnquotedName(schema) + "." + KEYWORDS.quoteUnquotedName(objectName);
         this.proxyFactory = Objects.requireNonNull(proxyFactory, "proxyFactory");
-        var declarations = new LinkedHashMap<String, HanaInput<?>>();
-        for (var input : Objects.requireNonNull(inputs, "inputs")) {
+        LinkedHashMap<String, HanaInput<?>> declarations = new LinkedHashMap<String, HanaInput<?>>();
+        for (HanaInput<?> input : Objects.requireNonNull(inputs, "inputs")) {
             Objects.requireNonNull(input, "input");
             if (declarations.putIfAbsent(input.name(), input) != null)
                 throw new IllegalArgumentException("Duplicate HANA input declaration: " + input.name());
@@ -56,20 +56,20 @@ final class HanaQuerySource<P extends ProxyEntity<P, T>, T> {
         if (dialect != SqlDialect.HANA)
             throw new IllegalArgumentException("HANA query sources require a HANA client");
 
-        var supplied = new LinkedHashMap<String, HanaInput.Binding<?>>();
-        for (var binding : Objects.requireNonNull(bindings, "bindings")) {
+        LinkedHashMap<String, HanaInput.Binding<?>> supplied = new LinkedHashMap<String, HanaInput.Binding<?>>();
+        for (HanaInput.Binding<?> binding : Objects.requireNonNull(bindings, "bindings")) {
             Objects.requireNonNull(binding, "binding");
-            var declaration = inputs.get(binding.input().name());
+            HanaInput<?> declaration = inputs.get(binding.input().name());
             if (declaration != binding.input())
                 throw new IllegalArgumentException("Use the declared input of " + qualifiedName + ": " + binding.input().name());
             if (supplied.putIfAbsent(declaration.name(), binding) != null)
                 throw new IllegalArgumentException("Duplicate HANA input binding: " + declaration.name());
         }
 
-        var arguments = new ArrayList<String>();
-        var values = new ArrayList<Object>();
-        for (var input : inputs.values()) {
-            var binding = supplied.get(input.name());
+        ArrayList<String> arguments = new ArrayList<String>();
+        ArrayList<Object> values = new ArrayList<Object>();
+        for (HanaInput<?> input : inputs.values()) {
+            HanaInput.Binding<?> binding = supplied.get(input.name());
             if (binding == null) {
                 if (input.isRequired())
                     throw new IllegalArgumentException("Missing required input of " + qualifiedName + ": " + input.name());
@@ -85,11 +85,11 @@ final class HanaQuerySource<P extends ProxyEntity<P, T>, T> {
         String invocation = arguments.isEmpty() && kind == Kind.CALCULATION_VIEW
                 ? "" : " (" + String.join(",", arguments) + ")";
         String sql = "SELECT * FROM " + qualifiedName + invocation;
-        var proxy = Objects.requireNonNull(proxyFactory.get(), "proxyFactory result");
+        P proxy = Objects.requireNonNull(proxyFactory.get(), "proxyFactory result");
         if (proxy.getTableOrNull() != null)
             throw new IllegalArgumentException("The HANA source factory must return a fresh unbound proxy");
         // NULL 是合法的显式输入，不能用 List.copyOf；冻结后交给上游匿名来源与参数机制。
-        var parameters = Collections.unmodifiableList(values);
+        List<Object> parameters = Collections.unmodifiableList(values);
         return new EasyEntityQueryable<>(proxy, client.queryable(sql, proxy.getEntityClass(), parameters));
     }
 }

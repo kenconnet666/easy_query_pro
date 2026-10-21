@@ -8,14 +8,17 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import com.easy.query.core.basic.jdbc.types.JdbcTypeHandlerManager;
+import com.easy.query.core.basic.jdbc.types.handler.JdbcTypeHandler;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class PgTemporalMappingTest {
     @Test
     void legacyHandlerNamesAndPostgresUuidRemainAvailable() {
-        var query = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
-        var handlers = query.getRuntimeContext().getJdbcTypeHandlerManager();
+        DefaultEasyEntityQuery query = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+        JdbcTypeHandlerManager handlers = query.getRuntimeContext().getJdbcTypeHandlerManager();
         assertSame(PgSQLUUIDTypeHandler.INSTANCE, handlers.getHandler(UUID.class));
         assertSame(handlers.getHandler(LocalDateTime.class), handlers.getHandlerByHandlerClass(LocalDateTimeTypeHandler.class));
         assertNotEquals(LocalDateTimeTypeHandler.class, handlers.getHandler(LocalDateTime.class).getClass());
@@ -23,10 +26,10 @@ class PgTemporalMappingTest {
 
     @Test
     void customHandlersAndTheirExactClassNamesKeepPriority() {
-        var query = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
-        var handlers = query.getRuntimeContext().getJdbcTypeHandlerManager();
-        var standard = handlers.getHandlerByHandlerClass(LocalDateTimeTypeHandler.class);
-        var custom = new CustomDateTime();
+        DefaultEasyEntityQuery query = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+        JdbcTypeHandlerManager handlers = query.getRuntimeContext().getJdbcTypeHandlerManager();
+        JdbcTypeHandler standard = handlers.getHandlerByHandlerClass(LocalDateTimeTypeHandler.class);
+        PgTemporalMappingTest.CustomDateTime custom = new CustomDateTime();
         handlers.appendHandler(LocalDateTime.class, custom, true);
         PgSqlExtensions.configureTypeHandlers(handlers);
         assertSame(custom, handlers.getHandler(LocalDateTime.class));
@@ -37,9 +40,9 @@ class PgTemporalMappingTest {
 
     @Test
     void explicitLegacyClassUsesAnApplicationRegisteredInstance() {
-        var query = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
-        var handlers = query.getRuntimeContext().getJdbcTypeHandlerManager();
-        var custom = new LocalDateTimeTypeHandler();
+        DefaultEasyEntityQuery query = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+        JdbcTypeHandlerManager handlers = query.getRuntimeContext().getJdbcTypeHandlerManager();
+        LocalDateTimeTypeHandler custom = new LocalDateTimeTypeHandler();
         handlers.appendHandler(LocalDateTime.class, custom, true);
         assertSame(custom, handlers.getHandlerByHandlerClass(LocalDateTimeTypeHandler.class));
     }

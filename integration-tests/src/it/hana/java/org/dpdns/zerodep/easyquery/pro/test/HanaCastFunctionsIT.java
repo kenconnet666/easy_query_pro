@@ -16,6 +16,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.UUID;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -43,7 +44,7 @@ class HanaCastFunctionsIT {
 
     @Test
     void stringConversionDoesNotTruncateLargeUnicodeValues() {
-        String value = "中文".repeat(3000) + "tail";
+        String value = String.join("", Collections.nCopies(3000, "中文")) + "tail";
         assertEquals(value, source(value).selectColumn(p -> cast(p.name(), String.class)).toList().get(0));
         assertEquals("中", source("中文").selectColumn(p -> new StringTypeExpressionImpl<String>(
                 p.getEntitySQLContext(), p.getTable(), null,
@@ -58,7 +59,7 @@ class HanaCastFunctionsIT {
         assertEquals(LocalTime.of(12, 34, 56), source("12:34:56")
                 .selectColumn(p -> cast(cast(p.name(), String.class), LocalTime.class)).toList().get(0));
         assertEquals(Boolean.TRUE, source("true").selectColumn(p -> cast(cast(p.name(), String.class), Boolean.class)).toList().get(0));
-        var uuid = UUID.fromString("A1960C70-62E7-4E4C-87A8-35939354A4DC");
+        UUID uuid = UUID.fromString("A1960C70-62E7-4E4C-87A8-35939354A4DC");
         assertEquals(uuid, source(uuid.toString().toUpperCase(java.util.Locale.ROOT))
                 .selectColumn(p -> cast(p.name(), UUID.class)).toList().get(0));
     }

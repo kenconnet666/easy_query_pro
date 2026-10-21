@@ -15,6 +15,7 @@ import com.easy.query.core.expression.visitor.TableVisitor;
 import java.util.Set;
 
 import java.util.function.Function;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
 
 /**
  * 通过已知表达式的返回标记维护 HANA LOB 在投影、排序和分组中的限制。
@@ -53,9 +54,10 @@ public class HanaSQLSegmentFactory extends DefaultSQLSegmentFactory {
      * 不能因内部访问过 NCLOB 就误拒绝其排序或分组。
      */
     static boolean hasLobResult(SQLSegment segment) {
-        if (segment instanceof NativeProjection nativeSegment) return nativeSegment.lob;
-        if (segment instanceof TableSQLSegment function) {
-            var visitor = new ResultTypeVisitor();
+        if (segment instanceof NativeProjection) return ((NativeProjection) segment).lob;
+        if (segment instanceof TableSQLSegment) {
+            TableSQLSegment function = (TableSQLSegment) segment;
+            HanaSQLSegmentFactory.ResultTypeVisitor visitor = new ResultTypeVisitor();
             function.accept(visitor);
             return visitor.lob;
         }
@@ -72,7 +74,7 @@ public class HanaSQLSegmentFactory extends DefaultSQLSegmentFactory {
 
         @Override
         public SQLNativeSegment cloneSQLColumnSegment() {
-            var copy = new NativeProjection(expressionContext, sqlSegment, sqlNativeExpression, lob);
+            HanaSQLSegmentFactory.NativeProjection copy = new NativeProjection(expressionContext, sqlSegment, sqlNativeExpression, lob);
             copy.setAlias(getAlias());
             return copy;
         }
@@ -80,7 +82,7 @@ public class HanaSQLSegmentFactory extends DefaultSQLSegmentFactory {
         @Override
         public void accept(TableVisitor visitor) {
             // 返回类型 visitor 到此读取本节点标记并停止；普通表 visitor 仍遍历参数以保留表归属分析。
-            if (visitor instanceof ResultTypeVisitor result) result.lob = lob;
+            if (visitor instanceof ResultTypeVisitor) ((ResultTypeVisitor) visitor).lob = lob;
             else super.accept(visitor);
         }
     }
@@ -90,7 +92,7 @@ public class HanaSQLSegmentFactory extends DefaultSQLSegmentFactory {
 
         @Override
         public Set<TableAvailable> getTables() {
-            return Set.of();
+            return ImmutableCollections.setOf();
         }
 
         @Override

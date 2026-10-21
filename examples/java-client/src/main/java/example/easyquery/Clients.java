@@ -15,6 +15,7 @@ import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 
 import javax.sql.DataSource;
 import java.util.function.Consumer;
+import com.easy.query.core.api.client.EasyQueryClient;
 
 /**
  * 示例中同时支持三库的安装位置；实际应用只需保留采用的分支和依赖。
@@ -51,7 +52,7 @@ public final class Clients {
     }
 
     public static DefaultEasyEntityQuery create(DataSource source, Database database) {
-        var client = EasyQueryBootstrapper.defaultBuilderConfiguration()
+        EasyQueryClient client = EasyQueryBootstrapper.defaultBuilderConfiguration()
                 .setDefaultDataSource(source)
                 .useDatabaseConfigure(database.configuration)
                 .customConfigure(database.services)

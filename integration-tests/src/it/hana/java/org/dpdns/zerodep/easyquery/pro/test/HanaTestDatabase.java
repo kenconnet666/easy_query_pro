@@ -14,13 +14,15 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.UUID;
 import java.util.Locale;
+import java.sql.Statement;
+import java.util.Objects;
 
 final class HanaTestDatabase {
     private HanaTestDatabase() {
     }
 
     static DataSource dataSource() throws SQLException {
-        var dataSource = new HanaDataSource();
+        HanaDataSource dataSource = new HanaDataSource();
         dataSource.setUrl(TestEnvironment.required("EQP_HANA_JDBC_URL"));
         dataSource.setUser(TestEnvironment.required("EQP_HANA_USER"));
         dataSource.setPassword(TestEnvironment.required("EQP_HANA_PASSWORD"));
@@ -33,7 +35,7 @@ final class HanaTestDatabase {
     }
 
     static HikariDataSource pool(int maximumConnections) throws SQLException {
-        var config = new HikariConfig();
+        HikariConfig config = new HikariConfig();
         config.setDataSource(dataSource());
         config.setPoolName(uniqueName("POOL"));
         config.setMaximumPoolSize(maximumConnections);
@@ -68,15 +70,15 @@ final class HanaTestDatabase {
     static SQLException databaseCause(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             // 上游会先包一层 errorCode=0；断言要看到驱动的实际诊断，不能误认包装错误。
-            if (cause instanceof SQLException sql && sql.getErrorCode() != 0) return sql;
+            if (cause instanceof SQLException && ((SQLException) cause).getErrorCode() != 0) return ((SQLException) cause);
         }
         throw new AssertionError("Expected a HANA database diagnostic", failure);
     }
 
     static TestTable createTable(String prefix, String columns) throws SQLException {
         String name = uniqueName(prefix);
-        var connection = connect();
-        try (var statement = connection.createStatement()) {
+        Connection connection = connect();
+        try (Statement statement = connection.createStatement()) {
             statement.execute("CREATE COLUMN TABLE \"" + name + "\" (" + columns + ")");
             return new TestTable(name, connection);
         } catch (SQLException | RuntimeException failure) {
@@ -89,20 +91,54 @@ final class HanaTestDatabase {
         }
     }
 
-    record TestTable(String name, Connection connection) implements AutoCloseable {
+    static final class TestTable implements AutoCloseable {
+        private final String name;
+        private final Connection connection;
+
+        TestTable(String name, Connection connection) {
+            this.name = name;
+            this.connection = connection;
+        }
         @Override
         public void close() throws SQLException {
             // 表名由本测试设施创建，资源作用域结束时只清理这一张表。
-            try (connection; var statement = connection.createStatement()) {
+            try (Connection owned = connection; Statement statement = owned.createStatement()) {
                 statement.execute("DROP TABLE \"" + name + "\"");
             }
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public Connection connection() {
+            return connection;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof TestTable)) return false;
+            TestTable other = (TestTable) o;
+            return Objects.equals(name, other.name)
+                    && Objects.equals(connection, other.connection);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name, connection);
+        }
+
+        @Override
+        public String toString() {
+            return "TestTable[name=" + name + ", connection=" + connection + "]";
         }
     }
 
     static TestSchema createSchema(String prefix) throws SQLException {
         String name = uniqueName(prefix);
-        var connection = connect();
-        try (var statement = connection.createStatement()) {
+        Connection connection = connect();
+        try (Statement statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA \"" + name + "\"");
             return new TestSchema(name, connection);
         } catch (SQLException | RuntimeException failure) {
@@ -115,30 +151,64 @@ final class HanaTestDatabase {
         }
     }
 
-    record TestSchema(String name, Connection connection) implements AutoCloseable {
+    static final class TestSchema implements AutoCloseable {
+        private final String name;
+        private final Connection connection;
+
+        TestSchema(String name, Connection connection) {
+            this.name = name;
+            this.connection = connection;
+        }
         String qualified(String object) {
-            var keyword = new HanaSQLKeyword();
+            HanaSQLKeyword keyword = new HanaSQLKeyword();
             return keyword.quoteUnquotedName(name) + "." + keyword.quoteUnquotedName(object);
         }
 
         @Override
         public void close() throws SQLException {
-            try (connection; var statement = connection.createStatement()) {
+            try (Connection owned = connection; Statement statement = owned.createStatement()) {
                 statement.execute("DROP SCHEMA \"" + name + "\" CASCADE");
             }
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public Connection connection() {
+            return connection;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof TestSchema)) return false;
+            TestSchema other = (TestSchema) o;
+            return Objects.equals(name, other.name)
+                    && Objects.equals(connection, other.connection);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name, connection);
+        }
+
+        @Override
+        public String toString() {
+            return "TestSchema[name=" + name + ", connection=" + connection + "]";
         }
     }
 
     static TestUser createUser(String prefix) throws SQLException {
         String name = uniqueName(prefix).toUpperCase(Locale.ROOT);
         String password = "Eqp9!" + UUID.randomUUID().toString().replace("-", "");
-        var source = new HanaDataSource();
+        HanaDataSource source = new HanaDataSource();
         source.setUrl(TestEnvironment.required("EQP_HANA_JDBC_URL"));
         source.setUser(name);
         source.setPassword(password);
         source.setLoginTimeout(10);
-        var admin = connect();
-        try (var statement = admin.createStatement()) {
+        Connection admin = connect();
+        try (Statement statement = admin.createStatement()) {
             statement.execute("CREATE USER " + name + " PASSWORD \"" + password + "\" NO FORCE_FIRST_PASSWORD_CHANGE");
             return new TestUser(name, source, admin);
         } catch (SQLException | RuntimeException failure) {
@@ -151,12 +221,53 @@ final class HanaTestDatabase {
         }
     }
 
-    record TestUser(String name, DataSource dataSource, Connection admin) implements AutoCloseable {
+    static final class TestUser implements AutoCloseable {
+        private final String name;
+        private final DataSource dataSource;
+        private final Connection admin;
+
+        TestUser(String name, DataSource dataSource, Connection admin) {
+            this.name = name;
+            this.dataSource = dataSource;
+            this.admin = admin;
+        }
         @Override
         public void close() throws SQLException {
-            try (admin; var statement = admin.createStatement()) {
+            try (Connection owned = admin; Statement statement = owned.createStatement()) {
                 statement.execute("DROP USER " + name + " CASCADE");
             }
+        }
+
+        public String name() {
+            return name;
+        }
+
+        public DataSource dataSource() {
+            return dataSource;
+        }
+
+        public Connection admin() {
+            return admin;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof TestUser)) return false;
+            TestUser other = (TestUser) o;
+            return Objects.equals(name, other.name)
+                    && Objects.equals(dataSource, other.dataSource)
+                    && Objects.equals(admin, other.admin);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name, dataSource, admin);
+        }
+
+        @Override
+        public String toString() {
+            return "TestUser[name=" + name + ", dataSource=" + dataSource + ", admin=" + admin + "]";
         }
     }
 }

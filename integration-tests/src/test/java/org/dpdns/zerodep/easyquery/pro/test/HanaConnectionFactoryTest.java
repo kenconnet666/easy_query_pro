@@ -10,22 +10,24 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.easy.query.core.context.QueryRuntimeContext;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class HanaConnectionFactoryTest {
     @Test
     void failedInitializationReleasesEveryBorrowedConnectionAndKeepsCloseFailures() {
-        var closes = new ArrayList<AtomicInteger>();
-        var initializationFailure = new SQLException("fixture isolation failure");
-        var closeFailure = new SQLException("fixture close failure");
+        ArrayList<AtomicInteger> closes = new ArrayList<AtomicInteger>();
+        SQLException initializationFailure = new SQLException("fixture isolation failure");
+        SQLException closeFailure = new SQLException("fixture close failure");
         DataSource source = (DataSource) Proxy.newProxyInstance(DataSource.class.getClassLoader(), new Class<?>[]{DataSource.class},
                 (proxy, method, arguments) -> {
                     if (!method.getName().equals("getConnection")) throw new AssertionError(method.getName());
                     int index = closes.size();
-                    var closeCount = new AtomicInteger();
+                    AtomicInteger closeCount = new AtomicInteger();
                     closes.add(closeCount);
                     return Proxy.newProxyInstance(Connection.class.getClassLoader(), new Class<?>[]{Connection.class}, (connection, operation, values) -> {
                         switch (operation.getName()) {
@@ -41,20 +43,20 @@ class HanaConnectionFactoryTest {
                         }
                     });
                 });
-        var runtime = TestClients.offline(new HanaDatabaseConfiguration()).getRuntimeContext();
+        QueryRuntimeContext runtime = TestClients.offline(new HanaDatabaseConfiguration()).getRuntimeContext();
         runtime.getEasyQueryDataSource().addDataSource("fixture", source, 3);
-        var factory = new HanaConnectionFactory(runtime.getEasyQueryDataSource(), runtime.getQueryConfiguration().getEasyQueryOption());
-        var failure = assertThrows(RuntimeException.class, () -> factory.createEasyConnections(3, "fixture",
+        HanaConnectionFactory factory = new HanaConnectionFactory(runtime.getEasyQueryDataSource(), runtime.getQueryConfiguration().getEasyQueryOption());
+        RuntimeException failure = assertThrows(RuntimeException.class, () -> factory.createEasyConnections(3, "fixture",
                 Connection.TRANSACTION_READ_COMMITTED, ConnectionStrategyEnum.IndependentConnectionMaster));
         assertSame(initializationFailure, failure.getCause());
-        assertEquals(List.of(closeFailure), List.of(failure.getSuppressed()));
-        assertEquals(List.of(1, 1, 1), closes.stream().map(AtomicInteger::get).toList());
+        assertEquals(Arrays.asList(closeFailure), Arrays.asList(failure.getSuppressed()));
+        assertEquals(Arrays.asList(1, 1, 1), closes.stream().map(AtomicInteger::get).collect(Collectors.toList()));
     }
 
     @Test
     void unsupportedIsolationIsRejectedBeforeAccessingTheDataSource() {
-        var runtime = TestClients.offline(new HanaDatabaseConfiguration()).getRuntimeContext();
-        var factory = new HanaConnectionFactory(runtime.getEasyQueryDataSource(), runtime.getQueryConfiguration().getEasyQueryOption());
+        QueryRuntimeContext runtime = TestClients.offline(new HanaDatabaseConfiguration()).getRuntimeContext();
+        HanaConnectionFactory factory = new HanaConnectionFactory(runtime.getEasyQueryDataSource(), runtime.getQueryConfiguration().getEasyQueryOption());
         assertThrows(IllegalArgumentException.class, () -> factory.createEasyConnection(
                 runtime.getEasyQueryDataSource().getDefaultDataSourceName(), Connection.TRANSACTION_READ_UNCOMMITTED,
                 ConnectionStrategyEnum.ShareConnection));

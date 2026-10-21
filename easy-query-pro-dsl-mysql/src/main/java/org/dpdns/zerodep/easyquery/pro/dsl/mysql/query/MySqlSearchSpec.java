@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import com.easy.query.core.util.EasyStringUtil;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 不可变 MATCH 规格。列集合必须有对应 FULLTEXT 索引；布尔语法由 MySQL 解释，不改写为 LIKE。
@@ -19,11 +21,11 @@ public final class MySqlSearchSpec {
     private MySqlSearchSpec(String searchQuery, boolean booleanMode, SQLColumn<?, String> first, SQLColumn<?, String>[] more) {
         Objects.requireNonNull(searchQuery, "searchQuery");
         UnicodeStrings.requirePortable(searchQuery, "MySQL search query");
-        if (searchQuery.isBlank()) throw new IllegalArgumentException("MySQL search query must not be blank");
-        var selected = new ArrayList<SQLColumn<?, String>>();
+        if (EasyStringUtil.isBlank(searchQuery)) throw new IllegalArgumentException("MySQL search query must not be blank");
+        ArrayList<SQLColumn<?, String>> selected = new ArrayList<SQLColumn<?, String>>();
         selected.add(Objects.requireNonNull(first, "first"));
         selected.addAll(Arrays.asList(Objects.requireNonNull(more, "more")));
-        this.columns = List.copyOf(selected);
+        this.columns = ImmutableCollections.listCopyOf(selected);
         this.searchQuery = searchQuery;
         this.booleanMode = booleanMode;
     }

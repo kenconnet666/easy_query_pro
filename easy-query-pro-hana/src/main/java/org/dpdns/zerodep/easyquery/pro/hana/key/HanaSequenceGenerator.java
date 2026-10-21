@@ -16,7 +16,7 @@ public abstract class HanaSequenceGenerator implements GeneratedKeySQLColumnGene
     }
 
     protected HanaSequenceGenerator(String schema, String sequence) {
-        var keyword = new HanaSQLKeyword();
+        HanaSQLKeyword keyword = new HanaSQLKeyword();
         qualifiedName = (schema == null ? "" : keyword.getQuoteName(schema) + ".") + keyword.getQuoteName(sequence);
     }
 

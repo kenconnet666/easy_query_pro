@@ -10,6 +10,10 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
+import com.easy.query.core.basic.api.select.Query;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.stream.Collectors;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -17,33 +21,38 @@ class TemporalTruncationDslTest {
     @ParameterizedTest
     @MethodSource("org.dpdns.zerodep.easyquery.pro.test.DecimalDslTest#backends")
     void repeatedDateOperandsHaveIndependentBindings(DecimalDslTest.Backend backend) {
-        var input = LocalDateTime.of(2024, 5, 31, 12, 34, 56, 987654000);
-        for (var unit : TruncationUnit.values()) {
-            var query = backend.client().queryable(TestEvent.class).selectColumn(e ->
+        LocalDateTime input = LocalDateTime.of(2024, 5, 31, 12, 34, 56, 987654000);
+        for (TruncationUnit unit : TruncationUnit.values()) {
+            Query<LocalDateTime> query = backend.client().queryable(TestEvent.class).selectColumn(e ->
                     ProDsl.of(e).truncateDateTime(e.expression().constant(input), unit));
-            var result = query.toSQLResult();
-            int count = backend.dialect() == SqlDialect.POSTGRESQL ? 1 : switch (unit) {
-                case YEAR, DAY -> 1;
-                case MONTH, ISO_WEEK, HOUR -> 2;
-                case QUARTER -> backend.dialect() == SqlDialect.HANA ? 2 : 3;
-                case MINUTE -> 3;
-                case SECOND -> 4;
-            };
-            assertEquals(Collections.nCopies(count, input), result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList(), unit.name());
+            ToSQLResult result = query.toSQLResult();
+            int count = backend.dialect() == SqlDialect.POSTGRESQL ? 1 : repeatedOperands(unit, backend.dialect());
+            assertEquals(Collections.nCopies(count, input), result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()), unit.name());
             assertEquals(count, result.getSQL().chars().filter(c -> c == '?').count(), result.getSQL());
             assertEquals(result.getSQL(), query.cloneQueryable().toSQL());
+        }
+    }
+
+    private static int repeatedOperands(TruncationUnit unit, SqlDialect dialect) {
+        switch (unit) {
+            case YEAR: case DAY: return 1;
+            case MONTH: case ISO_WEEK: case HOUR: return 2;
+            case QUARTER: return dialect == SqlDialect.HANA ? 2 : 3;
+            case MINUTE: return 3;
+            case SECOND: return 4;
+            default: throw new IllegalArgumentException(unit.name());
         }
     }
 
     @ParameterizedTest
     @MethodSource("org.dpdns.zerodep.easyquery.pro.test.DecimalDslTest#backends")
     void dateOnlyRejectsTimeUnitsBeforeSqlAndRetainsDateOperators(DecimalDslTest.Backend backend) {
-        var client = backend.client();
-        for (var unit : new TruncationUnit[]{TruncationUnit.HOUR, TruncationUnit.MINUTE, TruncationUnit.SECOND}) {
+        DefaultEasyEntityQuery client = backend.client();
+        for (TruncationUnit unit : new TruncationUnit[]{TruncationUnit.HOUR, TruncationUnit.MINUTE, TruncationUnit.SECOND}) {
             assertThrows(IllegalArgumentException.class, () -> client.queryable(TestEvent.class)
                     .selectColumn(e -> ProDsl.of(e).truncateDate(e.eventDate(), unit)));
         }
-        var query = client.queryable(TestEvent.class).selectColumn(e -> ProDsl.of(e).truncateDate(e.eventDate(), TruncationUnit.MONTH).year());
+        Query<Integer> query = client.queryable(TestEvent.class).selectColumn(e -> ProDsl.of(e).truncateDate(e.eventDate(), TruncationUnit.MONTH).year());
         assertEquals(query.toSQL(), query.cloneQueryable().toSQL());
     }
 }

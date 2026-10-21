@@ -11,6 +11,9 @@ import com.easy.query.core.util.EasySQLSegmentUtil;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
+import com.easy.query.core.expression.sql.builder.ExpressionBuilder;
+import com.easy.query.core.expression.sql.expression.EntityTableSQLExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 最终分片查询的语义检查；每次构造 SQL 时重新遍历，避免把已删除的窗口留成 context 中的永久标记。
@@ -23,7 +26,7 @@ final class ServerEvaluationVisitor implements TableVisitor {
 
     static void validate(EntityQueryExpressionBuilder query, EntityQuerySQLExpression rendered) {
         if (!query.getExpressionContext().isSharding()) return;
-        var visitor = new ServerEvaluationVisitor();
+        ServerEvaluationVisitor visitor = new ServerEvaluationVisitor();
         query.accept(visitor);
         // 上游按引用关系裁剪导航 JOIN；只检查实际输出的关系和 ON，不扫描未使用的 relationTables。
         visitor.rendered(rendered);
@@ -32,8 +35,8 @@ final class ServerEvaluationVisitor implements TableVisitor {
     void query(EntityQueryExpressionBuilder query, Runnable contents) {
         if (!visited.add(query)) return;
         contents.run();
-        for (var declaration : query.getExpressionContext().getDeclareExpressions()) {
-            if (declaration instanceof EntityQueryExpressionBuilder declared) declared.accept(this);
+        for (ExpressionBuilder declaration : query.getExpressionContext().getDeclareExpressions()) {
+            if (declaration instanceof EntityQueryExpressionBuilder) ((EntityQueryExpressionBuilder) declaration).accept(this);
         }
     }
 
@@ -44,13 +47,13 @@ final class ServerEvaluationVisitor implements TableVisitor {
         EasySQLSegmentUtil.tableVisit(query.getGroup(), this);
         EasySQLSegmentUtil.tableVisit(query.getHaving(), this);
         EasySQLSegmentUtil.tableVisit(query.getOrder(), this);
-        if (query instanceof AnonymousUnionEntityQuerySQLExpression union)
-            union.getEntityQuerySQLExpressions().forEach(this::rendered);
+        if (query instanceof AnonymousUnionEntityQuerySQLExpression)
+            ((AnonymousUnionEntityQuerySQLExpression) query).getEntityQuerySQLExpressions().forEach(this::rendered);
         if (query.getTables() != null) {
-            for (var table : query.getTables()) {
+            for (EntityTableSQLExpression table : query.getTables()) {
                 EasySQLSegmentUtil.tableVisit(table.getOn(), this);
-                if (table instanceof AnonymousEntityTableSQLExpression anonymous)
-                    rendered(anonymous.getEntityQuerySQLExpression());
+                if (table instanceof AnonymousEntityTableSQLExpression)
+                    rendered(((AnonymousEntityTableSQLExpression) table).getEntityQuerySQLExpression());
             }
         }
     }
@@ -61,7 +64,7 @@ final class ServerEvaluationVisitor implements TableVisitor {
 
     @Override
     public Set<TableAvailable> getTables() {
-        return Set.of();
+        return ImmutableCollections.setOf();
     }
 
     @Override

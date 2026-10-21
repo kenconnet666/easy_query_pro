@@ -23,17 +23,64 @@ import org.junit.jupiter.params.provider.MethodSource;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import java.util.Objects;
+import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
+import com.easy.query.core.basic.api.select.Query;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.stream.Collectors;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.api.proxy.entity.update.ExpressionUpdatable;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class DecimalDslTest {
-    record Backend(DatabaseConfiguration database, Consumer<ServiceCollection> extensions, SqlDialect dialect) {
+    static final class Backend {
+        private final DatabaseConfiguration database;
+        private final Consumer<ServiceCollection> extensions;
+        private final SqlDialect dialect;
+
+        Backend(DatabaseConfiguration database, Consumer<ServiceCollection> extensions, SqlDialect dialect) {
+            this.database = database;
+            this.extensions = extensions;
+            this.dialect = dialect;
+        }
         DefaultEasyEntityQuery client() {
             return TestClients.offline(database, extensions);
+        }
+
+        public DatabaseConfiguration database() {
+            return database;
+        }
+
+        public Consumer<ServiceCollection> extensions() {
+            return extensions;
+        }
+
+        public SqlDialect dialect() {
+            return dialect;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Backend)) return false;
+            Backend other = (Backend) o;
+            return Objects.equals(database, other.database)
+                    && Objects.equals(extensions, other.extensions)
+                    && Objects.equals(dialect, other.dialect);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(database, extensions, dialect);
+        }
+
+        @Override
+        public String toString() {
+            return "Backend[database=" + database + ", extensions=" + extensions + ", dialect=" + dialect + "]";
         }
     }
 
@@ -46,31 +93,31 @@ class DecimalDslTest {
     @ParameterizedTest
     @MethodSource("backends")
     void bindsOncePerOccurrenceAndComposesThroughExistingOperatorsAndClone(Backend backend) {
-        var decimal = CommonTypes.decimal(19, 2);
-        var query = backend.client().queryable(TestProduct.class)
+        NumericType<BigDecimal> decimal = CommonTypes.decimal(19, 2);
+        Query<BigDecimal> query = backend.client().queryable(TestProduct.class)
                 .where(p -> ProDsl.of(p).nativeCast(p.amount(), decimal).gt(new BigDecimal("3.00")))
                 .orderBy(p -> ProDsl.of(p).nativeCast(p.amount(), decimal).desc())
                 .selectColumn(p -> ProDsl.of(p).value(new BigDecimal("19.99"), decimal).multiply(100));
-        var sql = query.toSQLResult();
+        ToSQLResult sql = query.toSQLResult();
         assertTrue(sql.getSQL().contains("CAST(? AS DECIMAL(19,2))"), sql.getSQL());
         assertFalse(sql.getSQL().contains("19.99"));
-        assertEquals(List.of(new BigDecimal("19.99"), 100, new BigDecimal("3.00")),
-                sql.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
-        var copy = query.cloneQueryable().toSQLResult();
+        assertEquals(Arrays.asList(new BigDecimal("19.99"), 100, new BigDecimal("3.00")),
+                sql.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
+        ToSQLResult copy = query.cloneQueryable().toSQLResult();
         assertEquals(sql.getSQL(), copy.getSQL());
-        assertEquals(sql.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList(),
-                copy.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(sql.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()),
+                copy.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         assertEquals(sql.getSQL(), query.toSQL());
     }
 
     @ParameterizedTest
     @MethodSource("backends")
     void typedNullAndJoinedColumnsKeepTheirOwnAlias(Backend backend) {
-        var decimal = CommonTypes.decimal(8, 2);
-        var client = backend.client();
-        var nullResult = client.queryable(TestProduct.class).selectColumn(p -> ProDsl.of(p).nullValue(decimal)).toSQLResult();
-        assertEquals(Arrays.asList((Object) null), nullResult.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
-        var query = client.queryable(TestProduct.class).leftJoin(TestProduct.class, (a, b) -> a.id().eq(b.id()))
+        NumericType<BigDecimal> decimal = CommonTypes.decimal(8, 2);
+        DefaultEasyEntityQuery client = backend.client();
+        ToSQLResult nullResult = client.queryable(TestProduct.class).selectColumn(p -> ProDsl.of(p).nullValue(decimal)).toSQLResult();
+        assertEquals(Arrays.asList((Object) null), nullResult.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
+        Query<BigDecimal> query = client.queryable(TestProduct.class).leftJoin(TestProduct.class, (a, b) -> a.id().eq(b.id()))
                 .selectColumn((a, b) -> ProDsl.of(a).nativeCast(b.amount(), decimal));
         assertTrue(query.toSQL().matches("(?s).*CAST\\(t1\\..*amount.* AS DECIMAL\\(8,2\\)\\).*"), query.toSQL());
         assertEquals(query.toSQL(), query.cloneQueryable().toSQL());
@@ -79,9 +126,9 @@ class DecimalDslTest {
     @ParameterizedTest
     @MethodSource("backends")
     void rejectsForeignColumnsAndExpressionReuseWithoutQueryTables(Backend backend) {
-        var client = backend.client();
-        var foreign = new AtomicReference<TestProductProxy>();
-        var expression = new AtomicReference<NumberTypeExpression<BigDecimal>>();
+        DefaultEasyEntityQuery client = backend.client();
+        AtomicReference<TestProductProxy> foreign = new AtomicReference<TestProductProxy>();
+        AtomicReference<NumberTypeExpression<BigDecimal>> expression = new AtomicReference<NumberTypeExpression<BigDecimal>>();
         client.queryable(TestProduct.class).where(p -> {
             foreign.set(p);
             expression.set(ProDsl.of(p).value(BigDecimal.ONE, CommonTypes.decimal(9, 2)));
@@ -99,7 +146,7 @@ class DecimalDslTest {
     @ParameterizedTest
     @MethodSource("backends")
     void extensionRegistrationIsIdempotentAndClientLocal(Backend backend) {
-        var client = TestClients.offline(backend.database(), services -> {
+        DefaultEasyEntityQuery client = TestClients.offline(backend.database(), services -> {
             backend.extensions().accept(services);
             backend.extensions().accept(services);
         });
@@ -112,16 +159,16 @@ class DecimalDslTest {
     @ParameterizedTest
     @MethodSource("backends")
     void composesInsideCorrelatedSubqueriesAndWriteSetters(Backend backend) {
-        var client = backend.client();
-        var type = CommonTypes.decimal(19, 2);
-        var query = client.queryable(TestProduct.class).where(p -> p.expression().exists(client.queryable(TestProduct.class)
+        DefaultEasyEntityQuery client = backend.client();
+        NumericType<BigDecimal> type = CommonTypes.decimal(19, 2);
+        EntityQueryable<TestProductProxy, TestProduct> query = client.queryable(TestProduct.class).where(p -> p.expression().exists(client.queryable(TestProduct.class)
                 .where(other -> {
                     other.id().eq(p.id());
                     ProDsl.of(other).nativeCast(other.amount(), type).gt(ProDsl.of(p).nativeCast(p.amount(), type));
                 })));
         assertTrue(query.toSQL().contains("EXISTS"), query.toSQL());
         assertEquals(query.toSQL(), query.cloneQueryable().toSQL());
-        var update = client.updatable(TestProduct.class).setColumns(p -> p.amount().set(ProDsl.of(p).value(new BigDecimal("19.99"), type)))
+        ExpressionUpdatable<TestProductProxy, TestProduct> update = client.updatable(TestProduct.class).setColumns(p -> p.amount().set(ProDsl.of(p).value(new BigDecimal("19.99"), type)))
                 .where(p -> p.id().eq(1));
         assertTrue(update.toSQL().contains("CAST(? AS DECIMAL(19,2))"), update.toSQL());
     }
@@ -138,13 +185,13 @@ class DecimalDslTest {
 
     @Test
     void decimalValueValidationRequiresExactFitWithoutRoundingOrScaleExpansion() {
-        var decimal = CommonTypes.decimal(5, 2);
-        for (String value : List.of("999.99", "-999.99", "0.0100", "0.000", "1E+2")) {
+        NumericType<BigDecimal> decimal = CommonTypes.decimal(5, 2);
+        for (String value : Arrays.asList("999.99", "-999.99", "0.0100", "0.000", "1E+2")) {
             decimal.prepareValue(new BigDecimal(value));
         }
         decimal.prepareValue(null);
         decimal.prepareValue(new BigDecimal(BigInteger.ZERO, Integer.MAX_VALUE));
-        for (BigDecimal value : List.of(new BigDecimal("1000"), new BigDecimal("0.001"),
+        for (BigDecimal value : Arrays.asList(new BigDecimal("1000"), new BigDecimal("0.001"),
                 new BigDecimal(BigInteger.ONE, Integer.MAX_VALUE), new BigDecimal(BigInteger.TEN, Integer.MIN_VALUE))) {
             assertThrows(IllegalArgumentException.class, () -> decimal.prepareValue(value));
         }

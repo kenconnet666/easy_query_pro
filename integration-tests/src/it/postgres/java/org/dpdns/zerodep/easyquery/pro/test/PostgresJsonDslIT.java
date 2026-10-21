@@ -24,6 +24,29 @@ import org.junit.jupiter.api.Test;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
+import org.postgresql.ds.PGSimpleDataSource;
+import java.sql.Statement;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft6Proxy;
+import com.easy.query.core.proxy.core.draft.Draft6;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.PgJsonbExpression;
+import com.easy.query.core.basic.jdbc.tx.Transaction;
+import java.sql.Connection;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgJsonRecordProxy;
+import com.easy.query.core.common.ToSQLResult;
+import java.sql.PreparedStatement;
+import com.easy.query.core.basic.jdbc.parameter.SQLParameter;
+import java.sql.ResultSet;
+import com.easy.query.core.proxy.core.draft.proxy.Draft2Proxy;
+import com.easy.query.core.proxy.core.draft.Draft2;
+import java.util.HashSet;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayType;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayValue;
+import java.util.stream.Collectors;
+import com.easy.query.core.proxy.core.draft.Draft3;
+import com.easy.query.core.proxy.core.draft.Draft1;
+import com.easy.query.core.proxy.core.draft.proxy.Draft1Proxy;
+import com.easy.query.core.basic.api.select.Query;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -34,9 +57,9 @@ class PostgresJsonDslIT {
 
     @BeforeEach
     void createFixture() throws SQLException {
-        var source = PostgresTestDatabase.dataSource();
+        PGSimpleDataSource source = PostgresTestDatabase.dataSource();
         schema = PostgresTestDatabase.createSchema(source, "eqp_json_");
-        try (var statement = schema.connection().createStatement()) {
+        try (Statement statement = schema.connection().createStatement()) {
             statement.execute("CREATE TABLE " + schema.qualified("eqp_pg_json") + " (id INTEGER PRIMARY KEY, json "
                     + PgSqlTypes.json().ddlType(SqlDialect.POSTGRESQL) + ", document " + PgSqlTypes.jsonb().ddlType(SqlDialect.POSTGRESQL)
                     + ", plain TEXT, payload JSONB)");
@@ -45,7 +68,7 @@ class PostgresJsonDslIT {
         PgSqlExtensions.configureMappings(query.getRuntimeContext().getQueryConfiguration());
         converter = new JsonPayload.Converter();
         query.getRuntimeContext().getQueryConfiguration().applyValueConverter(converter);
-        var row = new PgJsonRecord();
+        PgJsonRecord row = new PgJsonRecord();
         row.setId(1);
         row.setJson("{\"duplicate\":1,\"duplicate\":2}");
         row.setDocument("{\"tags\":[\"a\",\"b\"],\"nested\":{\"v\":1},\"empty\":null}");
@@ -61,7 +84,7 @@ class PostgresJsonDslIT {
 
     @Test
     void columnMappingAndExplicitJsonToJsonbConversionPreserveTheirRoles() {
-        var row = query.queryable(PgJsonRecord.class).singleNotNull();
+        PgJsonRecord row = query.queryable(PgJsonRecord.class).singleNotNull();
         assertEquals("{\"duplicate\":1,\"duplicate\":2}", row.getJson());
         assertEquals("ordinary text", row.getPlain());
         assertEquals(new JsonPayload("O'Reilly 中😀", 3), row.getPayload());
@@ -75,12 +98,12 @@ class PostgresJsonDslIT {
 
     @Test
     void containmentKeysAndNativeJsonpathComposeInProjectionAndFiltering() {
-        var selected = query.queryable(PgJsonRecord.class).select(p -> {
-            var doc = PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb());
+        EntityQueryable<Draft6Proxy<Boolean, Boolean, Boolean, Boolean, Boolean, Boolean>, Draft6<Boolean, Boolean, Boolean, Boolean, Boolean, Boolean>> selected = query.queryable(PgJsonRecord.class).select(p -> {
+            PgJsonbExpression<String> doc = PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb());
             return Select.DRAFT.of(doc.containsJson(JsonInput.encoded("{\"nested\":{\"v\":1}}")), doc.hasKey("empty"),
                     doc.hasAnyKey("absent", "empty"), doc.hasAllKeys("tags", "empty"), doc.hasAnyKey(), doc.hasAllKeys());
         });
-        var row = selected.singleNotNull();
+        Draft6<Boolean, Boolean, Boolean, Boolean, Boolean, Boolean> row = selected.singleNotNull();
         assertTrue(row.getValue1());
         assertTrue(row.getValue2());
         assertTrue(row.getValue3());
@@ -100,38 +123,38 @@ class PostgresJsonDslIT {
     @Test
     void nativeMutationsUseEncodedJsonAndKeepNullAndMissingParentRules() {
         assertEquals(1L, query.updatable(PgJsonRecord.class).setColumns(p -> p.document().set(PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb())
-                .setPath(List.of("nested", "v"), JsonInput.encoded("2"), false)
-                .setPath(List.of("new"), JsonInput.encoded("{\"x\":1}"), true).removeKey("empty"))).where(p -> p.id().eq(1)).executeRows());
+                .setPath(Arrays.asList("nested", "v"), JsonInput.encoded("2"), false)
+                .setPath(Arrays.asList("new"), JsonInput.encoded("{\"x\":1}"), true).removeKey("empty"))).where(p -> p.id().eq(1)).executeRows());
         String saved = query.queryable(PgJsonRecord.class).singleNotNull().getDocument();
-        var parsed = JsonParser.parseDoc(saved);
+        DbDoc parsed = JsonParser.parseDoc(saved);
         assertEquals(2, ((JsonNumber) ((DbDoc) parsed.get("nested")).get("v")).getInteger());
         assertEquals(1, ((JsonNumber) ((DbDoc) parsed.get("new")).get("x")).getInteger());
         assertFalse(parsed.containsKey("empty"));
         assertEquals(saved, query.queryable(PgJsonRecord.class).selectColumn(p -> PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb())
-                .setPath(List.of("missing", "child"), JsonInput.jsonNull(), true).asText()).singleNotNull());
+                .setPath(Arrays.asList("missing", "child"), JsonInput.jsonNull(), true).asText()).singleNotNull());
         assertEquals("[\"a\"]", JsonParser.parseDoc(query.queryable(PgJsonRecord.class).selectColumn(p -> PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb())
-                .removePath(List.of("tags", "-1")).asText()).singleNotNull()).get("tags").toString());
+                .removePath(Arrays.asList("tags", "-1")).asText()).singleNotNull()).get("tags").toString());
         assertNull(query.queryable(PgJsonRecord.class).selectColumn(p -> PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb())
-                .setPath(List.of("new"), JsonInput.sqlNull(), true).asText()).toList().get(0));
+                .setPath(Arrays.asList("new"), JsonInput.sqlNull(), true).asText()).toList().get(0));
         assertTrue(query.queryable(PgJsonRecord.class).selectColumn(p -> PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb())
-                .setPath(List.of("new"), JsonInput.jsonNull(), true).existsAt(JsonPath.root().key("new"))).singleNotNull());
+                .setPath(Arrays.asList("new"), JsonInput.jsonNull(), true).existsAt(JsonPath.root().key("new"))).singleNotNull());
     }
 
     @Test
     void mappedBusinessValuesSurviveSqlMutationAndRollbackWithoutDoubleSerialization() {
-        try (var transaction = query.getEasyQueryClient().beginTransaction()) {
+        try (Transaction transaction = query.getEasyQueryClient().beginTransaction()) {
             assertEquals(1L, query.updatable(PgJsonRecord.class).setColumns(p -> p.payload().set(PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb())
-                    .setPath(List.of("name"), JsonInput.encoded("\"changed\""), true))).where(p -> p.id().eq(1)).executeRows());
+                    .setPath(Arrays.asList("name"), JsonInput.encoded("\"changed\""), true))).where(p -> p.id().eq(1)).executeRows());
             assertEquals(new JsonPayload("changed", 3), query.queryable(PgJsonRecord.class).singleNotNull().getPayload());
             assertEquals(1, converter.writes());
             transaction.rollback();
         }
         assertEquals(new JsonPayload("O'Reilly 中😀", 3), query.queryable(PgJsonRecord.class).singleNotNull().getPayload());
-        var absent = new PgJsonRecord();
+        PgJsonRecord absent = new PgJsonRecord();
         absent.setId(2);
         absent.setDocument("null");
         query.insertable(absent).setSQLStrategy(SQLExecuteStrategyEnum.ALL_COLUMNS).executeRows();
-        var sqlNull = new PgJsonRecord();
+        PgJsonRecord sqlNull = new PgJsonRecord();
         sqlNull.setId(3);
         query.insertable(sqlNull).setSQLStrategy(SQLExecuteStrategyEnum.ALL_COLUMNS).executeRows();
         assertEquals(Arrays.asList(false, true, null), query.queryable(PgJsonRecord.class).orderBy(p -> p.id().asc())
@@ -140,26 +163,25 @@ class PostgresJsonDslIT {
 
     @Test
     void nativeOperatorsRemainEligibleForGinIndexes() throws SQLException {
-        var owner = schema.connection();
-        try (var statement = owner.createStatement()) {
+        Connection owner = schema.connection();
+        try (Statement statement = owner.createStatement()) {
             statement.execute("CREATE INDEX eqp_json_gin ON " + schema.qualified("eqp_pg_json") + " USING GIN(document)");
         }
-        var candidates = List.of(
-                query.queryable(PgJsonRecord.class).where(p -> PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb()).hasKey("nested").eq(true)),
+        List<EntityQueryable<PgJsonRecordProxy, PgJsonRecord>> candidates = Arrays.asList(query.queryable(PgJsonRecord.class).where(p -> PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb()).hasKey("nested").eq(true)),
                 query.queryable(PgJsonRecord.class).where(p -> PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb()).containsJson(JsonInput.encoded("{\"nested\":{\"v\":1}}")).eq(true)),
                 query.queryable(PgJsonRecord.class).where(p -> PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb()).pathExists(new PgJsonPath("$.nested.v ? (@ == 1)")).eq(true)));
         owner.setSchema(schema.name());
         owner.setAutoCommit(false);
-        try (var settings = owner.createStatement()) {
+        try (Statement settings = owner.createStatement()) {
             // 这里只确认 operator 能匹配索引；一行 fixture 不作为性能或成本模型证据。
             settings.execute("SET LOCAL enable_seqscan = off");
-            for (var candidate : candidates) {
-                var rendered = candidate.toSQLResult();
-                try (var explain = owner.prepareStatement("EXPLAIN (COSTS FALSE) " + rendered.getSQL())) {
-                    var parameters = rendered.getSqlContext().getParameters();
+            for (EntityQueryable<PgJsonRecordProxy, PgJsonRecord> candidate : candidates) {
+                ToSQLResult rendered = candidate.toSQLResult();
+                try (PreparedStatement explain = owner.prepareStatement("EXPLAIN (COSTS FALSE) " + rendered.getSQL())) {
+                    List<SQLParameter> parameters = rendered.getSqlContext().getParameters();
                     for (int i = 0; i < parameters.size(); i++) explain.setObject(i + 1, parameters.get(i).getValue());
-                    try (var result = explain.executeQuery()) {
-                        var plan = new StringBuilder();
+                    try (ResultSet result = explain.executeQuery()) {
+                        StringBuilder plan = new StringBuilder();
                         while (result.next()) plan.append(result.getString(1)).append('\n');
                         assertTrue(plan.toString().contains("eqp_json_gin"), plan.toString());
                     }
@@ -173,9 +195,9 @@ class PostgresJsonDslIT {
 
     @Test
     void computedBusinessValuesKeepTheirReaderInDraftAndScalarProjections() {
-        var selected = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
-                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(List.of("name"), JsonInput.encoded("\"projected\""), true), p.id()));
-        var expected = new JsonPayload("projected", 3);
+        EntityQueryable<Draft2Proxy<JsonPayload, Integer>, Draft2<JsonPayload, Integer>> selected = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(Arrays.asList("name"), JsonInput.encoded("\"projected\""), true), p.id()));
+        JsonPayload expected = new JsonPayload("projected", 3);
         assertEquals(expected, selected.singleNotNull().getValue1());
         assertEquals(expected, selected.cloneQueryable().singleNotNull().getValue1());
         assertEquals(new JsonPayload("O'Reilly 中😀", 3), query.queryable(PgJsonRecord.class)
@@ -185,11 +207,11 @@ class PostgresJsonDslIT {
 
     @Test
     void derivedRelationsKeepBusinessMappingsThroughOuterOperations() {
-        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
-                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(List.of("name"), JsonInput.encoded("\"inner\""), true)));
-        var selected = inner.where(p -> PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb()).hasKey("name").eq(true))
+        EntityQueryable<Draft2Proxy<Integer, JsonPayload>, Draft2<Integer, JsonPayload>> inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(Arrays.asList("name"), JsonInput.encoded("\"inner\""), true)));
+        EntityQueryable<Draft2Proxy<Integer, JsonPayload>, Draft2<Integer, JsonPayload>> selected = inner.where(p -> PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb()).hasKey("name").eq(true))
                 .select(p -> Select.DRAFT.of(p.value1(), PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb())
-                        .setPath(List.of("name"), JsonInput.encoded("\"outer\""), true)));
+                        .setPath(Arrays.asList("name"), JsonInput.encoded("\"outer\""), true)));
         assertEquals(new JsonPayload("outer", 3), selected.singleNotNull().getValue2());
         assertEquals(new JsonPayload("outer", 3), selected.cloneQueryable().singleNotNull().getValue2());
         assertEquals(1, converter.writes());
@@ -197,13 +219,13 @@ class PostgresJsonDslIT {
 
     @Test
     void unionAndCteKeepBusinessValuesInTheirProjectedColumn() {
-        var left = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
-                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(List.of("name"), JsonInput.encoded("\"left\""), true)));
-        var right = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
-                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(List.of("name"), JsonInput.encoded("\"right\""), true)));
-        var rows = left.unionAll(right).toCteAs("eqp_typed_payloads").select(p -> Select.DRAFT.of(p.value1(),
-                PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb()).setPath(List.of("count"), JsonInput.encoded("9"), true)));
-        assertEquals(java.util.Set.of(new JsonPayload("left", 9), new JsonPayload("right", 9)),
+        EntityQueryable<Draft2Proxy<Integer, JsonPayload>, Draft2<Integer, JsonPayload>> left = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(Arrays.asList("name"), JsonInput.encoded("\"left\""), true)));
+        EntityQueryable<Draft2Proxy<Integer, JsonPayload>, Draft2<Integer, JsonPayload>> right = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
+                PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).setPath(Arrays.asList("name"), JsonInput.encoded("\"right\""), true)));
+        EntityQueryable<Draft2Proxy<Integer, JsonPayload>, Draft2<Integer, JsonPayload>> rows = left.unionAll(right).toCteAs("eqp_typed_payloads").select(p -> Select.DRAFT.of(p.value1(),
+                PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb()).setPath(Arrays.asList("count"), JsonInput.encoded("9"), true)));
+        assertEquals(new HashSet<>(Arrays.asList(new JsonPayload("left", 9), new JsonPayload("right", 9))),
                 rows.toList().stream().map(row -> row.getValue2()).collect(java.util.stream.Collectors.toSet()));
         assertEquals(2, rows.cloneQueryable().toList().size());
         assertEquals(1, converter.writes());
@@ -211,10 +233,10 @@ class PostgresJsonDslIT {
 
     @Test
     void reorderingColumnsAndConvertingToTextCannotReuseAnOldReader() {
-        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
+        EntityQueryable<Draft2Proxy<JsonPayload, Integer>, Draft2<JsonPayload, Integer>> inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
                 PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()), p.id()));
-        var rows = inner.cloneQueryable().select(p -> Select.DRAFT.of(p.value2(), PgSqlDsl.of(p).view(p.value1(), PgSqlTypes.jsonb()).asText()));
-        var row = rows.singleNotNull();
+        EntityQueryable<Draft2Proxy<Integer, String>, Draft2<Integer, String>> rows = inner.cloneQueryable().select(p -> Select.DRAFT.of(p.value2(), PgSqlDsl.of(p).view(p.value1(), PgSqlTypes.jsonb()).asText()));
+        Draft2<Integer, String> row = rows.singleNotNull();
         assertEquals(1, row.getValue1());
         assertEquals(3, ((JsonNumber) JsonParser.parseDoc(row.getValue2()).get("count")).getInteger());
         assertEquals(1, rows.cloneQueryable().singleNotNull().getValue1());
@@ -224,12 +246,12 @@ class PostgresJsonDslIT {
 
     @Test
     void independentCteOriginsWithTheSameAliasKeepDifferentMappings() {
-        var payloads = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
+        EntityQueryable<Draft2Proxy<Integer, JsonPayload>, Draft2<Integer, JsonPayload>> payloads = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
                 PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()))).toCteAs("eqp_payload_origin");
-        var documents = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
+        EntityQueryable<Draft2Proxy<Integer, String>, Draft2<Integer, String>> documents = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(),
                 PgSqlDsl.of(p).view(p.document(), PgSqlTypes.jsonb()))).toCteAs("eqp_document_origin");
-        var joined = payloads.innerJoin(documents, (left, right) -> left.value1().eq(right.value1())).select((left, right) -> Select.DRAFT.of(
-                PgSqlDsl.of(left).view(left.value2(), PgSqlTypes.jsonb()).setPath(List.of("count"), JsonInput.encoded("7"), true),
+        EntityQueryable<Draft2Proxy<JsonPayload, String>, Draft2<JsonPayload, String>> joined = payloads.innerJoin(documents, (left, right) -> left.value1().eq(right.value1())).select((left, right) -> Select.DRAFT.of(
+                PgSqlDsl.of(left).view(left.value2(), PgSqlTypes.jsonb()).setPath(Arrays.asList("count"), JsonInput.encoded("7"), true),
                 PgSqlDsl.of(right).view(right.value2(), PgSqlTypes.jsonb()).asText()));
         assertEquals(new JsonPayload("O'Reilly 中😀", 7), joined.singleNotNull().getValue1());
         assertTrue(JsonParser.parseDoc(joined.cloneQueryable().singleNotNull().getValue2()).containsKey("tags"));
@@ -238,31 +260,31 @@ class PostgresJsonDslIT {
     @Test
     void derivedArrayValuesKeepTheirRegisteredHandler() {
         PgSqlExtensions.configureTypeHandlers(query.getRuntimeContext().getJdbcTypeHandlerManager());
-        var type = PgSqlTypes.array(Integer.class);
-        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(), PgSqlDsl.of(p).value(List.of(1, 2), type)));
-        var outer = inner.select(p -> Select.DRAFT.of(p.value1(), PgSqlDsl.of(p).view(p.value2(), type)));
-        assertEquals(type.value(List.of(1, 2)), outer.singleNotNull().getValue2());
+        PgArrayType<Integer> type = PgSqlTypes.array(Integer.class);
+        EntityQueryable<Draft2Proxy<Integer, PgArrayValue<Integer>>, Draft2<Integer, PgArrayValue<Integer>>> inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(), PgSqlDsl.of(p).value(Arrays.asList(1, 2), type)));
+        EntityQueryable<Draft2Proxy<Integer, PgArrayValue<Integer>>, Draft2<Integer, PgArrayValue<Integer>>> outer = inner.select(p -> Select.DRAFT.of(p.value1(), PgSqlDsl.of(p).view(p.value2(), type)));
+        assertEquals(type.value(Arrays.asList(1, 2)), outer.singleNotNull().getValue2());
     }
 
     @Test
     void unionsAcceptEquivalentDefaultScalarReaders() {
-        var left = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(), p.plain()));
-        var right = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().abs(), p.plain()));
-        var rows = left.unionAll(right).toCteAs("eqp_scalar_readers").toList();
-        assertEquals(List.of(1, 1), rows.stream().map(row -> row.getValue1()).toList());
+        EntityQueryable<Draft2Proxy<Integer, String>, Draft2<Integer, String>> left = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(), p.plain()));
+        EntityQueryable<Draft2Proxy<Integer, String>, Draft2<Integer, String>> right = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().abs(), p.plain()));
+        List<Draft2<Integer, String>> rows = left.unionAll(right).toCteAs("eqp_scalar_readers").toList();
+        assertEquals(Arrays.asList(1, 1), rows.stream().map(row -> row.getValue1()).collect(Collectors.toList()));
         assertTrue(rows.stream().allMatch(row -> "ordinary text".equals(row.getValue2())));
     }
 
     @Test
     @SuppressWarnings("deprecation")
     void ordinaryDtoProjectionKeepsItsTargetHandler() {
-        var row = query.queryable(PgJsonRecord.class).select(LongId.class, p -> p.id().as("id")).singleNotNull();
+        PostgresJsonDslIT.LongId row = query.queryable(PgJsonRecord.class).select(LongId.class, p -> p.id().as("id")).singleNotNull();
         assertEquals(1L, row.getId());
     }
 
     @Test
     void explicitValueConversionsKeepPriorityOverAutomaticReaders() {
-        var row = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
+        Draft3<String, Boolean, String> row = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
                 p.id().valueConvert(id -> "ID-" + id),
                 PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()).asText().valueConvert(text -> JsonParser.parseDoc(text).containsKey("name")),
                 p.payload().valueConvert(JsonPayload::name))).singleNotNull();
@@ -273,41 +295,41 @@ class PostgresJsonDslIT {
 
     @Test
     void upstreamAggregateProjectionCannotInheritAFormerJsonReader() {
-        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
+        EntityQueryable<Draft2Proxy<JsonPayload, Integer>, Draft2<JsonPayload, Integer>> inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(
                 PgSqlDsl.of(p).view(p.payload(), PgSqlTypes.jsonb()), p.id()));
-        var row = inner.select(p -> Select.DRAFT.of(p.value2().toNumber(Integer.class).sum())).singleNotNull();
+        Draft1<Number> row = inner.select(p -> Select.DRAFT.of(p.value2().toNumber(Integer.class).sum())).singleNotNull();
         assertEquals(1, ((Number) row.getValue1()).intValue());
     }
 
     @Test
     void freshOuterValueConvertCannotBecomeAnInheritedReader() {
-        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.payload(), p.id()));
-        var outer = inner.select(p -> Select.DRAFT.of(p.value2().valueConvert(id -> "ID-" + id), p.value1()));
-        var row = outer.singleNotNull();
+        EntityQueryable<Draft2Proxy<JsonPayload, Integer>, Draft2<JsonPayload, Integer>> inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.payload(), p.id()));
+        EntityQueryable<Draft2Proxy<String, JsonPayload>, Draft2<String, JsonPayload>> outer = inner.select(p -> Select.DRAFT.of(p.value2().valueConvert(id -> "ID-" + id), p.value1()));
+        Draft2<String, JsonPayload> row = outer.singleNotNull();
         assertEquals("ID-1", row.getValue1());
         assertEquals(new JsonPayload("O'Reilly 中😀", 3), row.getValue2());
     }
 
     @Test
     void unionAcceptsTheSameExplicitReaderAfterPropagation() {
-        var original = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().valueConvert(id -> "ID-" + id)));
-        var derived = original.cloneQueryable().select(p -> Select.DRAFT.of(p.value1()));
-        var rows = original.cloneQueryable().unionAll(derived).toCteAs("eqp_same_explicit_reader").toList();
-        assertEquals(List.of("ID-1", "ID-1"), rows.stream().map(row -> row.getValue1()).toList());
+        EntityQueryable<Draft1Proxy<String>, Draft1<String>> original = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().valueConvert(id -> "ID-" + id)));
+        EntityQueryable<Draft1Proxy<String>, Draft1<String>> derived = original.cloneQueryable().select(p -> Select.DRAFT.of(p.value1()));
+        List<Draft1<String>> rows = original.cloneQueryable().unionAll(derived).toCteAs("eqp_same_explicit_reader").toList();
+        assertEquals(Arrays.asList("ID-1", "ID-1"), rows.stream().map(row -> row.getValue1()).collect(Collectors.toList()));
     }
 
     @Test
     void unionRejectsDifferentExplicitMappingsBeforeExecution() {
-        var left = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().valueConvert(id -> "LEFT-" + id)));
-        var right = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().valueConvert(id -> "RIGHT-" + id)));
-        var error = assertThrows(IllegalArgumentException.class, () -> left.unionAll(right).toCteAs("eqp_different_readers").toSQL());
+        EntityQueryable<Draft1Proxy<String>, Draft1<String>> left = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().valueConvert(id -> "LEFT-" + id)));
+        EntityQueryable<Draft1Proxy<String>, Draft1<String>> right = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id().valueConvert(id -> "RIGHT-" + id)));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> left.unionAll(right).toCteAs("eqp_different_readers").toSQL());
         assertTrue(error.getMessage().contains("compatible"), error.getMessage());
     }
 
     @Test
     void unionDoesNotTreatPrimitiveAndNullableReadersAsEquivalent() {
-        var primitive = query.queryable("SELECT 1 AS number, TRUE AS enabled", PrimitiveScalars.class).select(p -> Select.DRAFT.of(p.number()));
-        var nullable = query.queryable("SELECT CAST(NULL AS INTEGER) AS id", PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id()));
+        EntityQueryable<Draft1Proxy<Integer>, Draft1<Integer>> primitive = query.queryable("SELECT 1 AS number, TRUE AS enabled", PrimitiveScalars.class).select(p -> Select.DRAFT.of(p.number()));
+        EntityQueryable<Draft1Proxy<Integer>, Draft1<Integer>> nullable = query.queryable("SELECT CAST(NULL AS INTEGER) AS id", PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id()));
         assertEquals(1, primitive.singleNotNull().getValue1());
         assertNull(nullable.singleNotNull().getValue1());
         assertThrows(IllegalArgumentException.class, () -> primitive.unionAll(nullable).toSQL());
@@ -315,12 +337,12 @@ class PostgresJsonDslIT {
 
     @Test
     void derivedScalarJsonKeepsItsBusinessReader() {
-        var inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(), p.payload()));
-        var scalar = inner.cloneQueryable().selectColumn(p -> PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb())
-                .setPath(List.of("count"), JsonInput.encoded("7"), true));
+        EntityQueryable<Draft2Proxy<Integer, JsonPayload>, Draft2<Integer, JsonPayload>> inner = query.queryable(PgJsonRecord.class).select(p -> Select.DRAFT.of(p.id(), p.payload()));
+        Query<JsonPayload> scalar = inner.cloneQueryable().selectColumn(p -> PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb())
+                .setPath(Arrays.asList("count"), JsonInput.encoded("7"), true));
         assertEquals(new JsonPayload("O'Reilly 中😀", 7), scalar.singleNotNull());
         assertEquals(new JsonPayload("O'Reilly 中😀", 7), scalar.cloneQueryable().singleNotNull());
-        var window = inner.cloneQueryable().selectColumn(p -> PgSqlDsl.of(p).overValue(
+        Query<JsonPayload> window = inner.cloneQueryable().selectColumn(p -> PgSqlDsl.of(p).overValue(
                 PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.jsonb()), PgSqlDsl.of(p).window().orderBy(p.value1())).firstValue());
         assertEquals(new JsonPayload("O'Reilly 中😀", 3), window.singleNotNull());
         assertEquals(new JsonPayload("O'Reilly 中😀", 3), window.cloneQueryable().singleNotNull());

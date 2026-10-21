@@ -12,6 +12,16 @@ import java.sql.Connection;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.LinkedHashMap;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import java.util.concurrent.ExecutorService;
+import com.easy.query.core.basic.jdbc.tx.Transaction;
+import java.util.concurrent.Future;
+import com.zaxxer.hikari.HikariDataSource;
+import com.easy.query.core.api.client.EasyQueryClient;
+import java.sql.Statement;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,19 +29,19 @@ class HanaTransactionIT {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     void forUpdateBlocksAnotherTransactionUntilCommitOrRollback(boolean commit) throws Exception {
-        var query = HanaTestDatabase.client();
-        try (var table = HanaTestDatabase.createTable("ROW_LOCK", "\"id\" INTEGER PRIMARY KEY, \"name\" NVARCHAR(255), \"amount\" DECIMAL(19,4)")) {
+        DefaultEasyEntityQuery query = HanaTestDatabase.client();
+        try (HanaTestDatabase.TestTable table = HanaTestDatabase.createTable("ROW_LOCK", "\"id\" INTEGER PRIMARY KEY, \"name\" NVARCHAR(255), \"amount\" DECIMAL(19,4)")) {
             query.insertable(new TestProduct(1, "locked", BigDecimal.ONE)).asTable(t -> table.name()).executeRows();
             assertThrows(IllegalStateException.class, () -> query.queryable(TestProduct.class).asTable(t -> table.name())
                     .where(p -> p.id().eq(1)).forUpdate().toList());
-            var executor = Executors.newSingleThreadExecutor();
+            ExecutorService executor = Executors.newSingleThreadExecutor();
             try {
-                try (var owner = query.getEasyQueryClient().beginTransaction()) {
+                try (Transaction owner = query.getEasyQueryClient().beginTransaction()) {
                     assertEquals(1, query.queryable(TestProduct.class).asTable(t -> table.name()).where(p -> p.id().eq(1))
                             .orderBy(p -> p.id().asc()).limit(1).forUpdate().singleNotNull().getId());
-                    var waiter = executor.submit(() -> {
-                        try (var transaction = query.getEasyQueryClient().beginTransaction()) {
-                            var row = query.queryable(TestProduct.class).asTable(t -> table.name()).where(p -> p.id().eq(1))
+                    Future<Integer> waiter = executor.submit(() -> {
+                        try (Transaction transaction = query.getEasyQueryClient().beginTransaction()) {
+                            TestProduct row = query.queryable(TestProduct.class).asTable(t -> table.name()).where(p -> p.id().eq(1))
                                     .forUpdate().singleNotNull();
                             transaction.commit();
                             return row.getId();
@@ -53,19 +63,21 @@ class HanaTransactionIT {
 
     @Test
     void supportedIsolationLevelsReachTheDatabaseAndDoNotLeakThroughThePool() throws Exception {
-        try (var pool = HanaTestDatabase.pool(1)) {
-            var client = EasyQueryBootstrapper.defaultBuilderConfiguration().setDefaultDataSource(pool)
+        try (HikariDataSource pool = HanaTestDatabase.pool(1)) {
+            EasyQueryClient client = EasyQueryBootstrapper.defaultBuilderConfiguration().setDefaultDataSource(pool)
                     .useDatabaseConfigure(new HanaDatabaseConfiguration()).build();
-            var expected = Map.of(Connection.TRANSACTION_READ_COMMITTED, "READ COMMITTED",
-                    // revision 88 的监控视图将原生 REPEATABLE READ 同样报告为 SERIALIZABLE。
-                    Connection.TRANSACTION_REPEATABLE_READ, "SERIALIZABLE", Connection.TRANSACTION_SERIALIZABLE, "SERIALIZABLE");
-            for (var entry : expected.entrySet()) {
-                try (var transaction = client.beginTransaction(entry.getKey())) {
+            Map<Integer, String> expected = new LinkedHashMap<>();
+            expected.put(Connection.TRANSACTION_READ_COMMITTED, "READ COMMITTED");
+            // revision 88 的监控视图将原生 REPEATABLE READ 同样报告为 SERIALIZABLE。
+            expected.put(Connection.TRANSACTION_REPEATABLE_READ, "SERIALIZABLE");
+            expected.put(Connection.TRANSACTION_SERIALIZABLE, "SERIALIZABLE");
+            for (Map.Entry<Integer, String> entry : expected.entrySet()) {
+                try (Transaction transaction = client.beginTransaction(entry.getKey())) {
                     String actual = client.sqlQuery("SELECT ISOLATION_LEVEL FROM M_TRANSACTIONS WHERE CONNECTION_ID = CURRENT_CONNECTION", String.class).get(0);
                     assertEquals(entry.getValue(), actual);
                     transaction.rollback();
                 }
-                try (var recycled = pool.getConnection()) {
+                try (Connection recycled = pool.getConnection()) {
                     assertTrue(recycled.getAutoCommit());
                     assertEquals(Connection.TRANSACTION_READ_COMMITTED, recycled.getTransactionIsolation());
                 }
@@ -76,11 +88,11 @@ class HanaTransactionIT {
 
     @Test
     void unsupportedIsolationDoesNotLeakAnAcquiredConnection() throws Exception {
-        try (var pool = HanaTestDatabase.pool(1)) {
-            var client = EasyQueryBootstrapper.defaultBuilderConfiguration().setDefaultDataSource(pool)
+        try (HikariDataSource pool = HanaTestDatabase.pool(1)) {
+            EasyQueryClient client = EasyQueryBootstrapper.defaultBuilderConfiguration().setDefaultDataSource(pool)
                     .useDatabaseConfigure(new HanaDatabaseConfiguration()).build();
             assertThrows(RuntimeException.class, () -> {
-                try (var transaction = client.beginTransaction(Connection.TRANSACTION_READ_UNCOMMITTED)) {
+                try (Transaction transaction = client.beginTransaction(Connection.TRANSACTION_READ_UNCOMMITTED)) {
                     client.sqlQuery("SELECT 1 FROM DUMMY", Integer.class);
                     transaction.rollback();
                 }
@@ -93,13 +105,13 @@ class HanaTransactionIT {
     @ParameterizedTest
     @ValueSource(ints = {Connection.TRANSACTION_READ_COMMITTED, Connection.TRANSACTION_REPEATABLE_READ, Connection.TRANSACTION_SERIALIZABLE})
     void isolationLevelsPreserveTheirDocumentedSnapshotVisibility(int isolation) throws Exception {
-        var query = HanaTestDatabase.client();
-        try (var table = HanaTestDatabase.createTable("SNAPSHOT", "\"id\" INTEGER PRIMARY KEY, \"name\" NVARCHAR(255), \"amount\" DECIMAL(19,4)")) {
+        DefaultEasyEntityQuery query = HanaTestDatabase.client();
+        try (HanaTestDatabase.TestTable table = HanaTestDatabase.createTable("SNAPSHOT", "\"id\" INTEGER PRIMARY KEY, \"name\" NVARCHAR(255), \"amount\" DECIMAL(19,4)")) {
             query.insertable(new TestProduct(1, "before", BigDecimal.ONE)).asTable(t -> table.name()).executeRows();
-            try (var transaction = query.getEasyQueryClient().beginTransaction(isolation)) {
+            try (Transaction transaction = query.getEasyQueryClient().beginTransaction(isolation)) {
                 assertEquals("before", query.queryable(TestProduct.class).asTable(t -> table.name()).singleNotNull().getName());
                 // 独立物理连接提交新版本，避免仅验证事务对象上记录的 isolation 数字。
-                try (var writer = table.connection().createStatement()) {
+                try (Statement writer = table.connection().createStatement()) {
                     assertEquals(1, writer.executeUpdate("UPDATE \"" + table.name() + "\" SET \"name\" = 'after' WHERE \"id\" = 1"));
                 }
                 String seen = query.queryable(TestProduct.class).asTable(t -> table.name()).singleNotNull().getName();
@@ -113,10 +125,10 @@ class HanaTransactionIT {
     private static void awaitBlockedOn(Connection observer, String table) throws Exception {
         // 以服务器锁等待记录为证据，避免仅凭 future 尚未结束或固定 sleep 判断锁有效。
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-        try (var statement = observer.prepareStatement("SELECT COUNT(*) FROM M_BLOCKED_TRANSACTIONS WHERE WAITING_TABLE_NAME = ?")) {
+        try (PreparedStatement statement = observer.prepareStatement("SELECT COUNT(*) FROM M_BLOCKED_TRANSACTIONS WHERE WAITING_TABLE_NAME = ?")) {
             statement.setString(1, table);
             while (System.nanoTime() < deadline) {
-                try (var result = statement.executeQuery()) {
+                try (ResultSet result = statement.executeQuery()) {
                     if (result.next() && result.getInt(1) > 0) return;
                 }
                 Thread.sleep(20);

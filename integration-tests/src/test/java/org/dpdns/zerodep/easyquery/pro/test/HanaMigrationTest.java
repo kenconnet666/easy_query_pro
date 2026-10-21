@@ -18,16 +18,22 @@ import java.io.File;
 import java.net.URLClassLoader;
 import java.util.Arrays;
 import java.util.regex.Pattern;
+import com.easy.query.core.context.QueryRuntimeContext;
+import com.easy.query.core.migration.MigrationsSQLGenerator;
+import com.easy.query.core.migration.data.TableMigrationData;
+import com.easy.query.core.migration.MigrationCommand;
+import java.util.stream.Collectors;
+import java.net.URL;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class HanaMigrationTest {
     @Test
     void parsesNativeTypesAndRendersDdlWithoutOpeningJdbc() {
-        var context = TestClients.offline(new HanaDatabaseConfiguration()).getEasyQueryClient().getRuntimeContext();
-        var generator = context.getMigrationsSQLGenerator();
-        var table = generator.parseEntity(Types.class);
-        var commands = generator.generateCreateTableMigrationSQL(new MigrationContext(List.of(table)));
+        QueryRuntimeContext context = TestClients.offline(new HanaDatabaseConfiguration()).getEasyQueryClient().getRuntimeContext();
+        MigrationsSQLGenerator generator = context.getMigrationsSQLGenerator();
+        TableMigrationData table = generator.parseEntity(Types.class);
+        List<MigrationCommand> commands = generator.generateCreateTableMigrationSQL(new MigrationContext(Arrays.asList(table)));
         String sql = commands.get(0).toSQL();
         assertTrue(sql.contains("CREATE COLUMN TABLE \"ddl_types\""), sql);
         assertTrue(sql.contains("\"signed\" SMALLINT"), sql);
@@ -41,37 +47,37 @@ class HanaMigrationTest {
 
     @Test
     void sequenceGeneratedColumnsDoNotBecomeIdentityColumns() {
-        var context = TestClients.offline(new HanaDatabaseConfiguration()).getEasyQueryClient().getRuntimeContext();
+        QueryRuntimeContext context = TestClients.offline(new HanaDatabaseConfiguration()).getEasyQueryClient().getRuntimeContext();
         context.getQueryConfiguration().applyGeneratedKeySQLColumnGenerator(new SequenceProduct.ProductSequence("sequence"));
-        var table = context.getMigrationsSQLGenerator().parseEntity(SequenceProduct.class);
+        TableMigrationData table = context.getMigrationsSQLGenerator().parseEntity(SequenceProduct.class);
         assertFalse(table.getColumns().get(0).isGeneratedKey());
         assertTrue(table.getColumns().get(0).isPrimary());
     }
 
     @Test
     void rejectsTemporalPrecisionAnnotationsInsteadOfEmittingInvalidDdl() {
-        var generator = TestClients.offline(new HanaDatabaseConfiguration()).getEasyQueryClient().getRuntimeContext().getMigrationsSQLGenerator();
+        MigrationsSQLGenerator generator = TestClients.offline(new HanaDatabaseConfiguration()).getEasyQueryClient().getRuntimeContext().getMigrationsSQLGenerator();
         assertThrows(IllegalArgumentException.class, () -> generator.parseEntity(InvalidTimestamp.class));
     }
 
     @Test
     void retainsForeignKeyActionsAndTargetSchemasFromEntityAnnotations() {
-        var generator = TestClients.offline(new HanaDatabaseConfiguration()).getEasyQueryClient().getRuntimeContext().getMigrationsSQLGenerator();
-        var table = generator.parseEntity(Child.class);
-        var key = assertInstanceOf(HanaForeignKeyMigrationData.class, table.getForeignKeys().get(0));
+        MigrationsSQLGenerator generator = TestClients.offline(new HanaDatabaseConfiguration()).getEasyQueryClient().getRuntimeContext().getMigrationsSQLGenerator();
+        TableMigrationData table = generator.parseEntity(Child.class);
+        HanaForeignKeyMigrationData key = assertInstanceOf(HanaForeignKeyMigrationData.class, table.getForeignKeys().get(0));
         assertEquals("parent.schema", key.getTargetSchema());
         assertEquals("ON DELETE CASCADE", key.getAction());
-        String sql = generator.generateCreateTableMigrationSQL(new MigrationContext(List.of(table))).get(1).toSQL();
+        String sql = generator.generateCreateTableMigrationSQL(new MigrationContext(Arrays.asList(table))).get(1).toSQL();
         assertTrue(sql.contains("REFERENCES \"parent.schema\".\"parent.table\" (\"id\") ON DELETE CASCADE"), sql);
     }
 
     @Test
     void optionalSapDriverIsNotRequiredForOfflineConfigurationOrDdlRendering() throws Exception {
-        var paths = Arrays.stream(System.getProperty("java.class.path").split(Pattern.quote(File.pathSeparator)))
-                .filter(path -> !new File(path).getName().startsWith("ngdbc-")).toList();
-        var urls = new java.net.URL[paths.size()];
+        List<String> paths = Arrays.stream(System.getProperty("java.class.path").split(Pattern.quote(File.pathSeparator)))
+                .filter(path -> !new File(path).getName().startsWith("ngdbc-")).collect(Collectors.toList());
+        URL[] urls = new java.net.URL[paths.size()];
         for (int i = 0; i < paths.size(); i++) urls[i] = new File(paths.get(i)).toURI().toURL();
-        try (var isolated = new URLClassLoader(urls, ClassLoader.getPlatformClassLoader())) {
+        try (URLClassLoader isolated = new URLClassLoader(urls, ClassLoader.getSystemClassLoader().getParent())) {
             assertThrows(ClassNotFoundException.class, () -> Class.forName("com.sap.db.jdbc.Driver", false, isolated));
             isolated.loadClass(DriverlessProbe.class.getName()).getMethod("verify").invoke(null);
         }
@@ -79,9 +85,9 @@ class HanaMigrationTest {
 
     public static final class DriverlessProbe {
         public static void verify() {
-            var context = TestClients.offline(new HanaDatabaseConfiguration()).getEasyQueryClient().getRuntimeContext();
-            var table = context.getMigrationsSQLGenerator().parseEntity(Types.class);
-            var commands = context.getMigrationsSQLGenerator().generateCreateTableMigrationSQL(new MigrationContext(List.of(table)));
+            QueryRuntimeContext context = TestClients.offline(new HanaDatabaseConfiguration()).getEasyQueryClient().getRuntimeContext();
+            TableMigrationData table = context.getMigrationsSQLGenerator().parseEntity(Types.class);
+            List<MigrationCommand> commands = context.getMigrationsSQLGenerator().generateCreateTableMigrationSQL(new MigrationContext(Arrays.asList(table)));
             context.getDatabaseCodeFirst().createCodeFirstCommand(commands);
             if (!commands.get(0).toSQL().startsWith("CREATE COLUMN TABLE"))
                 throw new AssertionError("Missing offline DDL");

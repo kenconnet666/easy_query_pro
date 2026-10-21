@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import java.sql.SQLException;
 import java.util.function.BiConsumer;
 import javax.sql.DataSource;
+import java.sql.Statement;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -50,13 +52,13 @@ class HanaReportingIT {
     }
 
     private void withSales(BiConsumer<EntityQueryable<ReportSaleProxy, ReportSale>, DataSource> contract) throws SQLException {
-        try (var schema = HanaTestDatabase.createSchema("WINDOW_REPORT")) {
-            try (var statement = schema.connection().createStatement()) {
+        try (HanaTestDatabase.TestSchema schema = HanaTestDatabase.createSchema("WINDOW_REPORT")) {
+            try (Statement statement = schema.connection().createStatement()) {
                 statement.execute("CREATE COLUMN TABLE " + schema.qualified("eqp_report_sale")
                         + " (\"id\" INTEGER PRIMARY KEY, \"region\" NVARCHAR(20), \"report_day\" DATE, \"amount\" DECIMAL(19,4))");
             }
-            var source = HanaTestDatabase.dataSource();
-            var query = TestClients.configured(source, new HanaDatabaseConfiguration(), HanaExtensions::configure);
+            DataSource source = HanaTestDatabase.dataSource();
+            DefaultEasyEntityQuery query = TestClients.configured(source, new HanaDatabaseConfiguration(), HanaExtensions::configure);
             assertEquals(6L, query.insertable(WindowReportContract.sales()).asSchema(ignored -> schema.name()).executeRows());
             contract.accept(query.queryable(ReportSale.class).asSchema(ignored -> schema.name()), source);
         }

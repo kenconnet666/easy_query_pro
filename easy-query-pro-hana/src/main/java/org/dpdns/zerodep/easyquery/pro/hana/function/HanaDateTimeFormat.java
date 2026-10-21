@@ -7,6 +7,8 @@ import com.easy.query.core.func.def.AnySQLFunction;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
+import java.util.Collections;
 
 /** 将选定的 Java 数字日期模式翻译为 SQL，普通文本始终作为绑定值。 */
 final class HanaDateTimeFormat {
@@ -16,9 +18,9 @@ final class HanaDateTimeFormat {
     static SQLFunction format(List<ColumnExpression> arguments, String pattern) {
         if (arguments.size() != 1) throw new IllegalArgumentException("Date formatting requires one argument");
         String format = pattern == null ? "yyyy-MM-dd HH:mm:ss.SSSSSS" : pattern;
-        var parameters = new ArrayList<>(arguments);
-        var parts = new ArrayList<String>();
-        var literal = new StringBuilder();
+        ArrayList<ColumnExpression> parameters = new ArrayList<>(arguments);
+        ArrayList<String> parts = new ArrayList<String>();
+        StringBuilder literal = new StringBuilder();
         boolean quoted = false;
         boolean hasDatePart = false;
         for (int i = 0; i < format.length();) {
@@ -51,30 +53,30 @@ final class HanaDateTimeFormat {
         }
         String expression = "(" + String.join(" || ", parts) + ")";
         if (!hasDatePart) expression = "CASE WHEN {0} IS NULL THEN NULL ELSE " + expression + " END";
-        return new AnySQLFunction(expression, List.copyOf(parameters));
+        return new AnySQLFunction(expression, ImmutableCollections.listCopyOf(parameters));
     }
 
     private static String token(String token) {
-        return switch (token) {
-            case "yyyy" -> formatted("YYYY");
-            case "yy" -> formatted("YY");
-            case "y" -> "TO_NVARCHAR(YEAR({0}))";
-            case "MM" -> formatted("MM");
-            case "M" -> "TO_NVARCHAR(MONTH({0}))";
-            case "dd" -> formatted("DD");
-            case "d" -> "TO_NVARCHAR(DAYOFMONTH({0}))";
-            case "HH" -> formatted("HH24");
-            case "H" -> "TO_NVARCHAR(HOUR({0}))";
-            case "hh" -> formatted("HH12");
-            case "h" -> "TO_NVARCHAR(TO_INTEGER(" + formatted("HH12") + "))";
-            case "mm" -> formatted("MI");
-            case "m" -> "TO_NVARCHAR(MINUTE({0}))";
-            case "ss" -> formatted("SS");
-            case "s" -> "TO_NVARCHAR(CAST(FLOOR(SECOND({0})) AS INTEGER))";
-            case "a", "tt" -> formatted("AM");
-            case "t" -> "SUBSTRING(" + formatted("AM") + ",1,1)";
-            default -> fractionalSeconds(token);
-        };
+        switch (token) {
+            case "yyyy": return formatted("YYYY");
+            case "yy": return formatted("YY");
+            case "y": return "TO_NVARCHAR(YEAR({0}))";
+            case "MM": return formatted("MM");
+            case "M": return "TO_NVARCHAR(MONTH({0}))";
+            case "dd": return formatted("DD");
+            case "d": return "TO_NVARCHAR(DAYOFMONTH({0}))";
+            case "HH": return formatted("HH24");
+            case "H": return "TO_NVARCHAR(HOUR({0}))";
+            case "hh": return formatted("HH12");
+            case "h": return "TO_NVARCHAR(TO_INTEGER(" + formatted("HH12") + "))";
+            case "mm": return formatted("MI");
+            case "m": return "TO_NVARCHAR(MINUTE({0}))";
+            case "ss": return formatted("SS");
+            case "s": return "TO_NVARCHAR(CAST(FLOOR(SECOND({0})) AS INTEGER))";
+            case "a": case "tt": return formatted("AM");
+            case "t": return "SUBSTRING(" + formatted("AM") + ",1,1)";
+            default: return fractionalSeconds(token);
+        }
     }
 
     private static String fractionalSeconds(String token) {
@@ -84,7 +86,7 @@ final class HanaDateTimeFormat {
         int digits = Math.min(7, token.length());
         String expression = formatted("FF" + digits);
         // Java 可输出九位小数；HANA 只有七位，最后两位只能补零，不能声称存在额外精度。
-        return token.length() <= 7 ? expression : "(" + expression + " || '" + "0".repeat(token.length() - 7) + "')";
+        return token.length() <= 7 ? expression : "(" + expression + " || '" + String.join("", Collections.nCopies(token.length() - 7, "0")) + "')";
     }
 
     private static String formatted(String mask) {
@@ -96,7 +98,7 @@ final class HanaDateTimeFormat {
     }
 
     private static void appendLiteral(StringBuilder literal, List<ColumnExpression> parameters, List<String> parts) {
-        if (literal.isEmpty()) return;
+        if (literal.length() == 0) return;
         parts.add("{" + parameters.size() + "}");
         parameters.add(new ColumnFuncValueExpressionImpl(literal.toString()));
         literal.setLength(0);

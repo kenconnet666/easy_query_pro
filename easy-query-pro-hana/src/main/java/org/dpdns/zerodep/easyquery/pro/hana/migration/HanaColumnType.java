@@ -6,20 +6,32 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.Objects;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
+import java.util.regex.Matcher;
 
 /**
  * DDL 列类型；CAST 的默认长度和转换语义由函数层独立处理。
  */
-record HanaColumnType(String name, Integer length, Integer scale) {
+final class HanaColumnType {
+    private final String name;
+    private final Integer length;
+    private final Integer scale;
+
+    HanaColumnType(String name, Integer length, Integer scale) {
+        this.name = name;
+        this.length = length;
+        this.scale = scale;
+    }
     private static final Pattern TYPE = Pattern.compile("([A-Z]+)(?:\\s*\\(\\s*(\\d+)\\s*(?:,\\s*(\\d+)\\s*)?\\))?");
-    private static final Set<String> SIZED = Set.of("VARCHAR", "NVARCHAR", "VARBINARY", "ALPHANUM", "SHORTTEXT");
-    private static final Set<String> FIXED = Set.of("TINYINT", "SMALLINT", "INTEGER", "BIGINT", "REAL", "DOUBLE",
+    private static final Set<String> SIZED = ImmutableCollections.setOf("VARCHAR", "NVARCHAR", "VARBINARY", "ALPHANUM", "SHORTTEXT");
+    private static final Set<String> FIXED = ImmutableCollections.setOf("TINYINT", "SMALLINT", "INTEGER", "BIGINT", "REAL", "DOUBLE",
             "SMALLDECIMAL", "BOOLEAN", "DATE", "TIME", "SECONDDATE", "TIMESTAMP", "BLOB", "CLOB", "NCLOB", "TEXT");
-    private static final List<String> INTEGERS = List.of("TINYINT", "SMALLINT", "INTEGER", "BIGINT");
+    private static final List<String> INTEGERS = ImmutableCollections.listOf("TINYINT", "SMALLINT", "INTEGER", "BIGINT");
 
     static HanaColumnType parse(String sql) {
         if (sql == null) throw new IllegalArgumentException("HANA column type is required");
-        var matcher = TYPE.matcher(sql.trim().toUpperCase(Locale.ROOT));
+        Matcher matcher = TYPE.matcher(sql.trim().toUpperCase(Locale.ROOT));
         if (!matcher.matches()) throw new IllegalArgumentException("Invalid HANA column type: " + sql);
         String name = matcher.group(1);
         if (name.equals("INT")) name = "INTEGER";
@@ -75,5 +87,37 @@ record HanaColumnType(String name, Integer length, Integer scale) {
 
     private static IllegalArgumentException invalid(String sql) {
         return new IllegalArgumentException("Unsupported HANA DDL type or parameters: " + sql);
+    }
+
+    public String name() {
+        return name;
+    }
+
+    public Integer length() {
+        return length;
+    }
+
+    public Integer scale() {
+        return scale;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof HanaColumnType)) return false;
+        HanaColumnType other = (HanaColumnType) o;
+        return Objects.equals(name, other.name)
+                && Objects.equals(length, other.length)
+                && Objects.equals(scale, other.scale);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name, length, scale);
+    }
+
+    @Override
+    public String toString() {
+        return "HanaColumnType[name=" + name + ", length=" + length + ", scale=" + scale + "]";
     }
 }

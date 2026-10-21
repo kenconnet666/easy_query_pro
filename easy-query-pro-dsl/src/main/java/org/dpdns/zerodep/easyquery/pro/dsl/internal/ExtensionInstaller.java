@@ -64,7 +64,7 @@ public final class ExtensionInstaller {
         services.addService(SmartPredicateAnonymousExpressionBuilderProvider.class, ProSmartPredicateProvider.class);
         services.addService(NullSafeComparison.class, comparison);
         services.addServiceFactory(SqlDialect.class, provider -> {
-            var keyword = provider.getService(SQLKeyword.class);
+            SQLKeyword keyword = provider.getService(SQLKeyword.class);
             if (!backend.isInstance(keyword)) {
                 throw new IllegalStateException("Pro " + dialect + " extensions require backend " + backend.getName() + "; found " + keyword.getClass().getName());
             }
@@ -72,6 +72,33 @@ public final class ExtensionInstaller {
         });
     }
 
-    private record Installed(SqlDialect dialect) {
+    private static final class Installed {
+        private final SqlDialect dialect;
+
+        private Installed(SqlDialect dialect) {
+            this.dialect = dialect;
+        }
+
+        public SqlDialect dialect() {
+            return dialect;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Installed)) return false;
+            Installed other = (Installed) o;
+            return Objects.equals(dialect, other.dialect);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(dialect);
+        }
+
+        @Override
+        public String toString() {
+            return "Installed[dialect=" + dialect + "]";
+        }
     }
 }

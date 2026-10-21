@@ -5,6 +5,7 @@ import java.math.BigInteger;
 import java.sql.SQLException;
 import java.nio.ByteBuffer;
 import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 
 /**
  * Decodes the four server output formats, not PostgreSQL's arbitrary human-readable input language.
@@ -23,7 +24,7 @@ final class PgIntervalCodec {
     static String encode(PgInterval value) {
         if (value == PgInterval.Infinity.POSITIVE) return "infinity";
         if (value == PgInterval.Infinity.NEGATIVE) return "-infinity";
-        var finite = (PgInterval.Finite) value;
+        PgInterval.Finite finite = (PgInterval.Finite) value;
         // Explicit signs prevent sql_standard from propagating a leading minus to later positive fields.
         return signed(finite.months()) + " months " + signed(finite.days()) + " days " + signed(finite.microseconds()) + " microseconds";
     }
@@ -36,7 +37,7 @@ final class PgIntervalCodec {
         // PostgreSQL sends time (int64), days (int32), then months (int32), in network byte order.
         if (bytes == null || bytes.length != Long.BYTES + 2 * Integer.BYTES)
             throw new SQLException("Invalid PostgreSQL binary interval length");
-        var value = ByteBuffer.wrap(bytes);
+        ByteBuffer value = ByteBuffer.wrap(bytes);
         long micros = value.getLong();
         int days = value.getInt();
         int months = value.getInt();
@@ -52,7 +53,7 @@ final class PgIntervalCodec {
         if (text.equals("infinity")) return PgInterval.Infinity.POSITIVE;
         if (text.equals("-infinity")) return PgInterval.Infinity.NEGATIVE;
         try {
-            var parts = new Parts();
+            PgIntervalCodec.Parts parts = new Parts();
             if (text.startsWith("P")) parseIso(text, parts);
             else if (text.startsWith("@") || text.chars().anyMatch(Character::isLetter)) parseUnits(text, parts);
             else parseSqlStandard(text, parts);
@@ -71,17 +72,18 @@ final class PgIntervalCodec {
     }
 
     private static void scanIso(String text, Pattern pattern, Parts parts, boolean time) {
-        var matcher = pattern.matcher(text);
+        Matcher matcher = pattern.matcher(text);
         int end = 0;
         while (matcher.find()) {
-            String unit = switch (matcher.group(2)) {
-                case "Y" -> "year";
-                case "M" -> time ? "min" : "mon";
-                case "D" -> "day";
-                case "H" -> "hour";
-                case "S" -> "sec";
-                default -> throw new IllegalArgumentException("Unknown interval unit");
-            };
+            String unit;
+            switch (matcher.group(2)) {
+                case "Y": unit = "year"; break;
+                case "M": unit = time ? "min" : "mon"; break;
+                case "D": unit = "day"; break;
+                case "H": unit = "hour"; break;
+                case "S": unit = "sec"; break;
+                default: throw new IllegalArgumentException("Unknown interval unit");
+            }
             parts.add(matcher.group(1), unit);
             end = matcher.end();
         }
@@ -93,7 +95,7 @@ final class PgIntervalCodec {
         boolean ago = body.endsWith(" ago");
         if (ago) body = body.substring(0, body.length() - 4);
         if (body.equals("0")) return;
-        var matcher = UNIT.matcher(body);
+        Matcher matcher = UNIT.matcher(body);
         int end = 0;
         while (matcher.find()) {
             parts.add(matcher.group(1), matcher.group(2));
@@ -121,27 +123,27 @@ final class PgIntervalCodec {
         }
         for (int i = 0; i < tokens.length; i++) {
             String token = tokens[i];
-            var yearMonth = YEAR_MONTH.matcher(token);
+            Matcher yearMonth = YEAR_MONTH.matcher(token);
             boolean inheritMinus = i > 0 && leadingNegative;
             if (yearMonth.matches()) {
-                var value = new BigInteger(yearMonth.group(2)).multiply(BigInteger.valueOf(12)).add(new BigInteger(yearMonth.group(3)));
+                BigInteger value = new BigInteger(yearMonth.group(2)).multiply(BigInteger.valueOf(12)).add(new BigInteger(yearMonth.group(3)));
                 parts.months = yearMonth.group(1).equals("-") ? value.negate() : value;
             } else if (token.contains(":")) {
-                var value = clock(token);
+                BigInteger value = clock(token);
                 parts.micros = inheritMinus ? value.negate() : value;
             } else {
-                var value = new BigInteger(token);
+                BigInteger value = new BigInteger(token);
                 parts.days = inheritMinus ? value.negate() : value;
             }
         }
     }
 
     private static BigInteger clock(String text) {
-        var match = CLOCK.matcher(text);
+        Matcher match = CLOCK.matcher(text);
         if (!match.matches()) throw new IllegalArgumentException("Invalid interval time component");
-        var seconds = new BigDecimal(match.group(2)).multiply(BigDecimal.valueOf(3600))
+        BigDecimal seconds = new BigDecimal(match.group(2)).multiply(BigDecimal.valueOf(3600))
                 .add(new BigDecimal(match.group(3)).multiply(BigDecimal.valueOf(60))).add(new BigDecimal(match.group(4)));
-        var value = seconds.multiply(new BigDecimal(MICROS_PER_SECOND)).toBigIntegerExact();
+        BigInteger value = seconds.multiply(new BigDecimal(MICROS_PER_SECOND)).toBigIntegerExact();
         return match.group(1).equals("-") ? value.negate() : value;
     }
 
@@ -151,7 +153,7 @@ final class PgIntervalCodec {
         private BigInteger micros = BigInteger.ZERO;
 
         private void add(String encoded, String unit) {
-            var value = new BigDecimal(encoded);
+            BigDecimal value = new BigDecimal(encoded);
             if (unit.startsWith("year"))
                 months = months.add(value.multiply(BigDecimal.valueOf(12)).toBigIntegerExact());
             else if (unit.startsWith("mon")) months = months.add(value.toBigIntegerExact());

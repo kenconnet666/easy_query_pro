@@ -18,6 +18,7 @@ import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.CodecRecordProxy;
 import org.jetbrains.annotations.NotNull;
 
 import java.math.BigDecimal;
+import java.util.Objects;
 
 @Table("eqp_codec")
 @EntityProxy
@@ -72,10 +73,64 @@ public class CodecRecord implements ProxyEntityAvailable<CodecRecord, CodecRecor
         this.plain = plain;
     }
 
-    public record RowId(long value) {
+    public static final class RowId {
+        private final long value;
+
+        public RowId(long value) {
+            this.value = value;
+        }
+
+        public long value() {
+            return value;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof RowId)) return false;
+            RowId other = (RowId) o;
+            return value == other.value;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(value);
+        }
+
+        @Override
+        public String toString() {
+            return "RowId[value=" + value + "]";
+        }
     }
 
-    public record Label(String value) {
+    public static final class Label {
+        private final String value;
+
+        public Label(String value) {
+            this.value = value;
+        }
+
+        public String value() {
+            return value;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Label)) return false;
+            Label other = (Label) o;
+            return Objects.equals(value, other.value);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(value);
+        }
+
+        @Override
+        public String toString() {
+            return "Label[value=" + value + "]";
+        }
     }
 
     public static final class IdConverter implements ValueConverter<RowId, Long> {

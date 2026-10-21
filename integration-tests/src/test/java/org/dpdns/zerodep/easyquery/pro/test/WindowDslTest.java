@@ -26,8 +26,24 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.stream.Stream;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft3Proxy;
+import com.easy.query.core.proxy.core.draft.Draft3;
+import java.util.concurrent.atomic.AtomicReference;
+import org.dpdns.zerodep.easyquery.pro.dsl.window.RowsWindowSpec;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+import com.easy.query.core.proxy.core.draft.proxy.Draft1Proxy;
+import com.easy.query.core.proxy.core.draft.Draft1;
+import com.easy.query.core.expression.sql.builder.EntityQueryExpressionBuilder;
+import com.easy.query.core.context.QueryRuntimeContext;
+import com.easy.query.core.expression.segment.factory.SQLSegmentFactory;
+import com.easy.query.core.expression.segment.SubQueryColumnSegment;
+import com.easy.query.core.basic.api.select.Query;
+import com.easy.query.core.basic.api.select.ClientQueryable;
+import com.easy.query.core.expression.segment.SQLNativeSegment;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -41,9 +57,9 @@ class WindowDslTest {
     @ParameterizedTest
     @MethodSource("clients")
     void rankingReusesGlobalOrderingAndAddsNoSyntheticPartition(DefaultEasyEntityQuery query) {
-        var ranked = query.queryable(TestProduct.class).select(p -> {
-            var pro = ProDsl.of(p);
-            var peers = pro.window(ReportWindow::new).orderBy(p.amount(), false);
+        EntityQueryable<Draft3Proxy<Long, Long, Long>, Draft3<Long, Long, Long>> ranked = query.queryable(TestProduct.class).select(p -> {
+            ProDsl pro = ProDsl.of(p);
+            ReportWindow peers = pro.window(ReportWindow::new).orderBy(p.amount(), false);
             return Select.DRAFT.of(pro.rank(peers), pro.denseRank(peers), pro.rowNumber(peers.orderBy(p.id())));
         });
         String sql = ranked.toSQL();
@@ -52,7 +68,7 @@ class WindowDslTest {
         assertTrue(sql.contains("ROW_NUMBER() OVER (ORDER BY"), sql);
         assertFalse(sql.contains("PARTITION BY"), sql);
         assertEquals(sql, ranked.cloneQueryable().toSQL());
-        var sharded = ranked.cloneQueryable();
+        EntityQueryable<Draft3Proxy<Long, Long, Long>, Draft3<Long, Long, Long>> sharded = ranked.cloneQueryable();
         sharded.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().useSharding();
         assertThrows(UnsupportedOperationException.class, sharded::toSQL);
     }
@@ -67,11 +83,11 @@ class WindowDslTest {
                 () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p ->
                         ProDsl.of(p).rank(ProDsl.of(p).window().orderBy(p.id()).rowsBetween(RowBoundary.unboundedPreceding(), RowBoundary.currentRow())))),
                 () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> {
-                    var pro = ProDsl.of(p);
+                    ProDsl pro = ProDsl.of(p);
                     return pro.rank(pro.window().orderBy(pro.rowNumber(pro.window().orderBy(p.id()))));
                 })),
                 () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> {
-                    var pro = ProDsl.of(p);
+                    ProDsl pro = ProDsl.of(p);
                     return pro.over(pro.rank(pro.window().orderBy(p.id())).sum(), pro.window());
                 }).toSQL()));
     }
@@ -79,8 +95,8 @@ class WindowDslTest {
     @ParameterizedTest
     @MethodSource("clients")
     void rankingCannotUseAnotherClientsOrUnrelatedQueriesSpecification(DefaultEasyEntityQuery query) {
-        var captured = new java.util.concurrent.atomic.AtomicReference<org.dpdns.zerodep.easyquery.pro.dsl.window.RowsWindowSpec>();
-        var other = TestClients.offline(new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+        AtomicReference<RowsWindowSpec> captured = new java.util.concurrent.atomic.AtomicReference<org.dpdns.zerodep.easyquery.pro.dsl.window.RowsWindowSpec>();
+        DefaultEasyEntityQuery other = TestClients.offline(new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
         other.queryable(TestProduct.class).selectColumn(p -> {
             captured.set(ProDsl.of(p).window().orderBy(p.id()));
             return p.id();
@@ -98,16 +114,16 @@ class WindowDslTest {
     @ParameterizedTest
     @MethodSource("clients")
     void aggregatesReuseTheirFunctionsAndBindValuesOnce(DefaultEasyEntityQuery query) {
-        var selected = query.queryable(TestProduct.class).select(p -> {
-            var pro = ProDsl.of(p);
-            var frame = pro.window(ReportWindow::new).partitionBy(p.name()).orderBy(p.id()).trailing(2);
+        EntityQueryable<Draft3Proxy<Integer, Number, Number>, Draft3<Integer, Number, Number>> selected = query.queryable(TestProduct.class).select(p -> {
+            ProDsl pro = ProDsl.of(p);
+            ReportWindow frame = pro.window(ReportWindow::new).partitionBy(p.name()).orderBy(p.id()).trailing(2);
             return Select.DRAFT.of(p.id(), pro.over(p.amount().sum(), frame),
                     pro.over(pro.value(new BigDecimal("2"), CommonTypes.decimal(10, 2)).sum(), pro.window()));
         });
-        var sql = selected.cloneQueryable().toSQLResult();
+        ToSQLResult sql = selected.cloneQueryable().toSQLResult();
         assertTrue(sql.getSQL().contains("ROWS BETWEEN 2 PRECEDING AND CURRENT ROW"), sql.getSQL());
         assertTrue(sql.getSQL().contains("OVER ()"), sql.getSQL());
-        assertEquals(List.of(new BigDecimal("2.00")), sql.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(Arrays.asList(new BigDecimal("2.00")), sql.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         assertEquals(sql.getSQL(), selected.cloneQueryable().toSQL());
     }
 
@@ -127,23 +143,23 @@ class WindowDslTest {
     void nestedWindowsAndAggregateWrappersFailBeforeSqlExecution(DefaultEasyEntityQuery query) {
         assertAll(
                 () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> {
-                    var pro = ProDsl.of(p);
+                    ProDsl pro = ProDsl.of(p);
                     return pro.over(pro.nativeCast(p.amount().sum(), CommonTypes.decimal(19, 4)), pro.window());
                 }).toSQL()),
                 () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> {
-                    var pro = ProDsl.of(p);
+                    ProDsl pro = ProDsl.of(p);
                     return pro.overValue(pro.over(p.amount().sum(), pro.window()), pro.window().orderBy(p.id())).firstValue();
                 }).toSQL()),
                 () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> {
-                    var pro = ProDsl.of(p);
+                    ProDsl pro = ProDsl.of(p);
                     return pro.over(pro.over(p.amount().sum(), pro.window()).sum(), pro.window());
                 }).toSQL()),
                 () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> {
-                    var pro = ProDsl.of(p);
+                    ProDsl pro = ProDsl.of(p);
                     return pro.over(p.amount().sum(), pro.window().orderBy(pro.over(p.id().max(), pro.window())));
                 }).toSQL()),
                 () -> assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> {
-                    var pro = ProDsl.of(p);
+                    ProDsl pro = ProDsl.of(p);
                     return pro.overValue(p.amount().sum().add(BigDecimal.ONE), pro.window().orderBy(p.id())).firstValue();
                 }).toSQL()));
     }
@@ -151,30 +167,30 @@ class WindowDslTest {
     @ParameterizedTest
     @MethodSource("clients")
     void windowInspectionTraversesAliasesButStopsAtScalarSubqueries(DefaultEasyEntityQuery query) {
-        var window = query.queryable(TestProduct.class).select(p -> Select.DRAFT.of(
+        EntityQueryable<Draft1Proxy<Number>, Draft1<Number>> window = query.queryable(TestProduct.class).select(p -> Select.DRAFT.of(
                 ProDsl.of(p).over(p.amount().sum(), ProDsl.of(p).window())));
-        var builder = ((AnonymousEntityTableExpressionBuilder) window.getClientQueryable().getSQLEntityExpressionBuilder().getTable(0)).getEntityQueryExpressionBuilder();
-        var runtime = builder.getRuntimeContext();
-        var segments = runtime.getSQLSegmentFactory();
-        var expression = ((CloneableSQLSegment) builder.getProjects().getSQLSegments().get(0)).cloneSQLColumnSegment();
+        EntityQueryExpressionBuilder builder = ((AnonymousEntityTableExpressionBuilder) window.getClientQueryable().getSQLEntityExpressionBuilder().getTable(0)).getEntityQueryExpressionBuilder();
+        QueryRuntimeContext runtime = builder.getRuntimeContext();
+        SQLSegmentFactory segments = runtime.getSQLSegmentFactory();
+        CloneableSQLSegment expression = ((CloneableSQLSegment) builder.getProjects().getSQLSegments().get(0)).cloneSQLColumnSegment();
         ((SQLEntityAliasSegment) expression).setAlias(null);
-        var alias = segments.createSQLColumnAsSegment(expression, "renamed", runtime);
+        CloneableSQLSegment alias = segments.createSQLColumnAsSegment(expression, "renamed", runtime);
         assertTrue(ExpressionScope.containsWindow(alias));
         assertTrue(ExpressionScope.containsWindow(alias.cloneSQLColumnSegment()));
-        assertThrows(UnsupportedOperationException.class, () -> ProSQLSegmentFactory.validateDistinctCount(List.of(alias)));
-        var scalar = segments.createSubQueryColumnSegment(null, window.getClientQueryable().limit(1), "scalar", runtime);
+        assertThrows(UnsupportedOperationException.class, () -> ProSQLSegmentFactory.validateDistinctCount(Arrays.asList(alias)));
+        SubQueryColumnSegment scalar = segments.createSubQueryColumnSegment(null, window.getClientQueryable().limit(1), "scalar", runtime);
         assertFalse(ExpressionScope.containsWindow(scalar));
         assertFalse(ExpressionScope.containsWindow(scalar.cloneSQLColumnSegment()));
-        assertDoesNotThrow(() -> ProSQLSegmentFactory.validateDistinctCount(List.of(scalar)));
-        var inner = query.queryable(TestProduct.class).limit(1).selectColumn(p ->
+        assertDoesNotThrow(() -> ProSQLSegmentFactory.validateDistinctCount(Arrays.asList(scalar)));
+        Query<BigDecimal> inner = query.queryable(TestProduct.class).limit(1).selectColumn(p ->
                 ProDsl.of(p).over(p.amount().sumBigDecimal(), ProDsl.of(p).window()));
-        var outer = query.getEasyQueryClient().queryable(TestProduct.class).select(BigDecimal.class,
+        ClientQueryable<BigDecimal> outer = query.getEasyQueryClient().queryable(TestProduct.class).select(BigDecimal.class,
                 s -> s.columnSubQueryAs(() -> inner, "amount"));
         assertDoesNotThrow(() -> outer.cloneQueryable().distinct().selectCount(Long.class).toSQL());
-        var nativeOuter = query.getEasyQueryClient().queryable(TestProduct.class).select(BigDecimal.class,
+        ClientQueryable<BigDecimal> nativeOuter = query.getEasyQueryClient().queryable(TestProduct.class).select(BigDecimal.class,
                 s -> s.sqlNativeSegment("{0}", c -> c.expression(window.getClientQueryable().limit(1))));
         assertDoesNotThrow(() -> nativeOuter.cloneQueryable().distinct().selectCount(Long.class).toSQL());
-        var nativeSegment = (com.easy.query.core.expression.segment.SQLNativeSegment) new com.easy.query.core.func.SQLFunctionTranslateImpl(
+        SQLNativeSegment nativeSegment = (com.easy.query.core.expression.segment.SQLNativeSegment) new com.easy.query.core.func.SQLFunctionTranslateImpl(
                 runtime.fx().anySQLFunction("1", ignored -> {
                 })).toSQLSegment(builder.getExpressionContext(), builder.getTable(0).getEntityTable(), runtime, null);
         nativeSegment.setAlias("renamed");
@@ -184,20 +200,20 @@ class WindowDslTest {
     @ParameterizedTest
     @MethodSource("clients")
     void ordinarySmartPredicateOptimizationStillRuns(DefaultEasyEntityQuery query) {
-        var selected = query.queryable(TestProduct.class).select(p -> Select.DRAFT.of(p.id())).where(p -> p.value1().eq(7));
-        var builder = selected.getClientQueryable().getSQLEntityExpressionBuilder();
+        EntityQueryable<Draft1Proxy<Integer>, Draft1<Integer>> selected = query.queryable(TestProduct.class).select(p -> Select.DRAFT.of(p.id())).where(p -> p.value1().eq(7));
+        EntityQueryExpressionBuilder builder = selected.getClientQueryable().getSQLEntityExpressionBuilder();
         builder.getExpressionContext().getBehavior().addBehavior(EasyBehaviorEnum.SMART_PREDICATE);
         selected.toSQL();
-        var inner = ((AnonymousEntityTableExpressionBuilder) builder.getTable(0)).getEntityQueryExpressionBuilder();
+        EntityQueryExpressionBuilder inner = ((AnonymousEntityTableExpressionBuilder) builder.getTable(0)).getEntityQueryExpressionBuilder();
         assertTrue(inner.hasWhere());
     }
 
     @ParameterizedTest
     @MethodSource("clients")
     void distinctWindowCountRequiresTheExplicitCteBoundary(DefaultEasyEntityQuery query) {
-        var window = query.queryable(TestProduct.class).select(p -> Select.DRAFT.of(
+        EntityQueryable<Draft1Proxy<Number>, Draft1<Number>> window = query.queryable(TestProduct.class).select(p -> Select.DRAFT.of(
                 ProDsl.of(p).over(p.amount().sum(), ProDsl.of(p).window().partitionBy(p.name()))));
-        var error = assertThrows(UnsupportedOperationException.class, () -> window.cloneQueryable().distinct().selectCount(Long.class).toSQL());
+        UnsupportedOperationException error = assertThrows(UnsupportedOperationException.class, () -> window.cloneQueryable().distinct().selectCount(Long.class).toSQL());
         assertTrue(error.getMessage().contains("toCteAs"));
         String bounded = window.cloneQueryable().distinct().toCteAs("window_values").selectCount(Long.class).toSQL();
         assertTrue(bounded.contains("COUNT(*)"), bounded);

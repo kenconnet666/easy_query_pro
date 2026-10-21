@@ -16,6 +16,7 @@ import java.util.UUID;
 import java.util.TimeZone;
 
 import org.postgresql.jdbc.TimestampUtils;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 显式声明数组元素类型与 SQL 存储类型，并用 PgArrayValue 携带运行时元素信息。
@@ -24,8 +25,9 @@ import org.postgresql.jdbc.TimestampUtils;
  */
 public final class PgArrayType<E> implements StorageType<PgArrayValue<E>>, CastTarget<PgArrayValue<E>> {
     private static final TimestampUtils TIMESTAMPS = new TimestampUtils(false, () -> TimeZone.getTimeZone("UTC"));
-    private static final Map<Class<?>, String> TYPES = Map.of(String.class, "text", Integer.class, "int4", Long.class, "int8",
-            BigDecimal.class, "numeric", Boolean.class, "bool", UUID.class, "uuid", LocalDate.class, "date", LocalDateTime.class, "timestamp");
+    private static final Map<Class<?>, String> TYPES = ImmutableCollections.<Class<?>, String>mapBuilder()
+            .put(String.class, "text").put(Integer.class, "int4").put(Long.class, "int8").put(BigDecimal.class, "numeric")
+            .put(Boolean.class, "bool").put(UUID.class, "uuid").put(LocalDate.class, "date").put(LocalDateTime.class, "timestamp").build();
     private final Class<E> elementType;
     private final String elementSqlName;
 
@@ -43,7 +45,7 @@ public final class PgArrayType<E> implements StorageType<PgArrayValue<E>>, CastT
 
     static PgArrayType<?> fromJdbcName(String name) {
         String canonical = name.toLowerCase(Locale.ROOT);
-        for (var entry : TYPES.entrySet()) {
+        for (Map.Entry<Class<?>, String> entry : TYPES.entrySet()) {
             if (entry.getValue().equals(canonical)) return of(entry.getKey());
         }
         throw new IllegalArgumentException("Unsupported PostgreSQL array element SQL type: " + name);
@@ -72,14 +74,14 @@ public final class PgArrayType<E> implements StorageType<PgArrayValue<E>>, CastT
         if (value != null && !elementType.isInstance(value)) {
             throw new IllegalArgumentException("Expected " + elementType.getTypeName() + " array element, found " + value.getClass().getTypeName());
         }
-        if (value instanceof String text) UnicodeStrings.requirePortable(text, "Array element");
+        if (value instanceof String) UnicodeStrings.requirePortable(((String) value), "Array element");
         return value;
     }
 
     Object jdbcElement(Object value) {
         // 标量和数组参数统一使用驱动的纪元、infinity 和微秒规则，避免自行拼日期造成语义偏差。
-        if (value instanceof LocalDate date) return TIMESTAMPS.toString(date);
-        if (value instanceof LocalDateTime timestamp) return TIMESTAMPS.toString(timestamp);
+        if (value instanceof LocalDate) return TIMESTAMPS.toString(((LocalDate) value));
+        if (value instanceof LocalDateTime) return TIMESTAMPS.toString(((LocalDateTime) value));
         return value;
     }
 
@@ -111,7 +113,7 @@ public final class PgArrayType<E> implements StorageType<PgArrayValue<E>>, CastT
 
     @Override
     public boolean equals(Object other) {
-        return other instanceof PgArrayType<?> type && elementType.equals(type.elementType);
+        return other instanceof PgArrayType<?> && elementType.equals(((PgArrayType<?>) other).elementType);
     }
 
     @Override

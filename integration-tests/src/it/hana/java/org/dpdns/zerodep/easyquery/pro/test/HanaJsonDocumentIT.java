@@ -6,21 +6,23 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Arrays;
-import java.util.List;
+import java.sql.Statement;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class HanaJsonDocumentIT {
     @Test
     void nativeHelperAcceptsOneValueIncludingScalarsAndNestedEmptyArrays() throws SQLException {
-        try (var schema = HanaTestDatabase.createSchema("JSON_DOCUMENT");
-             var connection = HanaTestDatabase.connect(); var statement = connection.createStatement()) {
+        try (HanaTestDatabase.TestSchema schema = HanaTestDatabase.createSchema("JSON_DOCUMENT");
+             Connection connection = HanaTestDatabase.connect(); Statement statement = connection.createStatement()) {
             statement.execute(HanaJsonSupport.createDocumentFunctionSql(schema.name()));
             String function = HanaJsonSupport.documentFunctionName(schema.name());
             for (String doc : Arrays.asList(null, "1", "true", "null", "\"中😀\"", "{}", "[]", "[[]]", "[[1],[2]]", "[1,null]")) {
                 assertEquals(doc, read(connection, function, doc, "ANY"));
             }
-            for (String invalid : List.of("", " \t\r\n", "1,2", "1,", "invalid json")) {
+            for (String invalid : Arrays.asList("", " \t\r\n", "1,2", "1,", "invalid json")) {
                 assertThrows(SQLException.class, () -> read(connection, function, invalid, "ANY"));
             }
         }
@@ -28,8 +30,8 @@ class HanaJsonDocumentIT {
 
     @Test
     void kindFilteringDistinguishesSqlNullJsonNullAndContainerMismatches() throws SQLException {
-        try (var schema = HanaTestDatabase.createSchema("JSON_KIND");
-             var connection = HanaTestDatabase.connect(); var statement = connection.createStatement()) {
+        try (HanaTestDatabase.TestSchema schema = HanaTestDatabase.createSchema("JSON_KIND");
+             Connection connection = HanaTestDatabase.connect(); Statement statement = connection.createStatement()) {
             statement.execute(HanaJsonSupport.createDocumentFunctionSql(schema.name()));
             String function = HanaJsonSupport.documentFunctionName(schema.name());
             assertEquals(" \t{}", read(connection, function, " \t{}", "OBJECT"));
@@ -48,10 +50,10 @@ class HanaJsonDocumentIT {
     }
 
     private static String read(Connection connection, String function, String doc, String kind) throws SQLException {
-        try (var statement = connection.prepareStatement("SELECT " + function + "(?,?) FROM DUMMY")) {
+        try (PreparedStatement statement = connection.prepareStatement("SELECT " + function + "(?,?) FROM DUMMY")) {
             statement.setString(1, doc);
             statement.setString(2, kind);
-            try (var result = statement.executeQuery()) {
+            try (ResultSet result = statement.executeQuery()) {
                 assertTrue(result.next());
                 return result.getString(1);
             }

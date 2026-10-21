@@ -15,52 +15,93 @@ import org.junit.jupiter.params.provider.MethodSource;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.List;
+import java.util.Objects;
+import java.util.Arrays;
+import com.easy.query.core.basic.api.select.Query;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.stream.Collectors;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class NativeNumericDslTest {
-    private record NativeType(SqlDialect dialect, NumericType<BigDecimal> type) { }
+    private static final class NativeType {
+        private final SqlDialect dialect;
+        private final NumericType<BigDecimal> type;
+
+        private NativeType(SqlDialect dialect, NumericType<BigDecimal> type) {
+            this.dialect = dialect;
+            this.type = type;
+        }
+
+        public SqlDialect dialect() {
+            return dialect;
+        }
+
+        public NumericType<BigDecimal> type() {
+            return type;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof NativeType)) return false;
+            NativeType other = (NativeType) o;
+            return Objects.equals(dialect, other.dialect)
+                    && Objects.equals(type, other.type);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(dialect, type);
+        }
+
+        @Override
+        public String toString() {
+            return "NativeType[dialect=" + dialect + ", type=" + type + "]";
+        }
+    }
 
     @ParameterizedTest
     @MethodSource("org.dpdns.zerodep.easyquery.pro.test.DecimalDslTest#backends")
     void nativeDescriptorsUseCommonOperatorsAndRejectOtherDialects(DecimalDslTest.Backend backend) {
-        var types = List.of(new NativeType(SqlDialect.MYSQL, MySqlTypes.decimal(65, 30)),
+        List<NativeNumericDslTest.NativeType> types = Arrays.asList(new NativeType(SqlDialect.MYSQL, MySqlTypes.decimal(65, 30)),
                 new NativeType(SqlDialect.POSTGRESQL, PgSqlTypes.numeric(2, -3)), new NativeType(SqlDialect.POSTGRESQL, PgSqlTypes.numeric()),
                 new NativeType(SqlDialect.HANA, HanaTypes.decimal(38, 38)), new NativeType(SqlDialect.HANA, HanaTypes.smallDecimal()),
                 new NativeType(SqlDialect.HANA, HanaTypes.floatingDecimal()));
-        for (var entry : types) {
-            var type = entry.type();
+        for (NativeNumericDslTest.NativeType entry : types) {
+            NumericType<BigDecimal> type = entry.type();
             if (entry.dialect() != backend.dialect()) {
                 assertThrows(IllegalArgumentException.class, () -> backend.client().queryable(TestProduct.class)
                         .selectColumn(p -> ProDsl.of(p).nullValue(type)).toSQL());
                 continue;
             }
-            var query = backend.client().queryable(TestProduct.class).selectColumn(p -> ProDsl.of(p).value(BigDecimal.ZERO, type).add(BigDecimal.ONE));
-            var result = query.toSQLResult();
+            Query<BigDecimal> query = backend.client().queryable(TestProduct.class).selectColumn(p -> ProDsl.of(p).value(BigDecimal.ZERO, type).add(BigDecimal.ONE));
+            ToSQLResult result = query.toSQLResult();
             assertTrue(result.getSQL().contains("AS " + type.ddlType(backend.dialect())), result.getSQL());
-            assertEquals(List.of(type.prepareValue(BigDecimal.ZERO), BigDecimal.ONE), result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+            assertEquals(Arrays.asList(type.prepareValue(BigDecimal.ZERO), BigDecimal.ONE), result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
             assertEquals(result.getSQL(), query.cloneQueryable().toSQL());
         }
     }
 
     @Test
     void fixedAndUnconstrainedNumericValuesKeepExactCapacity() {
-        var mysql = MySqlTypes.decimal(65, 30);
-        fits(mysql, "9".repeat(35) + "." + "9".repeat(30));
+        NumericType<BigDecimal> mysql = MySqlTypes.decimal(65, 30);
+        fits(mysql, String.join("", Collections.nCopies(35, "9")) + "." + String.join("", Collections.nCopies(30, "9")));
         rejects(mysql, "1E35", "1E-31");
-        var thousands = PgSqlTypes.numeric(2, -3);
+        NumericType<BigDecimal> thousands = PgSqlTypes.numeric(2, -3);
         fits(thousands, "99000", "-99000", "1E3", "0.000");
         rejects(thousands, "100000", "99001", "999", "0.1");
-        var fraction = PgSqlTypes.numeric(3, 5);
+        NumericType<BigDecimal> fraction = PgSqlTypes.numeric(3, 5);
         fits(fraction, "0.00999", "-0.00999", "0.00001");
         rejects(fraction, "0.01", "1", "0.000001");
-        fits(PgSqlTypes.numeric(1000, -1000), "9".repeat(1000) + "E1000");
+        fits(PgSqlTypes.numeric(1000, -1000), String.join("", Collections.nCopies(1000, "9")) + "E1000");
         fits(PgSqlTypes.numeric(1000, 1000), "1E-1000");
-        fits(PgSqlTypes.numeric(), "1E131071", "1E-16383", "9".repeat(1001));
+        fits(PgSqlTypes.numeric(), "1E131071", "1E-16383", String.join("", Collections.nCopies(1001, "9")));
         rejects(PgSqlTypes.numeric(), "1E131072", "1E-16384");
-        fits(HanaTypes.decimal(38, 38), "0." + "9".repeat(38));
+        fits(HanaTypes.decimal(38, 38), "0." + String.join("", Collections.nCopies(38, "9")));
         rejects(HanaTypes.decimal(38, 38), "1", "1E-39");
-        for (var type : List.of(mysql, thousands, fraction, PgSqlTypes.numeric(), HanaTypes.decimal(38, 38))) {
+        for (NumericType<BigDecimal> type : Arrays.asList(mysql, thousands, fraction, PgSqlTypes.numeric(), HanaTypes.decimal(38, 38))) {
             assertNull(type.prepareValue(null));
             assertEquals(0, type.prepareValue(new BigDecimal(BigInteger.ZERO, Integer.MIN_VALUE)).signum());
             assertThrows(IllegalArgumentException.class, () -> type.prepareValue(new BigDecimal(BigInteger.TEN, Integer.MIN_VALUE)));
@@ -88,7 +129,7 @@ class NativeNumericDslTest {
         rejects(HanaTypes.smallDecimal(), "1E-399", "9.999999999999999E-384", "1E385", "12345678901234567");
         fits(HanaTypes.floatingDecimal(), "1E-6176", "1E6144", "9.999999999999999999999999999999999E6144");
         rejects(HanaTypes.floatingDecimal(), "1E-6177", "1E6145", "1.2345678901234567890123456789012345");
-        for (var type : List.of(HanaTypes.smallDecimal(), HanaTypes.floatingDecimal())) {
+        for (NumericType<BigDecimal> type : Arrays.asList(HanaTypes.smallDecimal(), HanaTypes.floatingDecimal())) {
             assertNull(type.prepareValue(null));
             assertEquals(BigDecimal.ZERO, type.prepareValue(new BigDecimal(BigInteger.ZERO, Integer.MAX_VALUE)));
             assertThrows(IllegalArgumentException.class, () -> type.prepareValue(new BigDecimal(BigInteger.TEN, Integer.MIN_VALUE)));
@@ -97,7 +138,7 @@ class NativeNumericDslTest {
 
     @Test
     void hanaTinyintUsesShortWithoutChangingTheSignedByteContract() {
-        var type = HanaTypes.tinyint();
+        NumericType<Short> type = HanaTypes.tinyint();
         assertEquals(Short.class, type.javaType());
         assertEquals((short) 255, type.prepareValue((short) 255));
         assertEquals((short) 0, type.prepareValue((short) 0));

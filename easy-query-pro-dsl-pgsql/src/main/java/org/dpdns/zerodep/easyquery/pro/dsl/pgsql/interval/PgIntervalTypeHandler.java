@@ -25,7 +25,7 @@ public final class PgIntervalTypeHandler implements JdbcTypeHandler {
 
     @Override
     public void setParameter(EasyParameter parameter) throws SQLException {
-        var value = new PGobject();
+        PGobject value = new PGobject();
         value.setType("interval");
         value.setValue(PgIntervalCodec.encode((PgInterval) parameter.getValue()));
         parameter.getPs().setObject(parameter.getIndex(), value);

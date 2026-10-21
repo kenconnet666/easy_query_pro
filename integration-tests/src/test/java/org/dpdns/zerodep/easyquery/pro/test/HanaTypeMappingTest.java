@@ -40,7 +40,7 @@ class HanaTypeMappingTest {
     @ParameterizedTest
     @MethodSource("legacyHandlers")
     void explicitLegacyClassUsesAnApplicationRegisteredInstance(Class<?> javaType, JdbcTypeHandler custom) {
-        var handlers = new HanaJdbcTypeHandlerManager();
+        HanaJdbcTypeHandlerManager handlers = new HanaJdbcTypeHandlerManager();
         assertSame(handlers.getHandler(javaType), handlers.getHandlerByHandlerClass(custom.getClass()));
         handlers.appendHandler(javaType, custom, true);
         assertSame(custom, handlers.getHandler(javaType));
@@ -49,9 +49,9 @@ class HanaTypeMappingTest {
 
     @Test
     void customSubclassKeepsItsIdentityAndUnknownClassesStillFail() {
-        var handlers = new HanaJdbcTypeHandlerManager();
-        var standard = handlers.getHandlerByHandlerClass(ByteTypeHandler.class);
-        var custom = new ApplicationByte();
+        HanaJdbcTypeHandlerManager handlers = new HanaJdbcTypeHandlerManager();
+        JdbcTypeHandler standard = handlers.getHandlerByHandlerClass(ByteTypeHandler.class);
+        HanaTypeMappingTest.ApplicationByte custom = new ApplicationByte();
         handlers.appendHandler(Byte.class, custom, true);
         assertSame(custom, handlers.getHandlerByHandlerClass(ApplicationByte.class));
         assertSame(standard, handlers.getHandlerByHandlerClass(ByteTypeHandler.class));

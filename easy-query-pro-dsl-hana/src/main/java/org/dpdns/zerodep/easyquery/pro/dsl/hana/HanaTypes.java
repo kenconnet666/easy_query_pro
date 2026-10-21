@@ -12,6 +12,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.type.StorageType;
 import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.HanaJsonTextType;
 
 import java.math.BigDecimal;
+import java.util.Objects;
 
 /**
  * HANA 类型目录，明确区分存储类型、可 CAST 目标和只声明操作语义的 view。
@@ -54,10 +55,13 @@ public final class HanaTypes {
         return new ShortText(utf16Capacity);
     }
 
-    private record ShortText(int capacity) implements StorageType<String> {
-        private ShortText {
+    private static final class ShortText implements StorageType<String> {
+        private final int capacity;
+
+        private ShortText(int capacity) {
             if (capacity < 1 || capacity > 5000)
                 throw new IllegalArgumentException("HANA SHORTTEXT requires 1 <= capacity <= 5000");
+            this.capacity = capacity;
         }
 
         @Override
@@ -70,6 +74,28 @@ public final class HanaTypes {
             if (dialect != SqlDialect.HANA)
                 throw new IllegalArgumentException("SHORTTEXT requires HANA COLUMN TABLE storage");
             return "SHORTTEXT(" + capacity + ")";
+        }
+
+        public int capacity() {
+            return capacity;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof ShortText)) return false;
+            ShortText other = (ShortText) o;
+            return capacity == other.capacity;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(capacity);
+        }
+
+        @Override
+        public String toString() {
+            return "ShortText[capacity=" + capacity + "]";
         }
     }
 
@@ -119,11 +145,16 @@ public final class HanaTypes {
         }
     }
 
-    private record Decimal(int precision, int scale) implements NumericType<BigDecimal> {
-        private Decimal {
+    private static final class Decimal implements NumericType<BigDecimal> {
+        private final int precision;
+        private final int scale;
+
+        private Decimal(int precision, int scale) {
             if (precision < 1 || precision > 38 || scale < 0 || scale > precision) {
                 throw new IllegalArgumentException("HANA DECIMAL requires 1 <= precision <= 38 and 0 <= scale <= precision");
             }
+            this.precision = precision;
+            this.scale = scale;
         }
 
         @Override
@@ -145,6 +176,33 @@ public final class HanaTypes {
         @Override
         public BigDecimal prepareValue(BigDecimal value) {
             return DecimalValues.prepare(value, precision, scale);
+        }
+
+        public int precision() {
+            return precision;
+        }
+
+        public int scale() {
+            return scale;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Decimal)) return false;
+            Decimal other = (Decimal) o;
+            return precision == other.precision
+                    && scale == other.scale;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(precision, scale);
+        }
+
+        @Override
+        public String toString() {
+            return "Decimal[precision=" + precision + ", scale=" + scale + "]";
         }
     }
 
@@ -172,7 +230,7 @@ public final class HanaTypes {
         return BLOB;
     }
 
-    public sealed interface Lob<J> extends StorageType<J> permits TextLob, BinaryLob {
+    public interface Lob<J> extends StorageType<J> {
         String sqlName();
 
         @Override
@@ -185,7 +243,7 @@ public final class HanaTypes {
     /**
      * TEXT is a storage/index choice whose returned value is a character LOB; it is not a CAST target.
      */
-    public static sealed class TextLob implements Lob<String> permits CharacterLob {
+    public static class TextLob implements Lob<String> {
         private final String name;
 
         private TextLob(String name) {

@@ -16,7 +16,10 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.Arrays;
-import java.util.List;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.stream.Collectors;
+import java.util.Objects;
+import com.easy.query.core.basic.api.select.Query;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -34,7 +37,7 @@ class HanaScalarFunctionsIT {
     @Test
     void stringFunctionsRetainBindingUnicodeAndIndexSemantics() {
         String value = "O'Reilly %_!\\中文";
-        var source = source(value, BigDecimal.ONE);
+        EntityQueryable<TestProductProxy, TestProduct> source = source(value, BigDecimal.ONE);
         assertEquals(value.length(), source.cloneQueryable().selectColumn(p -> p.name().length()).toList().get(0));
         assertEquals(value.indexOf("_!"), source.cloneQueryable().selectColumn(p -> p.name().indexOf("_!")).toList().get(0));
         assertEquals(-1, source.cloneQueryable().selectColumn(p -> p.name().indexOf("missing")).toList().get(0));
@@ -50,13 +53,13 @@ class HanaScalarFunctionsIT {
 
     @Test
     void likeTreatsWildcardCharactersAsValuesAndCanBeRenderedRepeatedly() {
-        var selection = source("prefix%_!\\suffix", BigDecimal.ONE)
+        EntityQueryable<TestProductProxy, TestProduct> selection = source("prefix%_!\\suffix", BigDecimal.ONE)
                 .where(p -> p.name().toUpper().like("%_!\\"));
-        var first = selection.toSQLResult();
-        var second = selection.toSQLResult();
+        ToSQLResult first = selection.toSQLResult();
+        ToSQLResult second = selection.toSQLResult();
         assertEquals(first.getSQL(), second.getSQL());
-        assertEquals(first.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList(),
-                second.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(first.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()),
+                second.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         assertFalse(first.getSQL().contains("prefix"));
         assertEquals(1, selection.toList().size());
         assertTrue(source("ordinary", BigDecimal.ONE).where(p -> p.name().toUpper().like("%_!\\")).toList().isEmpty());
@@ -128,25 +131,27 @@ class HanaScalarFunctionsIT {
 
     @Test
     void mathematicalFunctionsMatchIndependentNumericResults() {
-        for (var method : MathMethodEnum.values()) {
-            double expected = switch (method) {
-                case Abs -> Math.abs(0.5);
-                case Signum -> 1;
-                case Floor, Truncate -> 0;
-                case Ceiling, Round -> 1;
-                case Exp -> Math.exp(0.5);
-                case Log -> Math.log(0.5);
-                case Log10 -> Math.log10(0.5);
-                case Pow -> Math.pow(0.5, 2);
-                case Sqrt -> Math.sqrt(0.5);
-                case Cos -> Math.cos(0.5);
-                case Sin -> Math.sin(0.5);
-                case Tan -> Math.tan(0.5);
-                case Acos -> Math.acos(0.5);
-                case Asin -> Math.asin(0.5);
-                case Atan -> Math.atan(0.5);
-                case Atan2 -> Math.atan2(0.5, 2);
-            };
+        for (MathMethodEnum method : MathMethodEnum.values()) {
+            double expected;
+            switch (method) {
+                case Abs: expected = Math.abs(0.5); break;
+                case Signum: expected = 1; break;
+                case Floor: case Truncate: expected = 0; break;
+                case Ceiling: case Round: expected = 1; break;
+                case Exp: expected = Math.exp(0.5); break;
+                case Log: expected = Math.log(0.5); break;
+                case Log10: expected = Math.log10(0.5); break;
+                case Pow: expected = Math.pow(0.5, 2); break;
+                case Sqrt: expected = Math.sqrt(0.5); break;
+                case Cos: expected = Math.cos(0.5); break;
+                case Sin: expected = Math.sin(0.5); break;
+                case Tan: expected = Math.tan(0.5); break;
+                case Acos: expected = Math.acos(0.5); break;
+                case Asin: expected = Math.asin(0.5); break;
+                case Atan: expected = Math.atan(0.5); break;
+                case Atan2: expected = Math.atan2(0.5, 2); break;
+                default: throw new IllegalStateException("Unhandled value: " + method);
+            }
             double actual = source("math", new BigDecimal("0.5")).selectColumn(p -> new NumberTypeExpressionImpl<Double>(
                     p.getEntitySQLContext(), p.getTable(), null, fx -> fx.math(args -> {
                 PropTypeColumn.columnFuncSelector(args, p.amount());
@@ -163,18 +168,59 @@ class HanaScalarFunctionsIT {
 
     @Test
     void legacyRoundFactoryKeepsTableOwnersNullsAndNegativeScale() {
-        record Sample(String value, int scale, String expected) {
+        final class Sample {
+            private final String value;
+            private final int scale;
+            private final String expected;
+
+            Sample(String value, int scale, String expected) {
+                this.value = value;
+                this.scale = scale;
+                this.expected = expected;
+            }
+
+            public String value() {
+                return value;
+            }
+
+            public int scale() {
+                return scale;
+            }
+
+            public String expected() {
+                return expected;
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                if (this == o) return true;
+                if (!(o instanceof Sample)) return false;
+                Sample other = (Sample) o;
+                return Objects.equals(value, other.value)
+                        && scale == other.scale
+                        && Objects.equals(expected, other.expected);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(value, scale, expected);
+            }
+
+            @Override
+            public String toString() {
+                return "Sample[value=" + value + ", scale=" + scale + ", expected=" + expected + "]";
+            }
         }
-        for (boolean explicitOwner : List.of(false, true)) {
-            for (var sample : List.of(new Sample("12.35", 1, "12.4"), new Sample("-1.25", 1, "-1.3"),
+        for (boolean explicitOwner : Arrays.asList(false, true)) {
+            for (Sample sample : Arrays.asList(new Sample("12.35", 1, "12.4"), new Sample("-1.25", 1, "-1.3"),
                     new Sample("125", -1, "130"), new Sample(null, 2, null))) {
-                var value = sample.value() == null ? null : new BigDecimal(sample.value());
-                var rounded = source("legacy", value).selectColumn(p -> new NumberTypeExpressionImpl<BigDecimal>(
+                BigDecimal value = sample.value() == null ? null : new BigDecimal(sample.value());
+                Query<BigDecimal> rounded = source("legacy", value).selectColumn(p -> new NumberTypeExpressionImpl<BigDecimal>(
                         p.getEntitySQLContext(), p.getTable(), null,
                         fx -> explicitOwner ? fx.round(() -> p.getTable(), "amount", sample.scale()) : fx.round("amount", sample.scale()),
                         BigDecimal.class));
                 assertEquals(rounded.toSQL(), rounded.cloneQueryable().toSQL());
-                var actual = rounded.toList().get(0);
+                BigDecimal actual = rounded.toList().get(0);
                 if (sample.expected() == null) assertNull(actual);
                 else assertDecimal(sample.expected(), actual);
             }
@@ -190,7 +236,7 @@ class HanaScalarFunctionsIT {
         assertEquals(Boolean.TRUE, source("a", BigDecimal.ONE).selectColumn(p -> new BooleanTypeExpressionImpl<Boolean>(
                 p.getEntitySQLContext(), p.getTable(), null, fx -> fx.booleanConstantSQLFunction(true), Boolean.class)).toList().get(0));
         for (BigDecimal value : Arrays.asList(BigDecimal.ONE, BigDecimal.ZERO, null)) {
-            var predicate = source("a", value).selectColumn(p -> new BooleanTypeExpressionImpl<Boolean>(
+            Query<Boolean> predicate = source("a", value).selectColumn(p -> new BooleanTypeExpressionImpl<Boolean>(
                     p.getEntitySQLContext(), p.getTable(), null, fx -> fx.booleanSQLFunction("{0} > {1}", args -> {
                 PropTypeColumn.columnFuncSelector(args, p.amount());
                 args.value(BigDecimal.ZERO);

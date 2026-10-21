@@ -15,6 +15,21 @@ import java.util.List;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import java.sql.Types;
+import com.easy.query.core.common.ToSQLResult;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import com.easy.query.core.proxy.core.draft.proxy.Draft4Proxy;
+import com.easy.query.core.proxy.core.draft.Draft4;
+import com.easy.query.core.proxy.core.draft.Draft5;
+import com.easy.query.core.proxy.core.draft.proxy.Draft3Proxy;
+import com.easy.query.core.proxy.core.draft.Draft3;
+import java.util.stream.Collectors;
+import com.easy.query.core.proxy.core.draft.Draft2;
+import com.easy.query.core.proxy.core.draft.proxy.Draft5Proxy;
+import org.dpdns.zerodep.easyquery.pro.dsl.window.RowsWindowSpec;
+import com.easy.query.core.proxy.extension.functions.type.NumberTypeExpression;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,15 +51,15 @@ final class StatisticsContract {
     }
 
     private static void verifyJdbcTypes(Supplier<EntityQueryable<ReportSaleProxy, ReportSale>> rows, DataSource source) {
-        var sql = rows.get().select(p -> {
-            var pro = ProDsl.of(p);
+        ToSQLResult sql = rows.get().select(p -> {
+            ProDsl pro = ProDsl.of(p);
             return Select.DRAFT.of(pro.variancePopulation(p.amount()), pro.varianceSample(p.amount()),
                     pro.standardDeviationPopulation(p.amount()), pro.standardDeviationSample(p.amount()));
         }).toSQLResult();
         assertTrue(sql.getSqlContext().getParameters().isEmpty());
         assertDoesNotThrow(() -> {
-            try (var connection = source.getConnection(); var statement = connection.prepareStatement(sql.getSQL()); var result = statement.executeQuery()) {
-                var metadata = result.getMetaData();
+            try (Connection connection = source.getConnection(); PreparedStatement statement = connection.prepareStatement(sql.getSQL()); ResultSet result = statement.executeQuery()) {
+                ResultSetMetaData metadata = result.getMetaData();
                 assertEquals(4, metadata.getColumnCount());
                 for (int column = 1; column <= 4; column++) {
                     assertEquals(Types.DOUBLE, metadata.getColumnType(column));
@@ -55,19 +70,19 @@ final class StatisticsContract {
     }
 
     private static void verifyAggregatesAndFilters(Supplier<EntityQueryable<ReportSaleProxy, ReportSale>> rows) {
-        var summary = rows.get().select(p -> {
-            var pro = ProDsl.of(p);
+        EntityQueryable<Draft4Proxy<Double, Double, Double, Double>, Draft4<Double, Double, Double, Double>> summary = rows.get().select(p -> {
+            ProDsl pro = ProDsl.of(p);
             return Select.DRAFT.of(pro.variancePopulation(p.amount()), pro.varianceSample(p.amount()),
                     pro.standardDeviationPopulation(p.amount()), pro.standardDeviationSample(p.amount()));
         });
-        var result = summary.cloneQueryable().singleNotNull();
+        Draft4<Double, Double, Double, Double> result = summary.cloneQueryable().singleNotNull();
         close(35.6, result.getValue1());
         close(44.5, result.getValue2());
         close(Math.sqrt(35.6), result.getValue3());
         close(Math.sqrt(44.5), result.getValue4());
         assertEquals(1L, summary.cloneQueryable().toCteAs("eqp_statistics").count());
-        var filtered = rows.get().select(p -> {
-            var pro = ProDsl.of(p);
+        Draft5<Double, Double, Double, Double, Double> filtered = rows.get().select(p -> {
+            ProDsl pro = ProDsl.of(p);
             return Select.DRAFT.of(pro.variancePopulation(p.amount()).filter(() -> p.id().le(2)),
                     pro.varianceSample(p.amount()).filter(() -> p.id().le(2)),
                     pro.standardDeviationPopulation(p.amount()).filter(() -> p.id().le(2)),
@@ -83,8 +98,8 @@ final class StatisticsContract {
 
     private static void verifyEmptyAndSingleton(Supplier<EntityQueryable<ReportSaleProxy, ReportSale>> rows) {
         for (int id : new int[]{0, 1, 6}) {
-            var result = rows.get().where(p -> p.id().eq(id)).select(p -> {
-                var pro = ProDsl.of(p);
+            Draft4<Double, Double, Double, Double> result = rows.get().where(p -> p.id().eq(id)).select(p -> {
+                ProDsl pro = ProDsl.of(p);
                 return Select.DRAFT.of(pro.variancePopulation(p.amount()), pro.varianceSample(p.amount()),
                         pro.standardDeviationPopulation(p.amount()), pro.standardDeviationSample(p.amount()));
             }).singleNotNull();
@@ -101,13 +116,13 @@ final class StatisticsContract {
     }
 
     private static void verifyGroupsAndWindows(Supplier<EntityQueryable<ReportSaleProxy, ReportSale>> rows) {
-        var grouped = rows.get().groupBy(p -> GroupKeys.of(p.region())).select(g -> {
-            var pro = ProDsl.of(g.groupTable());
+        EntityQueryable<Draft3Proxy<String, Double, Double>, Draft3<String, Double, Double>> grouped = rows.get().groupBy(p -> GroupKeys.of(p.region())).select(g -> {
+            ProDsl pro = ProDsl.of(g.groupTable());
             return Select.DRAFT.of(g.key1(), pro.variancePopulation(g.groupTable().amount()),
                     pro.varianceSample(g.groupTable().amount()));
         }).orderBy(p -> p.value1().asc());
-        var groups = grouped.cloneQueryable().toList();
-        assertEquals(List.of("A", "B", "C"), groups.stream().map(g -> g.getValue1()).toList());
+        List<Draft3<String, Double, Double>> groups = grouped.cloneQueryable().toList();
+        assertEquals(Arrays.asList("A", "B", "C"), groups.stream().map(g -> g.getValue1()).collect(Collectors.toList()));
         close(350D / 9, groups.get(0).getValue2());
         close(175D / 3, groups.get(0).getValue3());
         close(4, groups.get(1).getValue2());
@@ -116,34 +131,34 @@ final class StatisticsContract {
         assertNull(groups.get(2).getValue3());
         assertEquals(3L, grouped.cloneQueryable().count());
         assertEquals(3L, grouped.cloneQueryable().toPageResult(1, 2).getTotal());
-        var aboveThreshold = rows.get().groupBy(p -> GroupKeys.of(p.region()))
+        Draft2<String, Double> aboveThreshold = rows.get().groupBy(p -> GroupKeys.of(p.region()))
                 .having(g -> ProDsl.of(g.groupTable()).variancePopulation(g.groupTable().amount()).gt(10D))
                 .select(g -> Select.DRAFT.of(g.key1(), ProDsl.of(g.groupTable()).variancePopulation(g.groupTable().amount())))
                 .singleNotNull();
         assertEquals("A", aboveThreshold.getValue1());
         close(350D / 9, aboveThreshold.getValue2());
-        var windows = rows.get().select(p -> {
-            var pro = ProDsl.of(p);
-            var cumulative = pro.window().partitionBy(p.region()).orderBy(p.id())
+        EntityQueryable<Draft5Proxy<Integer, Double, Double, Double, Double>, Draft5<Integer, Double, Double, Double, Double>> windows = rows.get().select(p -> {
+            ProDsl pro = ProDsl.of(p);
+            RowsWindowSpec cumulative = pro.window().partitionBy(p.region()).orderBy(p.id())
                     .rowsBetween(RowBoundary.unboundedPreceding(), RowBoundary.currentRow());
             return Select.DRAFT.of(p.id(), pro.over(pro.variancePopulation(p.amount()), cumulative),
                     pro.over(pro.varianceSample(p.amount()), cumulative),
                     pro.over(pro.standardDeviationSample(p.amount()), pro.window()),
                     pro.over(pro.variancePopulation(p.amount()).filter(() -> p.id().le(2)), cumulative));
         }).toCteAs("eqp_statistic_windows").orderBy(p -> p.value1().asc());
-        var result = windows.cloneQueryable().toList();
-        assertValues(Arrays.asList(0D, 25D, 350D / 9, 0D, 4D, null), result.stream().map(r -> r.getValue2()).toList());
-        assertValues(Arrays.asList(null, 50D, 175D / 3, null, 8D, null), result.stream().map(r -> r.getValue3()).toList());
-        assertValues(Arrays.asList(0D, 25D, 25D, null, null, null), result.stream().map(r -> r.getValue5()).toList());
-        for (var row : result) close(Math.sqrt(44.5), row.getValue4());
+        List<Draft5<Integer, Double, Double, Double, Double>> result = windows.cloneQueryable().toList();
+        assertValues(Arrays.asList(0D, 25D, 350D / 9, 0D, 4D, null), result.stream().map(r -> r.getValue2()).collect(Collectors.toList()));
+        assertValues(Arrays.asList(null, 50D, 175D / 3, null, 8D, null), result.stream().map(r -> r.getValue3()).collect(Collectors.toList()));
+        assertValues(Arrays.asList(0D, 25D, 25D, null, null, null), result.stream().map(r -> r.getValue5()).collect(Collectors.toList()));
+        for (Draft5<Integer, Double, Double, Double, Double> row : result) close(Math.sqrt(44.5), row.getValue4());
         assertEquals(6L, windows.cloneQueryable().count());
     }
 
     private static void verifyApproximatePrecision(Supplier<EntityQueryable<ReportSaleProxy, ReportSale>> rows) {
-        var result = rows.get().where(p -> p.id().le(2)).select(p -> {
-            var pro = ProDsl.of(p);
-            var tiny = pro.nativeCast(p.id(), CommonTypes.decimal(19, 4)).multiply(new BigDecimal("0.0001"));
-            var large = pro.value(new BigDecimal("9007199254740991"), CommonTypes.decimal(20, 0)).add(p.id());
+        Draft5<Double, Double, Double, Double, Double> result = rows.get().where(p -> p.id().le(2)).select(p -> {
+            ProDsl pro = ProDsl.of(p);
+            NumberTypeExpression<BigDecimal> tiny = pro.nativeCast(p.id(), CommonTypes.decimal(19, 4)).multiply(new BigDecimal("0.0001"));
+            NumberTypeExpression<BigDecimal> large = pro.value(new BigDecimal("9007199254740991"), CommonTypes.decimal(20, 0)).add(p.id());
             return Select.DRAFT.of(pro.variancePopulation(tiny), pro.varianceSample(tiny),
                     pro.standardDeviationPopulation(tiny), pro.standardDeviationSample(tiny), pro.variancePopulation(large));
         }).singleNotNull();

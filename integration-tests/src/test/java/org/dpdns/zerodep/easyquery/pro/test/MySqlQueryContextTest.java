@@ -13,19 +13,23 @@ import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.List;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import com.easy.query.core.basic.api.select.ClientQueryable;
+import java.util.Arrays;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class MySqlQueryContextTest {
     @Test
     void clonedCteKeepsTheOuterShardFlagAndOriginalParameters() {
-        var query = TestClients.offline(new MySQLDatabaseConfiguration(), services -> {
+        DefaultEasyEntityQuery query = TestClients.offline(new MySQLDatabaseConfiguration(), services -> {
             MySqlExtensions.configure(services);
             MySqlExtensions.configureQueryScope(services);
         });
-        var observed = new ArrayList<Boolean>();
-        var source = query.getEasyQueryClient().queryable(TestProduct.class).where(p -> p.eq("id", 7));
+        ArrayList<Boolean> observed = new ArrayList<Boolean>();
+        ClientQueryable<TestProduct> source = query.getEasyQueryClient().queryable(TestProduct.class).where(p -> p.eq("id", 7));
         source.select(columns -> {
             columns.columnAll();
             columns.getSQLNative().sqlNativeSegment("{0}", context -> context.sql(sql -> {
@@ -34,38 +38,38 @@ class MySqlQueryContextTest {
             }));
         });
         source.cloneQueryable().toSQL();
-        assertEquals(List.of(false), observed);
+        assertEquals(Arrays.asList(false), observed);
         observed.clear();
-        var copy = source.toCteAs("context_source").cloneQueryable().where(p -> p.eq("name", "outer"));
+        ClientQueryable<TestProduct> copy = source.toCteAs("context_source").cloneQueryable().where(p -> p.eq("name", "outer"));
         copy.getSQLEntityExpressionBuilder().getExpressionContext().useSharding();
         assertFalse(source.getSQLEntityExpressionBuilder().getExpressionContext().isSharding());
-        var result = copy.toSQLResult();
-        assertEquals(List.of(true), observed);
-        assertEquals(List.of(7, "outer"), result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        ToSQLResult result = copy.toSQLResult();
+        assertEquals(Arrays.asList(true), observed);
+        assertEquals(Arrays.asList(7, "outer"), result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         assertTrue(result.getSQL().startsWith("WITH "), result.getSQL());
         assertEquals(result.getSQL(), copy.cloneQueryable().toSQL());
     }
 
     @Test
     void anApplicationFactoryRegisteredAfterProRemainsInstalledThroughCloneAndUnion() {
-        var factory = new ApplicationFactory();
-        var query = TestClients.offline(new MySQLDatabaseConfiguration(), services -> {
+        MySqlQueryContextTest.ApplicationFactory factory = new ApplicationFactory();
+        DefaultEasyEntityQuery query = TestClients.offline(new MySQLDatabaseConfiguration(), services -> {
             MySqlExtensions.configure(services);
             MySqlExtensions.configureQueryScope(services);
             services.addService(ExpressionFactory.class, factory);
         });
         assertSame(factory, query.getRuntimeContext().getExpressionFactory());
-        var first = query.getEasyQueryClient().queryable(TestProduct.class).where(p -> p.eq("id", 1));
-        var second = query.getEasyQueryClient().queryable(TestProduct.class).where(p -> p.eq("id", 2));
-        var combined = first.unionAll(second).toCteAs("application_union");
+        ClientQueryable<TestProduct> first = query.getEasyQueryClient().queryable(TestProduct.class).where(p -> p.eq("id", 1));
+        ClientQueryable<TestProduct> second = query.getEasyQueryClient().queryable(TestProduct.class).where(p -> p.eq("id", 2));
+        ClientQueryable<TestProduct> combined = first.unionAll(second).toCteAs("application_union");
         assertEquals(combined.toSQL(), combined.cloneQueryable().toSQL());
         assertTrue(factory.queries >= 4);
     }
 
     @Test
     void ordinaryInstallationPreservesAnExistingApplicationFactory() {
-        var application = new MySQLExpressionFactory();
-        var query = TestClients.offline(new MySQLDatabaseConfiguration(), services -> {
+        MySQLExpressionFactory application = new MySQLExpressionFactory();
+        DefaultEasyEntityQuery query = TestClients.offline(new MySQLDatabaseConfiguration(), services -> {
             services.addService(ExpressionFactory.class, application);
             MySqlExtensions.configure(services);
         });

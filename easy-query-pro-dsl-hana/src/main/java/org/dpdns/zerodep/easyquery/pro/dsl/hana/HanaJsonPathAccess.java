@@ -23,13 +23,14 @@ final class HanaJsonPathAccess implements JsonPathAccess {
 
     @Override
     public SQLFunction fragment(SQLFunc factory, SQLFunction document, JsonPath path) {
-        var node = filter(factory, document, "ANY");
+        SQLFunction node = filter(factory, document, "ANY");
         if (path.segments().isEmpty()) {
             SQLFunction wrapped = wrap(factory, node);
             return factory.jsonArrayExtractByIndex(args -> args.sqlFunc(wrapped).format(0));
         }
-        for (var segment : path.segments()) {
-            if (segment instanceof JsonPath.Key key) {
+        for (JsonPath.Segment segment : path.segments()) {
+            if (segment instanceof JsonPath.Key) {
+                JsonPath.Key key = (JsonPath.Key) segment;
                 SQLFunction parent = filter(factory, node, "OBJECT");
                 node = factory.jsonObjectExtract(args -> args.sqlFunc(parent).format(key.name()));
             } else {
@@ -43,7 +44,7 @@ final class HanaJsonPathAccess implements JsonPathAccess {
 
     @Override
     public SQLFunction scalarText(SQLFunc factory, SQLFunction fragment) {
-        var wrapped = wrap(factory, filter(factory, fragment, "SCALAR"));
+        SQLFunction wrapped = wrap(factory, filter(factory, fragment, "SCALAR"));
         return factory.jsonArrayByIndex(args -> args.sqlFunc(wrapped).format(0));
     }
 

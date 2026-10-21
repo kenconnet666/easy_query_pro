@@ -14,7 +14,6 @@ import com.easy.query.core.expression.sql.expression.impl.EntitySQLExpressionMet
 import com.easy.query.core.expression.visitor.TableVisitor;
 import com.easy.query.core.util.EasySQLExpressionUtil;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.function.BiConsumer;
 
@@ -35,7 +34,7 @@ public final class CapturedQuerySourceBuilder extends QueryExpressionBuilder imp
         super(context, resultClass);
         this.source = Objects.requireNonNull(source, "source").cloneQueryable();
         this.renderCheck = Objects.requireNonNull(renderCheck, "renderCheck");
-        var nativeContext = new SQLNativeExpressionContextImpl(context, runtimeContext);
+        SQLNativeExpressionContextImpl nativeContext = new SQLNativeExpressionContextImpl(context, runtimeContext);
         // extract 必须发生在外层 ToSQLContext 建立之前，确保 CTE/表别名依赖已经就绪。
         nativeContext.expression(this.source);
         String alias = runtimeContext.getQueryConfiguration().getDialect().getQuoteName("_EQP_SOURCE");
@@ -69,7 +68,7 @@ public final class CapturedQuerySourceBuilder extends QueryExpressionBuilder imp
 
         private CapturedExpression(EntitySQLExpressionMetadata metadata, SQLNativeSegment source,
                                    BiConsumer<ExpressionContext, ToSQLContext> renderCheck) {
-            super(metadata, "", List.of());
+            super(metadata, "", ImmutableCollections.listOf());
             this.metadata = metadata;
             this.source = source;
             this.renderCheck = renderCheck;

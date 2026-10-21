@@ -5,6 +5,7 @@ import com.easy.query.core.basic.jdbc.executor.internal.merge.result.StreamResul
 import com.easy.query.core.basic.jdbc.types.handler.ObjectTypeHandler;
 
 import java.sql.SQLException;
+import java.math.BigDecimal;
 
 /**
  * Keeps integer Java results exact when SQL changes the JDBC numeric representation.
@@ -13,7 +14,7 @@ import java.sql.SQLException;
 public final class ExactBigIntegerTypeHandler extends ObjectTypeHandler {
     @Override
     public Object getValue(JdbcProperty property, StreamResultSet result) throws SQLException {
-        var value = result.getBigDecimal(property.getJdbcIndex());
+        BigDecimal value = result.getBigDecimal(property.getJdbcIndex());
         if (value == null) return null;
         try {
             return value.toBigIntegerExact();

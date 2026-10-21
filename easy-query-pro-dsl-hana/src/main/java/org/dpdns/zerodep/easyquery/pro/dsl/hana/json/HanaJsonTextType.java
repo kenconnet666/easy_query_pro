@@ -53,7 +53,7 @@ public final class HanaJsonTextType extends NativeJsonType {
 
     @Override
     public boolean equals(Object other) {
-        return other instanceof HanaJsonTextType type && capacity == type.capacity;
+        return other instanceof HanaJsonTextType && capacity == ((HanaJsonTextType) other).capacity;
     }
 
     @Override

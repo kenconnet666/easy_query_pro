@@ -6,15 +6,17 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayType;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.PgArrayValue;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class PgArrayTypeTest {
     @Test
     void arraysSnapshotValuesPreserveNullsAndKeepTheirSqlElementType() {
-        var type = PgSqlTypes.array(Integer.class);
-        var input = new ArrayList<>(Arrays.asList(1, null, 2));
-        var value = type.value(input);
+        PgArrayType<Integer> type = PgSqlTypes.array(Integer.class);
+        ArrayList<Integer> input = new ArrayList<>(Arrays.asList(1, null, 2));
+        PgArrayValue<Integer> value = type.value(input);
         input.set(0, 99);
         assertEquals(Arrays.asList(1, null, 2), value.elements());
         assertThrows(UnsupportedOperationException.class, () -> value.elements().add(3));

@@ -22,7 +22,7 @@ public class ProGroups {
      * 按已声明键的顺序生成明细、逐级小计和总计，并立即投影为一个独立报告关系。
      *
      * <p>输入查询先 clone，普通分组分支不受影响。共同契约规定空输入返回零行；PG 原生会额外产生
-     * 空总计，内部通过 HAVING COUNT(*) > 0 统一，而非在 Java 端删除行或修改分页数量。
+     * 空总计，内部通过 {@code HAVING COUNT(*) > 0} 统一，而非在 Java 端删除行或修改分页数量。
      *
      * <p>projection 应返回新 Select.DRAFT.of(...) 或显式 DTO。Draft 的 primitive 输出允许小计 NULL；
      * DTO 继续按自身字段类型读取，需保留 NULL 时请声明包装类型。参数化计算键建议先投影为派生列，

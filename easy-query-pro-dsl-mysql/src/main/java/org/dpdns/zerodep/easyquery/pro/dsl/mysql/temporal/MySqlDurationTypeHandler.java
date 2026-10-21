@@ -32,9 +32,9 @@ public final class MySqlDurationTypeHandler extends ObjectTypeHandler {
             return;
         }
         // 客户端编码器可能给仅含秒的 Duration 留下尾部 S，严格 INSERT 会拒绝，故采用规范时长文本。
-        var magnitude = value.abs();
+        Duration magnitude = value.abs();
         String time = String.format(Locale.ROOT, "%s%02d:%02d:%02d.%06d", value.isNegative() ? "-" : "",
-                magnitude.toHours(), magnitude.toMinutesPart(), magnitude.toSecondsPart(), magnitude.getNano() / 1000);
+                magnitude.toHours(), magnitude.toMinutes() % 60, magnitude.getSeconds() % 60, magnitude.getNano() / 1000);
         parameter.getPs().setString(parameter.getIndex(), time);
     }
 }

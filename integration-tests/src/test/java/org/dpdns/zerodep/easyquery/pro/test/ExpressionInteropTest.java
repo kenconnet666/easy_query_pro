@@ -14,8 +14,14 @@ import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import java.util.List;
 import java.util.stream.Stream;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import com.easy.query.core.basic.api.select.Query;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,31 +32,31 @@ class ExpressionInteropTest {
     @ParameterizedTest
     @MethodSource("databases")
     void typedExpressionComposesWithExistingFunctionsOrderingProjectionAndClone(DatabaseConfiguration database) {
-        var client = TestClients.offline(database);
-        var query = client.queryable(TestProduct.class)
+        DefaultEasyEntityQuery client = TestClients.offline(database);
+        Query<String> query = client.queryable(TestProduct.class)
                 .where(p -> nullIf(p.name(), "hidden").toUpper().eq("VISIBLE"))
                 .orderBy(p -> nullIf(p.name(), "sort-null").asc())
                 .selectColumn(p -> nullIf(p.name(), "O'Reilly 中文").toUpper());
-        var first = query.toSQLResult();
+        ToSQLResult first = query.toSQLResult();
         assertTrue(first.getSQL().contains("UPPER(NULLIF("), first.getSQL());
         assertFalse(first.getSQL().contains("O'Reilly"));
-        assertEquals(List.of("O'Reilly 中文", "hidden", "VISIBLE", "sort-null"),
-                first.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
-        var copy = query.cloneQueryable().toSQLResult();
+        assertEquals(Arrays.asList("O'Reilly 中文", "hidden", "VISIBLE", "sort-null"),
+                first.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
+        ToSQLResult copy = query.cloneQueryable().toSQLResult();
         assertEquals(first.getSQL(), copy.getSQL());
-        assertEquals(first.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList(),
-                copy.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(first.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()),
+                copy.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
     }
 
     @ParameterizedTest
     @MethodSource("databases")
     void constructingBooleanValuesDoesNotAppendAPredicate(DatabaseConfiguration database) {
-        var client = TestClients.offline(database);
-        var untouched = client.queryable(TestProduct.class).where(p -> isNull(p.name()));
+        DefaultEasyEntityQuery client = TestClients.offline(database);
+        EntityQueryable<TestProductProxy, TestProduct> untouched = client.queryable(TestProduct.class).where(p -> isNull(p.name()));
         assertFalse(untouched.toSQL().contains(" WHERE "));
-        var filtered = client.queryable(TestProduct.class).where(p -> isNull(p.name()).eq(true));
+        EntityQueryable<TestProductProxy, TestProduct> filtered = client.queryable(TestProduct.class).where(p -> isNull(p.name()).eq(true));
         assertTrue(filtered.toSQL().contains(" WHERE "));
-        var projected = client.queryable(TestProduct.class).selectColumn(p -> isNull(p.name())).toSQL();
+        String projected = client.queryable(TestProduct.class).selectColumn(p -> isNull(p.name())).toSQL();
         assertTrue(projected.contains("CASE WHEN"), projected);
         assertFalse(projected.contains(" WHERE "));
     }

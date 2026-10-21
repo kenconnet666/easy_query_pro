@@ -46,7 +46,7 @@ final class HanaTemporalHandlers {
 
         @Override
         LocalDateTime local(Object value) {
-            var time = (LocalTime) value;
+            LocalTime time = (LocalTime) value;
             return time.atDate(LocalDate.of(1970, 1, 1));
         }
     }
@@ -95,19 +95,19 @@ final class HanaTemporalHandlers {
 
         @Override
         public void setParameter(EasyParameter parameter) throws SQLException {
-            var value = parameter.getValue();
+            Object value = parameter.getValue();
             if (value == null) {
                 parameter.getPs().setTimestamp(parameter.getIndex(), null);
                 return;
             }
-            var local = local(value);
+            LocalDateTime local = local(value);
             if (local.getYear() < 1 || local.getYear() > 9999)
                 throw new SQLException("HANA temporal year must be between 1 and 9999", "22008");
             if (value instanceof LocalTime && local.getNano() != 0)
                 throw new SQLException("HANA TIME stores whole seconds", "22008");
             if (local.getNano() % 100 != 0)
                 throw new SQLException("HANA TIMESTAMP precision is 100 nanoseconds", "22008");
-            var calendar = utcCalendar();
+            GregorianCalendar calendar = utcCalendar();
             calendar.clear();
             calendar.set(local.getYear(), local.getMonthValue() - 1, local.getDayOfMonth(), local.getHour(), local.getMinute(), local.getSecond());
             Timestamp timestamp;
@@ -122,7 +122,7 @@ final class HanaTemporalHandlers {
     }
 
     static GregorianCalendar utcCalendar() {
-        var calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC"), Locale.ROOT);
+        GregorianCalendar calendar = new GregorianCalendar(TimeZone.getTimeZone("UTC"), Locale.ROOT);
         // HANA SQL 同样使用 1582 年切历；禁止 lenient 模式把缺失的 10 天归一化成别的日期。
         calendar.setLenient(false);
         return calendar;

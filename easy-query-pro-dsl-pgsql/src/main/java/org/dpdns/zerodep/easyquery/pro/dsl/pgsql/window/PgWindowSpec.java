@@ -81,7 +81,7 @@ public abstract class PgWindowSpec<S extends PgWindowSpec<S>> extends WindowSpec
 
         @Override
         protected void validateKey(PropTypeColumn<?> key) {
-            var type = numericKey(key);
+            Class<?> type = numericKey(key);
             if (type != BigDecimal.class && type != BigInteger.class && (start.offset() instanceof BigDecimal || end.offset() instanceof BigDecimal))
                 throw new IllegalArgumentException("PostgreSQL integral RANGE keys require integral offsets");
         }
@@ -93,7 +93,7 @@ public abstract class PgWindowSpec<S extends PgWindowSpec<S>> extends WindowSpec
 
         @Override
         protected SQLFunction offset(SQLFunc factory, Number value) {
-            var parameter = numericOffset(value);
+            Number parameter = numericOffset(value);
             String type = parameter instanceof BigDecimal ? "NUMERIC" : "BIGINT";
             return factory.anySQLFunction("CAST({0} AS " + type + ")", args -> args.value(parameter));
         }

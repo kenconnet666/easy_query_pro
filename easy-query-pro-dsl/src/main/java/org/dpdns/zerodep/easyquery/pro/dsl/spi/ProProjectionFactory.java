@@ -27,6 +27,8 @@ import com.easy.query.core.func.SQLFunctionTranslateImpl;
 import com.easy.query.core.metadata.ColumnMetadata;
 import com.easy.query.core.metadata.EntityMetadata;
 import com.easy.query.core.proxy.ProxyEntity;
+import com.easy.query.core.util.EasyStringUtil;
+import com.easy.query.core.expression.builder.core.ResultColumnInfo;
 
 /**
  * 通过上游 selector/segment SPI 维护 Pro 投影的读取规则和行数语义。
@@ -98,8 +100,8 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
         @Override
         public Selector columnFunc(TableAvailable table, SQLFunction function, String propertyAlias) {
             if (!ExpressionScope.preservesRows(function)) return super.columnFunc(table, function, propertyAlias);
-            var column = table.getEntityMetadata().getColumnNotNull(propertyAlias);
-            var segment = new SQLFunctionTranslateImpl(function).toSQLSegment(expressionContext, table, runtimeContext, column.getName());
+            ColumnMetadata column = table.getEntityMetadata().getColumnNotNull(propertyAlias);
+            SQLSegment segment = new SQLFunctionTranslateImpl(function).toSQLSegment(expressionContext, table, runtimeContext, column.getName());
             sqlBuilderSegment.append(new ScalarColumn(table, column, runtimeContext, segment, column.getName()));
             return this;
         }
@@ -113,8 +115,8 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
 
         @Override
         public AsSelector columnAs(TableAvailable table, String property, String propertyAlias) {
-            var reader = ColumnReaders.source(entityQueryExpressionBuilder, table, property);
-            var result = super.columnAs(table, property, propertyAlias);
+            ColumnReader reader = ColumnReaders.source(entityQueryExpressionBuilder, table, property);
+            AsSelector result = super.columnAs(table, property, propertyAlias);
             setReader(propertyAlias == null ? property : propertyAlias, reader);
             return result;
         }
@@ -136,11 +138,11 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
             }
             before.apply();
             ColumnMetadata source = table == null || property == null ? null : table.getEntityMetadata().getColumnNotNull(property);
-            if (source == null && (propertyAlias == null || propertyAlias.isBlank()))
+            if (source == null && (propertyAlias == null || EasyStringUtil.isBlank(propertyAlias)))
                 throw new EasyQueryInvalidOperationException("A computed projection requires a property alias");
-            var result = propertyAlias == null && source != null ? null : getResultColumnName(propertyAlias);
+            ResultColumnInfo result = propertyAlias == null && source != null ? null : getResultColumnName(propertyAlias);
             String alias = result == null ? source.getName() : result.getColumnAsName();
-            var reader = source == null ? null : ColumnReaders.source(entityQueryExpressionBuilder, table, property);
+            ColumnReader reader = source == null ? null : ColumnReaders.source(entityQueryExpressionBuilder, table, property);
             setReader(propertyAlias == null ? property : propertyAlias, ExpressionScope.isRowLocal(function) ? reader : ColumnReaders.nullable(reader));
             return appendScalar(table, source != null ? source : result.getColumnMetadata(), function, alias);
         }
@@ -151,13 +153,13 @@ public class ProProjectionFactory extends DefaultSQLExpressionInvokeFactory {
                 setReader(propertyAlias, null);
                 return super.columnFunc(table, function, propertyAlias);
             }
-            var result = propertyAlias == null ? null : getResultColumnName(propertyAlias);
+            ResultColumnInfo result = propertyAlias == null ? null : getResultColumnName(propertyAlias);
             setReader(propertyAlias, null);
             return appendScalar(table, result == null ? null : result.getColumnMetadata(), function, result == null ? null : result.getColumnAsName());
         }
 
         protected AsSelector appendScalar(TableAvailable table, ColumnMetadata column, SQLFunction function, String alias) {
-            var segment = new SQLFunctionTranslateImpl(function).toSQLSegment(expressionContext, table, runtimeContext, alias);
+            SQLSegment segment = new SQLFunctionTranslateImpl(function).toSQLSegment(expressionContext, table, runtimeContext, alias);
             sqlBuilderSegment.append(new ScalarColumn(table, column, runtimeContext, segment, alias));
             return this;
         }

@@ -22,8 +22,16 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.List;
 import java.util.stream.Stream;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft1Proxy;
+import com.easy.query.core.proxy.core.draft.Draft1;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
+import org.junit.jupiter.api.function.Executable;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -35,19 +43,19 @@ class RangeWindowDslTest {
     @ParameterizedTest
     @MethodSource("backends")
     void offsetsBindInOrderAndKeepZeroCategories(DecimalDslTest.Backend backend) {
-        var selected = backend.client().queryable(TestProduct.class).select(p -> Select.DRAFT.of(ProDsl.of(p).over(p.amount().sumBigDecimal(),
+        EntityQueryable<Draft1Proxy<BigDecimal>, Draft1<BigDecimal>> selected = backend.client().queryable(TestProduct.class).select(p -> Select.DRAFT.of(ProDsl.of(p).over(p.amount().sumBigDecimal(),
                 RangeWindowContract.numeric(p, p.id(), RangeBoundary.following(1), RangeBoundary.following(0), true))));
-        var rendered = selected.toSQLResult();
+        ToSQLResult rendered = selected.toSQLResult();
         assertTrue(rendered.getSQL().contains(" FOLLOWING AND "), rendered.getSQL());
-        assertEquals(List.of(1L, 0L), rendered.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(Arrays.asList(1L, 0L), rendered.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         assertTrue(rendered.getSQL().contains(backend.dialect() == SqlDialect.MYSQL ? "? FOLLOWING" : "CAST(? AS BIGINT) FOLLOWING"));
     }
 
     @ParameterizedTest
     @MethodSource("backends")
     void invalidOffsetsAndIncompatibleKeysFailBeforeExecution(DecimalDslTest.Backend backend) {
-        var query = backend.client();
-        for (Number offset : List.of(-1, Double.NaN, BigInteger.ONE.shiftLeft(63))) {
+        DefaultEasyEntityQuery query = backend.client();
+        for (Number offset : Arrays.asList(-1, Double.NaN, BigInteger.ONE.shiftLeft(63))) {
             assertThrows(IllegalArgumentException.class, () -> query.queryable(TestProduct.class).selectColumn(p -> ProDsl.of(p).over(p.amount().sum(),
                     RangeWindowContract.numeric(p, p.id(), RangeBoundary.preceding(offset), RangeBoundary.currentRow(), true))).toSQL());
         }
@@ -72,8 +80,8 @@ class RangeWindowDslTest {
     @ParameterizedTest
     @MethodSource("backends")
     void decimalOffsetsFollowNativeKeyTyping(DecimalDslTest.Backend backend) {
-        var query = backend.client().queryable(TestProduct.class);
-        var rendered = (org.junit.jupiter.api.function.Executable) () -> query.selectColumn(p -> ProDsl.of(p).over(p.amount().sum(),
+        EntityQueryable<TestProductProxy, TestProduct> query = backend.client().queryable(TestProduct.class);
+        Executable rendered = (org.junit.jupiter.api.function.Executable) () -> query.selectColumn(p -> ProDsl.of(p).over(p.amount().sum(),
                 RangeWindowContract.numeric(p, p.id(), RangeBoundary.preceding(new BigDecimal("1.5")), RangeBoundary.currentRow(), true))).toSQL();
         if (backend.dialect() == SqlDialect.POSTGRESQL) assertThrows(IllegalArgumentException.class, rendered);
         else assertDoesNotThrow(rendered);
@@ -81,7 +89,7 @@ class RangeWindowDslTest {
 
     @Test
     void nativeFactoriesRejectWrongBackendsAndInvalidIntervals() {
-        var hana = DecimalDslTest.backends().filter(b -> b.dialect() == SqlDialect.HANA).findFirst().orElseThrow().client();
+        DefaultEasyEntityQuery hana = DecimalDslTest.backends().filter(b -> b.dialect() == SqlDialect.HANA).findFirst().get().client();
         assertThrows(IllegalArgumentException.class, () -> hana.queryable(TestProduct.class).selectColumn(p -> {
             ProDsl.of(p).window(PgWindowSpec::create);
             return p.id();
@@ -96,7 +104,7 @@ class RangeWindowDslTest {
         assertThrows(IllegalArgumentException.class, () -> MySqlRangeInterval.duration(Duration.ofSeconds(Long.MAX_VALUE)));
         assertThrows(IllegalArgumentException.class, () -> new MySqlRangeInterval(-1, ChronoUnit.DAYS));
         assertEquals(new MySqlRangeInterval(3_600_000_000L, ChronoUnit.MICROS), MySqlRangeInterval.duration(Duration.ofHours(1)));
-        var pg = backends().filter(b -> b.dialect() == SqlDialect.POSTGRESQL).findFirst().orElseThrow().client();
+        DefaultEasyEntityQuery pg = backends().filter(b -> b.dialect() == SqlDialect.POSTGRESQL).findFirst().get().client();
         assertThrows(IllegalArgumentException.class, () -> pg.queryable(TestEvent.class).selectColumn(p -> PgSqlDsl.of(p).over(p.delta().sumInt(),
                 PgSqlDsl.of(p).nativeWindow().orderBy(p.eventDate()).rangeIntervalBetween(
                         RangeBoundary.preceding(PgInterval.of(-1, 40, 0)), RangeBoundary.currentRow()))).toSQL());

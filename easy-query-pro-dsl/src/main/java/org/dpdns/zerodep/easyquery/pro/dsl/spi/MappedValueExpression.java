@@ -36,7 +36,7 @@ public abstract class MappedValueExpression<T> extends AnyTypeExpressionImpl<T> 
     private MappedValueExpression(ExpressionScope scope, PropTypeColumn<T> source, Function<SQLFunc, SQLFunction> function, ColumnReader reader) {
         super(scope.context(), source.getTable(), reader == null ? null : source.getValue(),
                 factory -> {
-                    var value = function.apply(factory);
+                    SQLFunction value = function.apply(factory);
                     return scope.projection(value, source.getTable());
                 },
                 reader != null ? Object.class : EasyClassUtil.getObjectTypeWhenPrimitive(Objects.requireNonNull(source.getPropertyType(), "source Java type")));
@@ -50,19 +50,19 @@ public abstract class MappedValueExpression<T> extends AnyTypeExpressionImpl<T> 
      */
     final ColumnReader columnReader() {
         if (reader == null) return null;
-        var expression = func().apply(scope.runtime().fx());
+        SQLFunction expression = func().apply(scope.runtime().fx());
         return ExpressionScope.preservesRows(expression) && !ExpressionScope.isRowLocal(expression) ? ColumnReaders.nullable(reader) : reader;
     }
 
     @Override
     public ResultColumnMetadata getTableResultColumnMetadataOrNull(int index) {
-        var resultReader = columnReader();
+        ColumnReader resultReader = columnReader();
         return resultReader == null ? super.getTableResultColumnMetadataOrNull(index) : ColumnReaders.scalarMetadata(index, resultReader);
     }
 
     @Override
     public SQLSelectAsExpression as(String alias) {
-        var resultReader = columnReader();
+        ColumnReader resultReader = columnReader();
         if (resultReader != null) {
             // Draft 不会自动从计算表达式继承完整列映射，因此在公开 reader SPI 中登记。
             String key = alias == null ? getValue() : alias;

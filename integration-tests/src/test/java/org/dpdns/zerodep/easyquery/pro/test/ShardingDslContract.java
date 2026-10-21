@@ -34,6 +34,17 @@ import java.lang.reflect.Proxy;
 import java.lang.reflect.InvocationTargetException;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.Objects;
+import com.easy.query.core.api.client.EasyQueryClient;
+import java.util.Arrays;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft5Proxy;
+import com.easy.query.core.proxy.core.draft.Draft5;
+import com.easy.query.core.basic.api.select.Query;
+import com.easy.query.core.basic.jdbc.tx.Transaction;
+import com.easy.query.core.proxy.core.draft.proxy.Draft2Proxy;
+import com.easy.query.core.proxy.core.draft.Draft2;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -43,14 +54,55 @@ final class ShardingDslContract {
 
     static void verify(DataSource source, DatabaseConfiguration database, Consumer<ServiceCollection> extensions, List<String> tables,
                        Consumer<DefaultEasyEntityQuery> nativeChecks) {
-        verify(tables.stream().map(table -> new Shard("primary", source, table)).toList(), database, extensions, nativeChecks);
+        verify(tables.stream().map(table -> new Shard("primary", source, table)).collect(Collectors.toList()), database, extensions, nativeChecks);
     }
 
-    record Shard(String sourceName, DataSource source, String table) {
+    static final class Shard {
+        private final String sourceName;
+        private final DataSource source;
+        private final String table;
+
+        Shard(String sourceName, DataSource source, String table) {
+            this.sourceName = sourceName;
+            this.source = source;
+            this.table = table;
+        }
+
+        public String sourceName() {
+            return sourceName;
+        }
+
+        public DataSource source() {
+            return source;
+        }
+
+        public String table() {
+            return table;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Shard)) return false;
+            Shard other = (Shard) o;
+            return Objects.equals(sourceName, other.sourceName)
+                    && Objects.equals(source, other.source)
+                    && Objects.equals(table, other.table);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(sourceName, source, table);
+        }
+
+        @Override
+        public String toString() {
+            return "Shard[sourceName=" + sourceName + ", source=" + source + ", table=" + table + "]";
+        }
     }
 
     static HikariDataSource pool(DataSource source, String schema) {
-        var config = new HikariConfig();
+        HikariConfig config = new HikariConfig();
         config.setDataSource(source);
         config.setMaximumPoolSize(2);
         config.setMinimumIdle(0);
@@ -61,18 +113,18 @@ final class ShardingDslContract {
 
     static void verify(List<Shard> shards, DatabaseConfiguration database, Consumer<ServiceCollection> extensions,
                        Consumer<DefaultEasyEntityQuery> nativeChecks) {
-        var sources = new LinkedHashMap<String, CountedSource>();
-        var actualTables = new LinkedHashMap<String, Collection<String>>();
-        for (var shard : shards) {
+        LinkedHashMap<String, ShardingDslContract.CountedSource> sources = new LinkedHashMap<String, CountedSource>();
+        LinkedHashMap<String, Collection<String>> actualTables = new LinkedHashMap<String, Collection<String>>();
+        for (ShardingDslContract.Shard shard : shards) {
             sources.computeIfAbsent(shard.sourceName(), name -> CountedSource.wrap(shard.source()));
             actualTables.computeIfAbsent(shard.sourceName(), name -> new ArrayList<>()).add(shard.table());
         }
-        var primary = shards.get(0);
-        var secondary = new LinkedHashSet<ShardingDataSource>();
+        ShardingDslContract.Shard primary = shards.get(0);
+        LinkedHashSet<ShardingDataSource> secondary = new LinkedHashSet<ShardingDataSource>();
         sources.forEach((name, source) -> {
             if (!name.equals(primary.sourceName())) secondary.add(new ShardingDataSource(name, source.dataSource(), 2));
         });
-        var client = EasyQueryBootstrapper.defaultBuilderConfiguration().setDefaultDataSource(sources.get(primary.sourceName()).dataSource())
+        EasyQueryClient client = EasyQueryBootstrapper.defaultBuilderConfiguration().setDefaultDataSource(sources.get(primary.sourceName()).dataSource())
                 .optionConfigure(options -> {
                     options.setDefaultDataSourceName(primary.sourceName());
                     options.setDefaultDataSourceMergePoolSize(2);
@@ -83,21 +135,21 @@ final class ShardingDslContract {
                 }).useDatabaseConfigure(database).customConfigure(extensions)
                 .replaceService(EntityExpressionExecutor.class, ShardingEntityExpressionExecutor.class).build();
         client.getRuntimeContext().getQueryConfiguration().applyShardingInitializer(new ShardedProduct.Tables(actualTables));
-        client.getRuntimeContext().getTableRouteManager().addRoute(new ShardedProduct.Route(shards.stream().map(Shard::table).toList()));
-        client.getRuntimeContext().getDataSourceRouteManager().addRoute(new ShardedProduct.SourceRoute(List.copyOf(sources.keySet())));
-        var query = new DefaultEasyEntityQuery(client);
+        client.getRuntimeContext().getTableRouteManager().addRoute(new ShardedProduct.Route(shards.stream().map(Shard::table).collect(Collectors.toList())));
+        client.getRuntimeContext().getDataSourceRouteManager().addRoute(new ShardedProduct.SourceRoute(new ArrayList<>(sources.keySet())));
+        DefaultEasyEntityQuery query = new DefaultEasyEntityQuery(client);
         try {
-            query.insertable(List.of(new ShardedProduct(1, "{\"code\":\"one\"}", new BigDecimal("1.2345")),
+            query.insertable(Arrays.asList(new ShardedProduct(1, "{\"code\":\"one\"}", new BigDecimal("1.2345")),
                     new ShardedProduct(2, "{\"code\":\"two\"}", new BigDecimal("2.3456")))).executeRows();
             verifySourceRouting(query, sources);
             assertEquals(2, query.queryable(ShardedProduct.class).count());
             assertEquals(2, query.queryable(ShardedProduct.class).selectColumn(p -> ProDsl.of(p).nativeCast(p.amount(), CommonTypes.decimal(19, 2))).toList().size());
-            var selected = query.queryable(ShardedProduct.class).orderBy(p -> p.id().asc()).select(p -> {
-                var d = ProDsl.of(p);
+            EntityQueryable<Draft5Proxy<Integer, BigDecimal, String, Boolean, BigDecimal>, Draft5<Integer, BigDecimal, String, Boolean, BigDecimal>> selected = query.queryable(ShardedProduct.class).orderBy(p -> p.id().asc()).select(p -> {
+                ProDsl d = ProDsl.of(p);
                 return Select.DRAFT.of(p.id(), d.nativeCast(d.nativeCast(p.amount(), CommonTypes.decimal(19, 2)), CommonTypes.decimal(19, 1)),
                         d.jsonTextAt(p.name(), JsonPath.root().key("code")), d.nullSafeEqualsValue(p.name(), null), d.nullIfValue(p.amount(), BigDecimal.ZERO));
             });
-            var rows = selected.toList();
+            List<Draft5<Integer, BigDecimal, String, Boolean, BigDecimal>> rows = selected.toList();
             assertEquals(2, rows.size());
             assertEquals("one", rows.get(0).getValue3());
             assertEquals("two", rows.get(1).getValue3());
@@ -113,10 +165,10 @@ final class ShardingDslContract {
             String sum = client.getRuntimeContext().getService(SqlDialect.class) == SqlDialect.HANA ? "3.57" : "3.58";
             NativeDecimalContract.equalValue(new BigDecimal(sum), query.queryable(ShardedProduct.class).select(p -> Select.DRAFT.of(
                     ProDsl.of(p).nativeCast(p.amount(), CommonTypes.decimal(19, 2)).sumBigDecimal())).singleNotNull().getValue1());
-            var unsafe = query.queryable(ShardedProduct.class).selectColumn(p -> ProDsl.of(p).nativeCast(p.amount().sumBigDecimal(), CommonTypes.decimal(19, 1)));
-            var failure = assertThrows(RuntimeException.class, unsafe::toList);
+            Query<BigDecimal> unsafe = query.queryable(ShardedProduct.class).selectColumn(p -> ProDsl.of(p).nativeCast(p.amount().sumBigDecimal(), CommonTypes.decimal(19, 1)));
+            RuntimeException failure = assertThrows(RuntimeException.class, unsafe::toList);
             assertTrue(hasShardGuard(failure), failure.toString());
-            var hiddenAggregate = query.queryable(ShardedProduct.class).selectColumn(p -> ProDsl.of(p).nativeCast(p.amount().sumBigDecimal().add(1), CommonTypes.decimal(19, 1)));
+            Query<BigDecimal> hiddenAggregate = query.queryable(ShardedProduct.class).selectColumn(p -> ProDsl.of(p).nativeCast(p.amount().sumBigDecimal().add(1), CommonTypes.decimal(19, 1)));
             assertTrue(hasShardGuard(assertThrows(RuntimeException.class, hiddenAggregate::toList)));
             verifyRoutedRollback(query);
         } finally {
@@ -125,7 +177,7 @@ final class ShardingDslContract {
     }
 
     private static void verifySourceRouting(DefaultEasyEntityQuery query, LinkedHashMap<String, CountedSource> sources) {
-        var ordered = List.copyOf(sources.values());
+        List<ShardingDslContract.CountedSource> ordered = new ArrayList<>(sources.values());
         for (int id : new int[]{1, 2}) {
             sources.values().forEach(source -> source.borrows().set(0));
             assertEquals(id, query.queryable(ShardedProduct.class).where(p -> p.id().eq(id)).singleNotNull().getId());
@@ -135,14 +187,14 @@ final class ShardingDslContract {
     }
 
     private static void verifyRoutedRollback(DefaultEasyEntityQuery query) {
-        try (var transaction = query.getEasyQueryClient().beginTransaction()) {
+        try (Transaction transaction = query.getEasyQueryClient().beginTransaction()) {
             assertEquals(1, query.updatable(ShardedProduct.class).setColumns(p -> p.amount().set(
                     ProDsl.of(p).value(new BigDecimal("9.99"), CommonTypes.decimal(19, 2)))).where(p -> p.id().eq(1)).executeRows());
             NativeDecimalContract.equalValue(new BigDecimal("9.99"), query.queryable(ShardedProduct.class).where(p -> p.id().eq(1)).singleNotNull().getAmount());
             transaction.rollback();
         }
         NativeDecimalContract.equalValue(new BigDecimal("1.2345"), query.queryable(ShardedProduct.class).where(p -> p.id().eq(1)).singleNotNull().getAmount());
-        try (var transaction = query.getEasyQueryClient().beginTransaction()) {
+        try (Transaction transaction = query.getEasyQueryClient().beginTransaction()) {
             assertThrows(RuntimeException.class, () -> query.insertable(new ShardedProduct(1, "duplicate", BigDecimal.ONE)).executeRows());
             transaction.rollback();
         }
@@ -150,10 +202,17 @@ final class ShardingDslContract {
         NativeDecimalContract.equalValue(new BigDecimal("2.3456"), query.queryable(ShardedProduct.class).where(p -> p.id().eq(2)).singleNotNull().getAmount());
     }
 
-    private record CountedSource(DataSource dataSource, AtomicInteger borrows) {
+    private static final class CountedSource {
+        private final DataSource dataSource;
+        private final AtomicInteger borrows;
+
+        private CountedSource(DataSource dataSource, AtomicInteger borrows) {
+            this.dataSource = dataSource;
+            this.borrows = borrows;
+        }
         private static CountedSource wrap(DataSource delegate) {
-            var count = new AtomicInteger();
-            var source = (DataSource) Proxy.newProxyInstance(DataSource.class.getClassLoader(), new Class<?>[]{DataSource.class}, (proxy, method, args) -> {
+            AtomicInteger count = new AtomicInteger();
+            DataSource source = (DataSource) Proxy.newProxyInstance(DataSource.class.getClassLoader(), new Class<?>[]{DataSource.class}, (proxy, method, args) -> {
                 if (method.getName().equals("getConnection")) count.incrementAndGet();
                 try {
                     return method.invoke(delegate, args);
@@ -163,10 +222,37 @@ final class ShardingDslContract {
             });
             return new CountedSource(source, count);
         }
+
+        public DataSource dataSource() {
+            return dataSource;
+        }
+
+        public AtomicInteger borrows() {
+            return borrows;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof CountedSource)) return false;
+            CountedSource other = (CountedSource) o;
+            return Objects.equals(dataSource, other.dataSource)
+                    && Objects.equals(borrows, other.borrows);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(dataSource, borrows);
+        }
+
+        @Override
+        public String toString() {
+            return "CountedSource[dataSource=" + dataSource + ", borrows=" + borrows + "]";
+        }
     }
 
     static boolean hasShardGuard(Throwable failure) {
-        for (var current = failure; current != null; current = current.getCause()) {
+        for (Throwable current = failure; current != null; current = current.getCause()) {
             if (current instanceof UnsupportedOperationException && current.getMessage().contains("before shard merging"))
                 return true;
         }
@@ -174,22 +260,22 @@ final class ShardingDslContract {
     }
 
     static void verifyJsonPredicate(DefaultEasyEntityQuery query, Function<ShardedProductProxy, BooleanTypeExpression<Boolean>> predicate) {
-        var selected = query.queryable(ShardedProduct.class).orderBy(p -> p.id().asc())
+        EntityQueryable<Draft2Proxy<Integer, Boolean>, Draft2<Integer, Boolean>> selected = query.queryable(ShardedProduct.class).orderBy(p -> p.id().asc())
                 .select(p -> Select.DRAFT.of(p.id(), predicate.apply(p)));
-        for (var row : selected.toList()) assertTrue(row.getValue2());
-        for (var row : selected.cloneQueryable().toList()) assertTrue(row.getValue2());
+        for (Draft2<Integer, Boolean> row : selected.toList()) assertTrue(row.getValue2());
+        for (Draft2<Integer, Boolean> row : selected.cloneQueryable().toList()) assertTrue(row.getValue2());
         assertEquals(2, query.queryable(ShardedProduct.class).where(p -> predicate.apply(p).eq(true)).count());
     }
 
     @SuppressWarnings("deprecation") // Preserve the still-public 3.2.17 DTO, Map and basic-result selection contracts.
     private static void verifyLegacyAliases(DefaultEasyEntityQuery query) {
-        var aliased = query.queryable(ShardedProduct.class).where(p -> p.id().eq(1)).select(BigDecimal.class, p ->
+        Query<BigDecimal> aliased = query.queryable(ShardedProduct.class).where(p -> p.id().eq(1)).select(BigDecimal.class, p ->
                 ProDsl.of(p).nativeCast(p.amount(), CommonTypes.decimal(19, 1)).as("computed"));
         NativeDecimalContract.equalValue(new BigDecimal("1.2"), aliased.singleNotNull());
-        var dto = query.queryable(ShardedProduct.class).where(p -> p.id().eq(1)).select(TotalView.class, p ->
+        ShardingDslContract.TotalView dto = query.queryable(ShardedProduct.class).where(p -> p.id().eq(1)).select(TotalView.class, p ->
                 ProDsl.of(p).nativeCast(p.amount(), CommonTypes.decimal(19, 1)).as("total")).singleNotNull();
         NativeDecimalContract.equalValue(new BigDecimal("1.2"), dto.getTotal());
-        var map = query.queryable(ShardedProduct.class).where(p -> p.id().eq(1)).select(Map.class, p ->
+        Map map = query.queryable(ShardedProduct.class).where(p -> p.id().eq(1)).select(Map.class, p ->
                 ProDsl.of(p).nativeCast(p.amount(), CommonTypes.decimal(19, 1)).as("computed")).singleNotNull();
         NativeDecimalContract.equalValue(new BigDecimal("1.2"), (BigDecimal) map.get("computed"));
     }

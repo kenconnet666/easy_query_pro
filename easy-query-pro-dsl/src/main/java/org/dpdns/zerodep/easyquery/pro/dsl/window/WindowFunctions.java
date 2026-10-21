@@ -55,7 +55,7 @@ public final class WindowFunctions {
     }
 
     public static <T, C extends PropTypeColumn<T>> C aggregate(ExpressionScope scope, ColumnObjectFunctionAvailable<T, C> aggregate, WindowSpec<?> spec) {
-        var function = aggregateFunction(scope, aggregate, spec);
+        Function<SQLFunc, SQLFunction> function = aggregateFunction(scope, aggregate, spec);
         return aggregate.createChainExpression(function, EasyClassUtil.getObjectTypeWhenPrimitive(aggregate.getPropertyType()));
     }
 
@@ -64,16 +64,17 @@ public final class WindowFunctions {
      */
     public static <T, E extends PropTypeColumn<T>> E aggregate(ExpressionScope scope, PropTypeColumn<T> aggregate,
                                                                WindowSpec<?> spec, ExpressionFactory<T, ? extends E> factory) {
-        var function = aggregateFunction(scope, aggregate, spec);
+        Function<SQLFunc, SQLFunction> function = aggregateFunction(scope, aggregate, spec);
         return Objects.requireNonNull(Objects.requireNonNull(factory, "factory").create(scope, aggregate, function), "factory result");
     }
 
     private static Function<SQLFunc, SQLFunction> aggregateFunction(ExpressionScope scope, PropTypeColumn<?> source, WindowSpec<?> spec) {
         scope.requireSource(source);
         Objects.requireNonNull(spec, "spec").validate(scope, false);
-        if (!(source instanceof DSLSQLFunctionAvailable function))
+        if (!(source instanceof DSLSQLFunctionAvailable))
             throw new IllegalArgumentException("OVER requires an existing SUM, AVG, COUNT, MIN or MAX expression");
-        var aggregate = function.func().apply(scope.runtime().fx());
+        DSLSQLFunctionAvailable function = (DSLSQLFunctionAvailable) source;
+        SQLFunction aggregate = function.func().apply(scope.runtime().fx());
         if (!ExpressionScope.isWindowAggregate(aggregate))
             throw new IllegalArgumentException("OVER requires a non-distinct bare aggregate; apply scalar wrappers after OVER");
         if (scope.hasWindow(aggregate))
@@ -107,10 +108,10 @@ public final class WindowFunctions {
                 throw new IllegalArgumentException("Use the upstream offset API for LAG/LEAD; these functions do not use a frame");
             String template = name + "({0}" + (offset instanceof NthValueOffset<?> ? "," + offset.getOffset() : "") + ")";
             Function<SQLFunc, SQLFunction> expression = sql -> {
-                var operand = scope.operand(source, sql);
+                SQLFunction operand = scope.operand(source, sql);
                 if (!ExpressionScope.isRowLocal(operand))
                     throw new IllegalArgumentException("Project aggregates, windows and unclassified expressions into a derived relation before applying a value window");
-                var value = sql.anySQLFunction(template, args -> args.sqlFunc(operand));
+                SQLFunction value = sql.anySQLFunction(template, args -> args.sqlFunc(operand));
                 return scope.window(spec.apply(sql, value), source.getTable());
             };
             return Objects.requireNonNull(factory.create(scope, source, expression), "factory result");

@@ -226,7 +226,7 @@ public class ProDsl {
 
     public <T, E extends PropTypeColumn<T>> E nativeCast(PropTypeColumn<?> source, CastTarget<T> target, ExpressionFactory<T, ? extends E> factory) {
         Objects.requireNonNull(target, "target");
-        var expression = conversion(source, target);
+        Function<SQLFunc, SQLFunction> expression = conversion(source, target);
         return create(factory, new AnyTypeExpressionImpl<>(context, anchor, null, expression, boxedTarget(target.javaType())), expression);
     }
 
@@ -245,7 +245,7 @@ public class ProDsl {
         String template = target.castTemplate(dialect);
         return factory -> {
             SQLFunction operand = scope.operand(source, factory);
-            var cast = factory.anySQLFunction(template, args -> args.sqlFunc(source.getTable(), operand));
+            SQLFunction cast = factory.anySQLFunction(template, args -> args.sqlFunc(source.getTable(), operand));
             return scope.operation(cast, operand.getAggregationType(), operand);
         };
     }
@@ -268,7 +268,7 @@ public class ProDsl {
     }
 
     public <T, E extends PropTypeColumn<T>> E value(T value, CastTarget<T> type, ExpressionFactory<T, ? extends E> factory) {
-        var expression = parameter(value, type);
+        Function<SQLFunc, SQLFunction> expression = parameter(value, type);
         return create(factory, new AnyTypeExpressionImpl<>(context, anchor, null, expression, boxedTarget(type.javaType())), expression);
     }
 
@@ -310,22 +310,22 @@ public class ProDsl {
     private Function<SQLFunc, SQLFunction> jsonRead(PropTypeColumn<?> document, JsonPath path, JsonResult result) {
         scope.requireSource(document);
         Objects.requireNonNull(path, "path");
-        var access = runtime.getService(JsonPathAccess.class);
+        JsonPathAccess access = runtime.getService(JsonPathAccess.class);
         access.requireNavigationSupport();
         return factory -> {
-            var operand = scope.operand(document, factory);
-            var rooted = factory.anySQLFunction("{0}", args -> args.sqlFunc(document.getTable(), operand));
-            var node = access.fragment(factory, rooted, path);
-            SQLFunction selected = switch (result) {
-                case FRAGMENT -> node;
-                case TEXT -> access.scalarText(factory, node);
-                case SERIALIZED -> access.serializedText(factory, node);
-                case EXISTS ->
-                        factory.anySQLFunction("(CASE WHEN {0} IS NOT NULL THEN TRUE ELSE FALSE END)", args -> args.sqlFunc(node));
-                case BOOLEAN ->
-                        factory.anySQLFunction("(CASE {0} WHEN 'true' THEN TRUE WHEN 'false' THEN FALSE ELSE NULL END)",
-                                args -> args.sqlFunc(access.serializedText(factory, node)));
-            };
+            SQLFunction operand = scope.operand(document, factory);
+            SQLFunction rooted = factory.anySQLFunction("{0}", args -> args.sqlFunc(document.getTable(), operand));
+            SQLFunction node = access.fragment(factory, rooted, path);
+            SQLFunction selected;
+            switch (result) {
+                case FRAGMENT: selected = node; break;
+                case TEXT: selected = access.scalarText(factory, node); break;
+                case SERIALIZED: selected = access.serializedText(factory, node); break;
+                case EXISTS: selected = factory.anySQLFunction("(CASE WHEN {0} IS NOT NULL THEN TRUE ELSE FALSE END)", args -> args.sqlFunc(node)); break;
+                case BOOLEAN: selected = factory.anySQLFunction("(CASE {0} WHEN 'true' THEN TRUE WHEN 'false' THEN FALSE ELSE NULL END)",
+                                args -> args.sqlFunc(access.serializedText(factory, node))); break;
+                default: throw new IllegalStateException("Unhandled value: " + result);
+            }
             return scope.operation(selected, AggregationType.UNKNOWN, operand);
         };
     }
@@ -365,7 +365,7 @@ public class ProDsl {
         String template = runtime.getService(TemporalTruncation.class).template(unit, dateOnly);
         // 上游 SQLFormatArgument 按每次出现延迟渲染，重复 {0} 会产生对应的独立绑定。
         return factory -> {
-            var operand = scope.operand(source, factory);
+            SQLFunction operand = scope.operand(source, factory);
             return scope.operation(factory.anySQLFunction(template, args -> args.sqlFunc(source.getTable(), operand)), AggregationType.UNKNOWN, operand);
         };
     }
@@ -429,8 +429,8 @@ public class ProDsl {
         scope.requireSource(left);
         scope.requireSource(right);
         return factory -> {
-            var leftOperand = scope.operand(left, factory);
-            var rightOperand = scope.operand(right, factory);
+            SQLFunction leftOperand = scope.operand(left, factory);
+            SQLFunction rightOperand = scope.operand(right, factory);
             return scope.operation(factory.anySQLFunction("NULLIF({0},{1})", args -> {
                 args.sqlFunc(left.getTable(), leftOperand);
                 args.sqlFunc(right.getTable(), rightOperand);
@@ -454,16 +454,16 @@ public class ProDsl {
     private BooleanTypeExpression<Boolean> comparison(PropTypeColumn<?> left, PropTypeColumn<?> right, boolean distinct) {
         scope.requireSource(left);
         scope.requireSource(right);
-        if (left instanceof ScalarComparisonRestriction restriction)
-            throw new IllegalArgumentException(restriction.scalarComparisonError());
-        if (right instanceof ScalarComparisonRestriction restriction)
-            throw new IllegalArgumentException(restriction.scalarComparisonError());
-        var templates = runtime.getService(NullSafeComparison.class);
+        if (left instanceof ScalarComparisonRestriction)
+            throw new IllegalArgumentException(((ScalarComparisonRestriction) left).scalarComparisonError());
+        if (right instanceof ScalarComparisonRestriction)
+            throw new IllegalArgumentException(((ScalarComparisonRestriction) right).scalarComparisonError());
+        NullSafeComparison templates = runtime.getService(NullSafeComparison.class);
         String template = distinct ? templates.distinct() : templates.equal();
         return new BooleanTypeExpressionImpl<>(context, anchor, null, factory -> {
-            var leftOperand = scope.operand(left, factory);
-            var rightOperand = scope.operand(right, factory);
-            var result = factory.anySQLFunction(template, args -> {
+            SQLFunction leftOperand = scope.operand(left, factory);
+            SQLFunction rightOperand = scope.operand(right, factory);
+            SQLFunction result = factory.anySQLFunction(template, args -> {
                 args.sqlFunc(left.getTable(), leftOperand);
                 args.sqlFunc(right.getTable(), rightOperand);
             });

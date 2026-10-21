@@ -12,6 +12,14 @@ import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.function.Consumer;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import com.easy.query.core.api.client.EasyQueryClient;
+import com.easy.query.core.configuration.dialect.SQLKeyword;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
+import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
+import com.easy.query.core.basic.api.select.Query;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -20,18 +28,18 @@ final class DecimalDslContract {
     }
 
     static void verify(DataSource dataSource, DatabaseConfiguration database, Consumer<ServiceCollection> extensions) {
-        var query = TestClients.configured(dataSource, database, extensions);
-        var client = query.getEasyQueryClient();
-        var dialect = client.getRuntimeContext().getService(SqlDialect.class);
-        var quote = client.getRuntimeContext().getQueryConfiguration().getDialect();
+        DefaultEasyEntityQuery query = TestClients.configured(dataSource, database, extensions);
+        EasyQueryClient client = query.getEasyQueryClient();
+        SqlDialect dialect = client.getRuntimeContext().getService(SqlDialect.class);
+        SQLKeyword quote = client.getRuntimeContext().getQueryConfiguration().getDialect();
         String source = "SELECT 1 AS " + quote.getQuoteName("id") + ",CAST(12.3456 AS DECIMAL(19,4)) AS "
                 + quote.getQuoteName("amount") + (dialect == SqlDialect.HANA ? " FROM DUMMY" : "");
-        var rows = query.queryable(source, TestProduct.class);
-        var money = CommonTypes.decimal(19, 2);
-        var exact = rows.cloneQueryable().selectColumn(p -> ProDsl.of(p).value(new BigDecimal("19.99"), money).multiply(100));
+        EntityQueryable<TestProductProxy, TestProduct> rows = query.queryable(source, TestProduct.class);
+        NumericType<BigDecimal> money = CommonTypes.decimal(19, 2);
+        Query<BigDecimal> exact = rows.cloneQueryable().selectColumn(p -> ProDsl.of(p).value(new BigDecimal("19.99"), money).multiply(100));
         equalNumber("1999", exact.singleNotNull());
         equalNumber("1999", exact.cloneQueryable().singleNotNull());
-        var nulls = rows.cloneQueryable().selectColumn(p -> ProDsl.of(p).nullValue(money)).toList();
+        List<BigDecimal> nulls = rows.cloneQueryable().selectColumn(p -> ProDsl.of(p).nullValue(money)).toList();
         assertEquals(1, nulls.size());
         assertNull(nulls.get(0), "Typed NULL must not turn into a primitive default");
         equalNumber("0", rows.cloneQueryable().selectColumn(p -> ProDsl.of(p)
@@ -44,14 +52,14 @@ final class DecimalDslContract {
         String rounded = dialect == SqlDialect.HANA ? "12.34" : "12.35";
         equalNumber(rounded, rows.cloneQueryable().selectColumn(p -> ProDsl.of(p).nativeCast(p.amount(), money)).singleNotNull());
         equalNumber(rounded, rows.cloneQueryable().selectColumn(p -> ProDsl.of(p).nativeCast(p.amount().sumBigDecimal(), money)).singleNotNull());
-        var correlated = rows.cloneQueryable().where(p -> p.expression().exists(query.queryable(source, TestProduct.class)
+        EntityQueryable<TestProductProxy, TestProduct> correlated = rows.cloneQueryable().where(p -> p.expression().exists(query.queryable(source, TestProduct.class)
                 .where(other -> {
                     other.id().eq(p.id());
                     ProDsl.of(other).nativeCast(other.amount(), money).eq(ProDsl.of(p).nativeCast(p.amount(), money));
                 })));
         assertEquals(1, correlated.toList().size());
         assertEquals(1, correlated.cloneQueryable().toList().size());
-        var overflow = rows.cloneQueryable().selectColumn(p -> ProDsl.of(p).nativeCast(p.amount(), CommonTypes.decimal(2, 1)));
+        Query<BigDecimal> overflow = rows.cloneQueryable().selectColumn(p -> ProDsl.of(p).nativeCast(p.amount(), CommonTypes.decimal(2, 1)));
         if (dialect == SqlDialect.MYSQL) equalNumber("9.9", overflow.singleNotNull());
         else assertThrows(RuntimeException.class, (Executable) overflow::singleNotNull);
         equalNumber("1999", exact.singleNotNull());

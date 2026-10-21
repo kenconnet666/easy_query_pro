@@ -7,13 +7,14 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 计算视图多值输入的模型协议编码。多个元素最终是一个 JDBC 字符串，不是 JDBC Array，
  * 也不是用于拼接查询 SQL 的片段。文本元素保留内部逗号并单独转义单引号。
  */
 final class HanaListInput<E> extends HanaInput<List<E>> {
-    private static final Set<Class<?>> NUMBERS = Set.of(Byte.class, Short.class, Integer.class, Long.class, BigInteger.class, BigDecimal.class);
+    private static final Set<Class<?>> NUMBERS = ImmutableCollections.setOf(Byte.class, Short.class, Integer.class, Long.class, BigInteger.class, BigDecimal.class);
     private final Class<E> elementType;
     private final Function<E, String> encodeElement;
 

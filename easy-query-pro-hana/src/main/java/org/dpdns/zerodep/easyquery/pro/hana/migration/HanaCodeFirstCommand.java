@@ -17,6 +17,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import com.easy.query.core.util.EasyStringUtil;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
+import com.easy.query.core.basic.jdbc.tx.Transaction;
+import com.easy.query.core.basic.jdbc.conn.ConnectionManager;
+import com.easy.query.core.basic.api.jdbc.JdbcExecutor;
 
 /**
  * 执行已经划分好语句边界的 HANA 迁移命令，并区分自有事务和环境事务。
@@ -35,16 +40,16 @@ final class HanaCodeFirstCommand implements CodeFirstCommand {
 
     HanaCodeFirstCommand(QueryRuntimeContext context, List<MigrationCommand> commands) {
         this.context = context;
-        var sql = new ArrayList<String>();
-        var previews = new ArrayList<String>();
-        for (var command : commands) {
+        ArrayList<String> sql = new ArrayList<String>();
+        ArrayList<String> previews = new ArrayList<String>();
+        for (MigrationCommand command : commands) {
             String rendered = command.toSQL();
-            if (rendered.isBlank()) continue;
+            if (EasyStringUtil.isBlank(rendered)) continue;
             previews.add(rendered);
-            if (command instanceof HanaMigrationCommand hana) sql.addAll(hana.statements());
+            if (command instanceof HanaMigrationCommand) sql.addAll(((HanaMigrationCommand) command).statements());
             else sql.add(rendered);
         }
-        statements = List.copyOf(sql);
+        statements = ImmutableCollections.listCopyOf(sql);
         preview = String.join(System.lineSeparator(), previews);
     }
 
@@ -52,14 +57,15 @@ final class HanaCodeFirstCommand implements CodeFirstCommand {
     public void executeWithTransaction(Consumer<CodeFirstCommandTxArg> consumer) {
         Objects.requireNonNull(consumer, "consumer");
         if (statements.isEmpty()) return;
-        try (var transaction = context.getConnectionManager().beginTransaction()) {
+        try (Transaction transaction = context.getConnectionManager().beginTransaction()) {
             // 此连接由事务拥有；不能用局部 try-with-resources 提前关闭。
-            var easy = connection();
-            if (!(easy instanceof HanaEasyConnection hana)) {
+            EasyConnection easy = connection();
+            if (!(easy instanceof HanaEasyConnection)) {
                 throw new IllegalStateException("Owned HANA DDL transactions require HanaConnectionFactory; externally managed transactions use executeWithEnvTransaction");
             }
+            HanaEasyConnection hana = (HanaEasyConnection) easy;
             hana.beginDdlScope();
-            var decision = new DefaultCodeFirstCommandTxArg(preview);
+            DefaultCodeFirstCommandTxArg decision = new DefaultCodeFirstCommandTxArg(preview);
             consumer.accept(decision);
             execute();
             decision.getTransactionConsumer().accept(transaction);
@@ -74,7 +80,7 @@ final class HanaCodeFirstCommand implements CodeFirstCommand {
     @Override
     public void executeWithEnvTransaction(Consumer<CodeFirstCommandArg> consumer) {
         Objects.requireNonNull(consumer, "consumer");
-        var manager = context.getConnectionManager();
+        ConnectionManager manager = context.getConnectionManager();
         if (!manager.currentThreadInTransaction()) {
             executeWithTransaction(arg -> {
                 consumer.accept(new DefaultCodeFirstCommandArg(arg.getSQL()));
@@ -83,7 +89,7 @@ final class HanaCodeFirstCommand implements CodeFirstCommand {
             return;
         }
         if (statements.isEmpty()) return;
-        var easy = connection();
+        EasyConnection easy = connection();
         try {
             HanaEasyConnection.requireTransactionalDdl(easy.getConnection());
             consumer.accept(new DefaultCodeFirstCommandArg(preview));
@@ -101,10 +107,10 @@ final class HanaCodeFirstCommand implements CodeFirstCommand {
     }
 
     private void execute() {
-        var executor = context.getSQLClientApiFactory().createJdbcExecutor(context);
+        JdbcExecutor executor = context.getSQLClientApiFactory().createJdbcExecutor(context);
         for (int index = 0; index < statements.size(); index++) {
             try {
-                executor.sqlExecute(statements.get(index), List.of());
+                executor.sqlExecute(statements.get(index), ImmutableCollections.listOf());
             } catch (RuntimeException failure) {
                 throw new EasyQuerySQLCommandException("HANA migration statement " + (index + 1) + "/" + statements.size() + " failed", failure);
             }

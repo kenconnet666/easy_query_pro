@@ -33,7 +33,7 @@ public final class ProQuerySQLContext implements ToSQLContext {
     }
 
     public static boolean isSharding(ToSQLContext context) {
-        return context instanceof ProQuerySQLContext pro && pro.sharding;
+        return context instanceof ProQuerySQLContext && ((ProQuerySQLContext) context).sharding;
     }
 
     @Override

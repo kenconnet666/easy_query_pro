@@ -97,7 +97,6 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <!-- IDEA imports processor paths from plugin-level configuration. -->
                 <configuration>
-                    <proc>full</proc>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>com.easy-query</groupId>

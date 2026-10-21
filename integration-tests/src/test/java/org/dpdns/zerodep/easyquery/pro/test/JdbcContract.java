@@ -9,6 +9,13 @@ import org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct;
 import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.sql.SQLException;
+import com.easy.query.core.api.client.EasyQueryClient;
+import com.easy.query.core.configuration.dialect.SQLKeyword;
+import java.sql.Connection;
+import java.sql.Statement;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -19,29 +26,29 @@ final class JdbcContract {
     }
 
     static void verify(DataSource dataSource, DatabaseConfiguration configuration, String textType) throws SQLException {
-        assertEquals(17, Runtime.version().feature(), "Tests must run on the Java 17 toolchain");
-        var client = EasyQueryBootstrapper.defaultBuilderConfiguration()
+        assertEquals("1.8", System.getProperty("java.specification.version"), "Tests must run on the Java 8 toolchain");
+        EasyQueryClient client = EasyQueryBootstrapper.defaultBuilderConfiguration()
                 .setDefaultDataSource(dataSource)
                 .useDatabaseConfigure(configuration)
                 .build();
-        var dialect = client.getRuntimeContext().getQueryConfiguration().getDialect();
+        SQLKeyword dialect = client.getRuntimeContext().getQueryConfiguration().getDialect();
         String table = dialect.getQuoteName("eqp_product");
-        try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE " + table + " ("
                     + dialect.getQuoteName("id") + " INTEGER PRIMARY KEY, "
                     + dialect.getQuoteName("name") + " " + textType + " NOT NULL, "
                     + dialect.getQuoteName("amount") + " DECIMAL(19, 4) NOT NULL)");
             try {
-                var query = new DefaultEasyEntityQuery(client);
-                var product = new TestProduct(1, "O'Reilly 中文", new BigDecimal("123.4500"));
+                DefaultEasyEntityQuery query = new DefaultEasyEntityQuery(client);
+                TestProduct product = new TestProduct(1, "O'Reilly 中文", new BigDecimal("123.4500"));
                 assertEquals(1L, query.insertable(product).executeRows());
 
-                var selection = query.queryable(TestProduct.class)
+                EntityQueryable<TestProductProxy, TestProduct> selection = query.queryable(TestProduct.class)
                         .where(p -> p.name().eq(product.getName()))
                         .orderBy(p -> p.id().asc())
                         .limit(0, 1);
                 assertFalse(selection.toSQL().contains(product.getName()), "Values must remain bound parameters");
-                var rows = selection.toList();
+                List<TestProduct> rows = selection.toList();
                 assertEquals(1, rows.size());
                 assertEquals(product.getName(), rows.get(0).getName());
                 assertEquals(product.getAmount(), rows.get(0).getAmount());
@@ -50,7 +57,7 @@ final class JdbcContract {
                 assertEquals(1L, query.updatable(product).executeRows());
                 assertEquals(product.getAmount(), query.queryable(TestProduct.class).toList().get(0).getAmount());
 
-                var unicode = new TestProduct(4, "a😀中", BigDecimal.ONE);
+                TestProduct unicode = new TestProduct(4, "a😀中", BigDecimal.ONE);
                 query.insertable(unicode).executeRows();
                 assertEquals(3, query.queryable(TestProduct.class).where(p -> p.id().eq(4))
                         .selectColumn(p -> p.name().length()).toList().get(0));

@@ -20,13 +20,18 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import com.easy.query.core.metadata.ColumnMetadata;
+import java.lang.reflect.Field;
+import com.easy.query.core.util.EasyStringUtil;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * Internal implementations behind PgSqlDsl; all rendering and binding stays in the upstream expression chain.
  */
 public final class PgArrayExpressions {
-    private static final Map<String, String> ALIASES = Map.of("integer", "int4", "int", "int4", "bigint", "int8", "boolean", "bool",
-            "decimal", "numeric", "timestamp without time zone", "timestamp");
+    private static final Map<String, String> ALIASES = ImmutableCollections.<String, String>mapBuilder()
+            .put("integer", "int4").put("int", "int4").put("bigint", "int8").put("boolean", "bool")
+            .put("decimal", "numeric").put("timestamp without time zone", "timestamp").build();
 
     private PgArrayExpressions() {
     }
@@ -34,14 +39,15 @@ public final class PgArrayExpressions {
     public static <E, T> PgArrayExpression<E, T> view(ExpressionScope scope, PropTypeColumn<T> source, PgArrayType<E> type) {
         requireType(scope, type);
         scope.requireSource(source);
-        if (source instanceof PgArrayExpression<?, ?> known && !type.equals(known.sqlType())) {
+        if (source instanceof PgArrayExpression<?, ?> && !type.equals(((PgArrayExpression<?, ?>) source).sqlType())) {
+            PgArrayExpression<?, ?> known = (PgArrayExpression<?, ?>) source;
             throw new IllegalArgumentException("Use an explicit CAST between different SQL array element types");
         }
         if (!(source instanceof DSLSQLFunctionAvailable) && source.getValue() != null && source.getTable() != null) {
-            var column = source.getTable().getEntityMetadata().getColumnNotNull(source.getValue());
-            var field = EasyClassUtil.getAllFieldsMap(source.getTable().getEntityClass()).get(column.getFieldName());
-            var annotation = field == null ? null : field.getAnnotation(Column.class);
-            if (column.getColumnValueSQLConverter() == null && annotation != null && !annotation.dbType().isBlank()) {
+            ColumnMetadata column = source.getTable().getEntityMetadata().getColumnNotNull(source.getValue());
+            Field field = EasyClassUtil.getAllFieldsMap(source.getTable().getEntityClass()).get(column.getFieldName());
+            Column annotation = field == null ? null : field.getAnnotation(Column.class);
+            if (column.getColumnValueSQLConverter() == null && annotation != null && !EasyStringUtil.isBlank(annotation.dbType())) {
                 String declared = annotation.dbType().trim().toLowerCase(Locale.ROOT).replaceAll("\\([^)]*\\)", "");
                 if (declared.endsWith("[]")) {
                     String base = declared.substring(0, declared.length() - 2).trim();
@@ -58,8 +64,8 @@ public final class PgArrayExpressions {
 
     public static <E> PgArrayExpression<E, PgArrayValue<E>> value(ExpressionScope scope, List<? extends E> values, PgArrayType<E> type) {
         requireType(scope, type);
-        var parameter = type.value(values);
-        var source = new AnyTypeExpressionImpl<PgArrayValue<E>>(scope.context(), scope.anchor(), null,
+        PgArrayValue<E> parameter = type.value(values);
+        AnyTypeExpressionImpl<PgArrayValue<E>> source = new AnyTypeExpressionImpl<PgArrayValue<E>>(scope.context(), scope.anchor(), null,
                 factory -> scope.function(factory.anySQLFunction(type.castTemplate(scope.dialect()), args -> args.value(parameter)), AggregationType.UNKNOWN, false), type.javaType());
         return new Expression<>(scope, source, type, factory -> scope.operand(source, factory));
     }
@@ -67,7 +73,7 @@ public final class PgArrayExpressions {
     public static <E> PgArrayExpression<E, PgArrayValue<E>> cast(ExpressionScope scope, PropTypeColumn<?> source, PgArrayType<E> type) {
         requireType(scope, type);
         scope.requireSource(source);
-        var cast = new AnyTypeExpressionImpl<PgArrayValue<E>>(scope.context(), source.getTable(), null,
+        AnyTypeExpressionImpl<PgArrayValue<E>> cast = new AnyTypeExpressionImpl<PgArrayValue<E>>(scope.context(), source.getTable(), null,
                 factory -> scope.scalar(factory, source, operand -> factory.anySQLFunction(type.castTemplate(scope.dialect()), args -> args.sqlFunc(operand))), type.javaType());
         return new Expression<>(scope, cast, type, factory -> scope.operand(cast, factory));
     }

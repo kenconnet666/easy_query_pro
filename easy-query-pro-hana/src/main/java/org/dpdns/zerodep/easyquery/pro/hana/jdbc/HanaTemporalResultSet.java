@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
+import java.util.GregorianCalendar;
 
 /**
  * 在 JDBC 结果进入上游分片排序/内存合并之前，保留无时区 DATE/TIME/TIMESTAMP 的日历字段。
@@ -44,7 +45,7 @@ class HanaTemporalResultSet implements StreamResultSet {
      * 仅包装包含时间列的结果，并保留上游 JDBC 分片结果的标识接口。
      */
     static StreamResultSet wrap(StreamResultSet source, ResultSet raw) throws SQLException {
-        var metadata = source.getMetaData();
+        ResultSetMetaData metadata = source.getMetaData();
         int[] types = new int[metadata.getColumnCount()];
         boolean temporal = false;
         for (int i = 0; i < types.length; i++) {
@@ -69,15 +70,15 @@ class HanaTemporalResultSet implements StreamResultSet {
     public Object getObject(int column) throws SQLException {
         int type = types[column - 1];
         if (!temporal(type)) return source.getObject(column);
-        var calendar = HanaTemporalHandlers.utcCalendar();
-        var result = raw;
+        GregorianCalendar calendar = HanaTemporalHandlers.utcCalendar();
+        ResultSet result = raw;
         if (type == Types.TIME) {
-            var time = result.getTime(column, calendar);
+            Time time = result.getTime(column, calendar);
             return time == null ? null : Instant.ofEpochMilli(time.getTime()).atOffset(ZoneOffset.UTC).toLocalTime();
         }
-        var timestamp = result.getTimestamp(column, calendar);
+        Timestamp timestamp = result.getTimestamp(column, calendar);
         if (timestamp == null) return null;
-        var value = HanaTemporalHandlers.fromTimestamp(timestamp, calendar);
+        LocalDateTime value = HanaTemporalHandlers.fromTimestamp(timestamp, calendar);
         return type == Types.DATE ? value.toLocalDate() : value;
     }
 
@@ -139,9 +140,9 @@ class HanaTemporalResultSet implements StreamResultSet {
     @Override
     public Timestamp getTimestamp(int column) throws SQLException {
         if (!temporal(types[column - 1])) return source.getTimestamp(column);
-        var value = localDateTime(column);
+        LocalDateTime value = localDateTime(column);
         if (value == null) return null;
-        var timestamp = Timestamp.valueOf(value);
+        Timestamp timestamp = Timestamp.valueOf(value);
         if (!timestamp.toLocalDateTime().equals(value)) throw legacyDateLoss(column);
         return timestamp;
     }
@@ -149,9 +150,9 @@ class HanaTemporalResultSet implements StreamResultSet {
     @Override
     public Time getTime(int column) throws SQLException {
         if (!temporal(types[column - 1])) return source.getTime(column);
-        var value = localDateTime(column);
+        LocalDateTime value = localDateTime(column);
         if (value == null) return null;
-        var time = Time.valueOf(value.toLocalTime());
+        Time time = Time.valueOf(value.toLocalTime());
         if (!time.toLocalTime().equals(value.toLocalTime().withNano(0))) throw legacyDateLoss(column);
         return time;
     }
@@ -159,9 +160,9 @@ class HanaTemporalResultSet implements StreamResultSet {
     @Override
     public Date getDate(int column) throws SQLException {
         if (!temporal(types[column - 1])) return source.getDate(column);
-        var value = localDateTime(column);
+        LocalDateTime value = localDateTime(column);
         if (value == null) return null;
-        var date = Date.valueOf(value.toLocalDate());
+        Date date = Date.valueOf(value.toLocalDate());
         if (!date.toLocalDate().equals(value.toLocalDate())) throw legacyDateLoss(column);
         return date;
     }
@@ -169,8 +170,8 @@ class HanaTemporalResultSet implements StreamResultSet {
     private LocalDateTime localDateTime(int column) throws SQLException {
         Object value = getObject(column);
         if (value == null) return null;
-        if (value instanceof LocalDate date) return date.atStartOfDay();
-        if (value instanceof LocalTime time) return time.atDate(LocalDate.of(1970, 1, 1));
+        if (value instanceof LocalDate) return ((LocalDate) value).atStartOfDay();
+        if (value instanceof LocalTime) return ((LocalTime) value).atDate(LocalDate.of(1970, 1, 1));
         return (LocalDateTime) value;
     }
 

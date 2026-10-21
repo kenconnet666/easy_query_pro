@@ -17,6 +17,12 @@ import org.junit.jupiter.api.Test;
 import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft2Proxy;
+import com.easy.query.core.proxy.core.draft.Draft2;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -27,7 +33,7 @@ class MySqlUnsignedTypeTest {
         assertEquals(65535, MySqlTypes.unsignedSmallint().prepareValue(65535));
         assertEquals(16777215, MySqlTypes.unsignedMediumint().prepareValue(16777215));
         assertEquals(4294967295L, MySqlTypes.unsignedInt().prepareValue(4294967295L));
-        var maximum = new BigInteger("18446744073709551615");
+        BigInteger maximum = new BigInteger("18446744073709551615");
         assertEquals(maximum, MySqlTypes.unsignedBigint().prepareValue(maximum));
         assertThrows(IllegalArgumentException.class, () -> MySqlTypes.unsignedTinyint().prepareValue((short) 256));
         assertThrows(IllegalArgumentException.class, () -> MySqlTypes.unsignedSmallint().prepareValue(65536));
@@ -43,7 +49,7 @@ class MySqlUnsignedTypeTest {
 
     @Test
     void bigintFacadePreservesNumericOverridesAndParameterValues() {
-        var calls = new AtomicInteger();
+        AtomicInteger calls = new AtomicInteger();
         class ApplicationDsl extends MySqlDsl {
             ApplicationDsl(ExpressionScope scope) {
                 super(scope);
@@ -55,17 +61,17 @@ class MySqlUnsignedTypeTest {
                 return super.value(value, type);
             }
         }
-        var maximum = MySqlTypes.unsignedBigint().maximum();
-        var client = TestClients.offline(new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
-        var query = client.queryable(TestProduct.class).select(p -> {
-            var dsl = ProDsl.of(p, ApplicationDsl::new);
+        BigInteger maximum = MySqlTypes.unsignedBigint().maximum();
+        DefaultEasyEntityQuery client = TestClients.offline(new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+        EntityQueryable<Draft2Proxy<BigInteger, BigInteger>, Draft2<BigInteger, BigInteger>> query = client.queryable(TestProduct.class).select(p -> {
+            ApplicationDsl dsl = ProDsl.of(p, scope -> new ApplicationDsl(scope));
             return Select.DRAFT.of(dsl.value(maximum, MySqlTypes.unsignedBigint()),
                     dsl.value(null, MySqlTypes.unsignedBigint()));
         });
-        var result = query.toSQLResult();
+        ToSQLResult result = query.toSQLResult();
         assertEquals(2, calls.get());
         assertEquals(Arrays.asList(maximum, null),
-                result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+                result.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         assertEquals(result.getSQL(), query.cloneQueryable().toSQL());
         assertEquals(2, calls.get());
         assertThrows(IllegalArgumentException.class, () -> client.queryable(TestProduct.class)

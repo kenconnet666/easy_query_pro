@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
+import java.io.InputStream;
+import java.io.Reader;
 
 /**
  * 流必须活到 execute/executeBatch 结束；不复制整个 LOB，也不释放调用方的 Blob/Clob。
@@ -22,13 +24,13 @@ final class HanaLobBindings {
     private final ThreadLocal<Scope> current = new ThreadLocal<>();
 
     Scope open() {
-        var scope = new Scope(current.get());
+        HanaLobBindings.Scope scope = new Scope(current.get());
         current.set(scope);
         return scope;
     }
 
     private Scope binding(PreparedStatement statement) throws SQLException {
-        var scope = current.get();
+        HanaLobBindings.Scope scope = current.get();
         if (scope == null) throw new SQLException("Streaming HANA LOB parameters require HanaJdbcSQLExecutor", "HY000");
         scope.statements.add(statement);
         return scope;
@@ -37,10 +39,10 @@ final class HanaLobBindings {
     final class Binary extends BlobTypeHandler {
         @Override
         public void setParameter(EasyParameter parameter) throws SQLException {
-            var scope = binding(parameter.getPs());
-            var blob = (Blob) parameter.getValue();
+            HanaLobBindings.Scope scope = binding(parameter.getPs());
+            Blob blob = (Blob) parameter.getValue();
             long length = blob.length();
-            var stream = blob.getBinaryStream();
+            InputStream stream = blob.getBinaryStream();
             scope.streams.add(stream);
             parameter.getPs().setBinaryStream(parameter.getIndex(), stream, length);
         }
@@ -49,10 +51,10 @@ final class HanaLobBindings {
     final class Characters extends CLobTypeHandler {
         @Override
         public void setParameter(EasyParameter parameter) throws SQLException {
-            var scope = binding(parameter.getPs());
-            var clob = (Clob) parameter.getValue();
+            HanaLobBindings.Scope scope = binding(parameter.getPs());
+            Clob clob = (Clob) parameter.getValue();
             long length = clob.length();
-            var reader = clob.getCharacterStream();
+            Reader reader = clob.getCharacterStream();
             scope.streams.add(reader);
             parameter.getPs().setCharacterStream(parameter.getIndex(), reader, length);
         }
@@ -79,7 +81,7 @@ final class HanaLobBindings {
             SQLException failure = null;
             // 上游 createPreparedStatement 在参数绑定失败时还没有交出 statement；此时由作用域补齐清理。
             if (!completed) {
-                for (var statement : statements) {
+                for (PreparedStatement statement : statements) {
                     try {
                         statement.close();
                     } catch (SQLException error) {

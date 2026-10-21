@@ -15,6 +15,10 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
+import com.easy.query.core.basic.api.select.Query;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.stream.Collectors;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -27,8 +31,8 @@ class JsonPathDslTest {
 
     @Test
     void pathsAreImmutableAndKeysCannotBecomeOperators() {
-        var root = JsonPath.root();
-        var path = root.key("a.b").index(0).key("q\"\\\n");
+        JsonPath root = JsonPath.root();
+        JsonPath path = root.key("a.b").index(0).key("q\"\\\n");
         assertEquals("$", root.toSqlJsonPath());
         assertEquals("$.\"a.b\"[0].\"q\\\"\\\\\\u000a\"", path.toSqlJsonPath());
         assertEquals(path, root.key("a.b").index(0).key("q\"\\\n"));
@@ -39,9 +43,9 @@ class JsonPathDslTest {
         assertThrows(NullPointerException.class, () -> root.key(null));
         assertThrows(IllegalArgumentException.class, () -> root.key("a\0"));
         assertThrows(IllegalArgumentException.class, () -> root.key("\uD83D"));
-        var bounded = root;
+        JsonPath bounded = root;
         for (int i = 0; i < 100; i++) bounded = bounded.index(0);
-        var maximum = bounded;
+        JsonPath maximum = bounded;
         assertThrows(IllegalArgumentException.class, () -> maximum.key("too deep"));
     }
 
@@ -49,10 +53,10 @@ class JsonPathDslTest {
     @MethodSource("backends")
     void literalKeysAndBindingsSurviveProjectionAndClone(DecimalDslTest.Backend backend) {
         String key = "O'Reilly\"\\{0}\n";
-        var path = JsonPath.root().key("a.b").index(0).key(key);
-        var query = backend.client().queryable(TestProduct.class)
+        JsonPath path = JsonPath.root().key("a.b").index(0).key(key);
+        Query<String> query = backend.client().queryable(TestProduct.class)
                 .selectColumn(p -> ProDsl.of(p).jsonTextAt(p.name(), path));
-        var rendered = query.toSQLResult();
+        ToSQLResult rendered = query.toSQLResult();
         if (backend.dialect() == SqlDialect.HANA) {
             assertTrue(rendered.getSQL().contains("O''Reilly"), rendered.getSQL());
             assertTrue(rendered.getSQL().contains("\"APP{0}\".\"EQP_JSON_DOCUMENT\""), rendered.getSQL());
@@ -60,30 +64,30 @@ class JsonPathDslTest {
             assertFalse(rendered.getSQL().contains("O'Reilly"));
         }
         assertEquals(rendered.getSQL().chars().filter(c -> c == '?').count(), rendered.getSqlContext().getParameters().size());
-        var cloned = query.cloneQueryable().toSQLResult();
+        ToSQLResult cloned = query.cloneQueryable().toSQLResult();
         assertEquals(rendered.getSQL(), cloned.getSQL());
-        assertEquals(rendered.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList(),
-                cloned.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(rendered.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()),
+                cloned.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
     }
 
     @ParameterizedTest
     @MethodSource("backends")
     void fragmentsRetainScopeAndDoNotPretendToBeComparableText(DecimalDslTest.Backend backend) {
-        var client = backend.client();
-        var saved = new AtomicReference<JsonFragmentExpression>();
+        DefaultEasyEntityQuery client = backend.client();
+        AtomicReference<JsonFragmentExpression> saved = new AtomicReference<JsonFragmentExpression>();
         client.queryable(TestProduct.class).where(p -> saved.set(ProDsl.of(p).jsonAt(p.name(), JsonPath.root())));
         assertThrows(IllegalArgumentException.class, () -> client.queryable(TestProduct.class).selectColumn(p -> saved.get()).toSQL());
         assertThrows(IllegalArgumentException.class, () -> backend.client().queryable(TestProduct.class).selectColumn(p -> saved.get()).toSQL());
         assertThrows(IllegalArgumentException.class, () -> client.queryable(TestProduct.class).selectColumn(p -> {
-            var sql = ProDsl.of(p);
+            ProDsl sql = ProDsl.of(p);
             return sql.nullSafeEqualsValue(sql.jsonAt(p.name(), JsonPath.root()), "{}");
         }));
     }
 
     @Test
     void hanaMissingSupportConfigurationFailsBeforeJdbc() {
-        var client = TestClients.offline(new HanaDatabaseConfiguration(), HanaExtensions::configure);
-        var failure = assertThrows(IllegalStateException.class, () -> client.queryable(TestProduct.class)
+        DefaultEasyEntityQuery client = TestClients.offline(new HanaDatabaseConfiguration(), HanaExtensions::configure);
+        IllegalStateException failure = assertThrows(IllegalStateException.class, () -> client.queryable(TestProduct.class)
                 .selectColumn(p -> ProDsl.of(p).jsonExists(p.name(), JsonPath.root())));
         assertTrue(failure.getMessage().contains("jsonSupportSchema"), failure.getMessage());
     }

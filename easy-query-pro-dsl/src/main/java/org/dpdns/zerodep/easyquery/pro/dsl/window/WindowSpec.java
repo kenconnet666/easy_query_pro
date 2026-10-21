@@ -8,6 +8,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.spi.ExpressionScope;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 绑定当前查询的不可变窗口规格，共同维护分区键、排序键和 frame。
@@ -27,15 +28,54 @@ public abstract class WindowSpec<S extends WindowSpec<S>> {
     /**
      * 只冻结集合结构，不复制列表达式或它们所属的查询上下文。
      */
-    protected record State(List<PropTypeColumn<?>> partitions, List<WindowOrder> ordering, WindowFrame frame) {
-        protected State {
-            partitions = List.copyOf(partitions);
-            ordering = List.copyOf(ordering);
+    protected static final class State {
+        private final List<PropTypeColumn<?>> partitions;
+        private final List<WindowOrder> ordering;
+        private final WindowFrame frame;
+
+        protected State(List<PropTypeColumn<?>> partitions, List<WindowOrder> ordering, WindowFrame frame) {
+            partitions = ImmutableCollections.listCopyOf(partitions);
+            ordering = ImmutableCollections.listCopyOf(ordering);
+            this.partitions = partitions;
+            this.ordering = ordering;
+            this.frame = frame;
+        }
+
+        public List<PropTypeColumn<?>> partitions() {
+            return partitions;
+        }
+
+        public List<WindowOrder> ordering() {
+            return ordering;
+        }
+
+        public WindowFrame frame() {
+            return frame;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof State)) return false;
+            State other = (State) o;
+            return Objects.equals(partitions, other.partitions)
+                    && Objects.equals(ordering, other.ordering)
+                    && Objects.equals(frame, other.frame);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(partitions, ordering, frame);
+        }
+
+        @Override
+        public String toString() {
+            return "State[partitions=" + partitions + ", ordering=" + ordering + ", frame=" + frame + "]";
         }
     }
 
     protected WindowSpec(ExpressionScope scope) {
-        this(scope, new State(List.of(), List.of(), null));
+        this(scope, new State(ImmutableCollections.listOf(), ImmutableCollections.listOf(), null));
     }
 
     protected WindowSpec(ExpressionScope scope, State state) {
@@ -52,8 +92,8 @@ public abstract class WindowSpec<S extends WindowSpec<S>> {
      * 追加分区键；不调用此方法表示全局窗口，不人为补一个常量分区。
      */
     public S partitionBy(PropTypeColumn<?>... columns) {
-        var partitions = new ArrayList<>(state.partitions());
-        for (var column : Objects.requireNonNull(columns, "columns")) {
+        ArrayList<PropTypeColumn<?>> partitions = new ArrayList<>(state.partitions());
+        for (PropTypeColumn<?> column : Objects.requireNonNull(columns, "columns")) {
             scope.requireSource(column);
             partitions.add(column);
         }
@@ -64,8 +104,8 @@ public abstract class WindowSpec<S extends WindowSpec<S>> {
      * 追加升序键；ROWS 如需稳定行序，应由调用方补充能区分并列行的次排序键。
      */
     public S orderBy(PropTypeColumn<?>... columns) {
-        var ordering = new ArrayList<>(state.ordering());
-        for (var column : Objects.requireNonNull(columns, "columns")) {
+        ArrayList<WindowOrder> ordering = new ArrayList<>(state.ordering());
+        for (PropTypeColumn<?> column : Objects.requireNonNull(columns, "columns")) {
             scope.requireSource(column);
             ordering.add(new WindowOrder(column, true));
         }
@@ -74,7 +114,7 @@ public abstract class WindowSpec<S extends WindowSpec<S>> {
 
     public S orderBy(PropTypeColumn<?> column, boolean ascending) {
         scope.requireSource(column);
-        var ordering = new ArrayList<>(state.ordering());
+        ArrayList<WindowOrder> ordering = new ArrayList<>(state.ordering());
         ordering.add(new WindowOrder(column, ascending));
         return recreate(new State(state.partitions(), ordering, state.frame()));
     }
@@ -97,8 +137,8 @@ public abstract class WindowSpec<S extends WindowSpec<S>> {
         // 放在挂接函数时校验，允许调用方先指定 frame 再补充排序，不约束链式方法的书写顺序。
         if (target.runtime() != scope.runtime())
             throw new IllegalArgumentException("A window cannot use another client's specification");
-        for (var column : state.partitions()) validateKey(column);
-        for (var order : state.ordering()) validateKey(order.column());
+        for (PropTypeColumn<?> column : state.partitions()) validateKey(column);
+        for (WindowOrder order : state.ordering()) validateKey(order.column());
         if (requiresOrdering && state.ordering().isEmpty())
             throw new IllegalArgumentException("This window function requires an explicit ordering");
         if (state.frame() != null) state.frame().validate(scope.dialect(), state.ordering());
@@ -111,9 +151,9 @@ public abstract class WindowSpec<S extends WindowSpec<S>> {
 
     SQLFunction apply(SQLFunc factory, SQLFunction input) {
         // 子函数保持结构化节点直到最终渲染，不能先生成 SQL 再拼接，避免参数和表别名脱离上下文。
-        var arguments = new ArrayList<SQLFunction>();
+        ArrayList<SQLFunction> arguments = new ArrayList<SQLFunction>();
         arguments.add(input);
-        var template = new StringBuilder("{0} OVER (");
+        StringBuilder template = new StringBuilder("{0} OVER (");
         if (!state.partitions().isEmpty()) {
             template.append("PARTITION BY ");
             for (int i = 0; i < state.partitions().size(); i++) {
@@ -126,7 +166,7 @@ public abstract class WindowSpec<S extends WindowSpec<S>> {
             template.append("ORDER BY ");
             for (int i = 0; i < state.ordering().size(); i++) {
                 if (i != 0) template.append(',');
-                var order = state.ordering().get(i);
+                WindowOrder order = state.ordering().get(i);
                 append(template, arguments, scope.operand(order.column(), factory));
                 template.append(order.ascending() ? " ASC" : " DESC");
             }

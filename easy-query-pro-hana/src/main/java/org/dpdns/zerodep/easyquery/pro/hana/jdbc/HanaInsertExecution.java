@@ -16,6 +16,13 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
+import com.easy.query.core.expression.sql.builder.internal.EasyBehavior;
+import com.easy.query.core.expression.sql.builder.EntityTableExpressionBuilder;
+import com.easy.query.core.metadata.EntityMetadata;
+import java.util.Collection;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 /**
  * 在上游准备阶段传递结构化目标，执行阶段仍使用上游分发与连接管理。
@@ -27,7 +34,7 @@ public final class HanaInsertExecution extends DefaultEntityExpressionPrepareExe
 
     @Override
     public <T> long insert(ExecutorContext context, List<T> entities, EntityInsertExpressionBuilder builder, boolean fillKeys) {
-        var behavior = context.getExpressionContext().getBehavior();
+        EasyBehavior behavior = context.getExpressionContext().getBehavior();
         boolean conflict = behavior.hasBehavior(EasyBehaviorEnum.ON_DUPLICATE_KEY_IGNORE)
                 || behavior.hasBehavior(EasyBehaviorEnum.ON_DUPLICATE_KEY_UPDATE);
         if ((!fillKeys && !conflict) || entities.isEmpty()) return super.insert(context, entities, builder, fillKeys);
@@ -37,20 +44,21 @@ public final class HanaInsertExecution extends DefaultEntityExpressionPrepareExe
         if (context.getExpressionContext().isSharding()) {
             throw new UnsupportedOperationException("HANA guarded inserts require a resolved physical table; sharded targets are not resolved");
         }
-        var copy = builder.cloneEntityExpressionBuilder();
-        var table = copy.getTable(0);
-        if (!(table.toExpression() instanceof HanaTableSQLExpression expression)) {
+        EntityInsertExpressionBuilder copy = builder.cloneEntityExpressionBuilder();
+        EntityTableExpressionBuilder table = copy.getTable(0);
+        if (!(table.toExpression() instanceof HanaTableSQLExpression)) {
             throw new UnsupportedOperationException("HANA guarded writes require a structured HANA table expression");
         }
-        var target = expression.insertTarget();
-        var keyword = new HanaSQLKeyword();
+        HanaTableSQLExpression expression = (HanaTableSQLExpression) table.toExpression();
+        HanaTableSQLExpression.InsertTarget target = expression.insertTarget();
+        HanaSQLKeyword keyword = new HanaSQLKeyword();
         // 固定本次执行的 asTable/asSchema 结果，确保元数据检查和实际写入指向同一个对象。
         table.setTableNameAs(ignored -> keyword.quoteUnquotedName(target.table()));
         table.setSchemaAs(ignored -> target.schema() == null ? null : keyword.quoteUnquotedName(target.schema()));
-        var keys = new HashSet<String>();
+        HashSet<String> keys = new HashSet<String>();
         if (conflict) {
-            var metadata = table.getEntityMetadata();
-            var properties = builder.getDuplicateKeys() == null || builder.getDuplicateKeys().isEmpty()
+            EntityMetadata metadata = table.getEntityMetadata();
+            Collection<String> properties = builder.getDuplicateKeys() == null || builder.getDuplicateKeys().isEmpty()
                     ? metadata.getKeyProperties() : builder.getDuplicateKeys();
             for (String property : properties) keys.add(metadata.getColumnNotNull(property).getName());
         }
@@ -66,7 +74,7 @@ public final class HanaInsertExecution extends DefaultEntityExpressionPrepareExe
             super(original.getExpressionContext(), original.isQuery(), original.getExecuteMethod(), original.isTracking());
             this.original = original;
             this.target = target;
-            this.conflictKeys = Set.copyOf(conflictKeys);
+            this.conflictKeys = ImmutableCollections.setCopyOf(conflictKeys);
             setMapToBeanStrict(original.isMapToBeanStrict());
             setConfigurer(original.getConfigurer(false));
         }
@@ -92,10 +100,10 @@ public final class HanaInsertExecution extends DefaultEntityExpressionPrepareExe
                     + " ON r.SUBJECT_TABLE_SCHEMA = t.SCHEMA_NAME AND r.SUBJECT_TABLE_NAME = t.TABLE_NAME"
                     + " AND r.TRIGGER_EVENT LIKE '%INSERT%' AND r.IS_ENABLED = 'TRUE'"
                     + " WHERE t.SCHEMA_NAME = COALESCE(?,CURRENT_SCHEMA) AND t.TABLE_NAME = ? LIMIT 1";
-            try (var statement = connection.prepareStatement(sql)) {
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setString(1, target.schema());
                 statement.setString(2, target.table());
-                try (var result = statement.executeQuery()) {
+                try (ResultSet result = statement.executeQuery()) {
                     if (!result.next()) {
                         throw new SQLException("HANA generated-key backfill requires visible base-table metadata for "
                                 + target.table() + "; views and synonyms require application-generated keys or executeRows(false)", "0A000");
@@ -115,18 +123,18 @@ public final class HanaInsertExecution extends DefaultEntityExpressionPrepareExe
             String sql = "SELECT INDEX_NAME,COLUMN_NAME FROM SYS.INDEX_COLUMNS"
                     + " WHERE SCHEMA_NAME = COALESCE(?,CURRENT_SCHEMA) AND TABLE_NAME = ?"
                     + " AND \"CONSTRAINT\" IN ('PRIMARY KEY','UNIQUE')";
-            var uniqueKeys = new LinkedHashMap<String, Set<String>>();
-            try (var statement = connection.prepareStatement(sql)) {
+            LinkedHashMap<String, Set<String>> uniqueKeys = new LinkedHashMap<String, Set<String>>();
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
                 statement.setString(1, target.schema());
                 statement.setString(2, target.table());
-                try (var rows = statement.executeQuery()) {
+                try (ResultSet rows = statement.executeQuery()) {
                     while (rows.next())
                         uniqueKeys.computeIfAbsent(rows.getString(1), ignored -> new HashSet<>()).add(rows.getString(2));
                 }
             }
             if (uniqueKeys.values().stream().noneMatch(conflictKeys::equals)) {
                 throw new SQLException("HANA MERGE conflict columns must match a visible primary key or unique index on "
-                        + target.table() + ": " + conflictKeys.stream().sorted().toList(), "0A000");
+                        + target.table() + ": " + conflictKeys.stream().sorted().collect(ImmutableCollections.toList()), "0A000");
             }
         }
     }

@@ -22,6 +22,13 @@ import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import com.easy.query.core.expression.sql.builder.EntityQueryExpressionBuilder;
+import com.easy.query.core.context.QueryRuntimeContext;
+import com.easy.query.core.expression.parser.core.available.TableAvailable;
+import com.easy.query.core.proxy.SQLColumn;
+import com.easy.query.core.metadata.ColumnMetadata;
+import com.easy.query.core.expression.segment.condition.PredicateSegment;
+import com.easy.query.core.metadata.EntityMetadata;
 
 /**
  * 同时安装 MATCH 过滤和分数投影，再以原 EntityQueryable 暴露结果。
@@ -44,8 +51,8 @@ public final class MySqlSearch {
     public static <P extends ProxyEntity<P, T>, T> MySqlSearch from(
             EntityQueryable<P, T> source, SQLFuncExpression1<P, MySqlSearchSpec> specification) {
         Objects.requireNonNull(source, "source");
-        var builder = source.getClientQueryable().getSQLEntityExpressionBuilder();
-        var runtime = builder.getRuntimeContext();
+        EntityQueryExpressionBuilder builder = source.getClientQueryable().getSQLEntityExpressionBuilder();
+        QueryRuntimeContext runtime = builder.getRuntimeContext();
         if (runtime.getService(SqlDialect.class) != SqlDialect.MYSQL)
             throw new IllegalArgumentException("MySQL full-text search requires a MySQL client");
         if (builder.getExpressionContext().isSharding())
@@ -55,13 +62,13 @@ public final class MySqlSearch {
                 || builder.getFromTable().getEntityTable().isAnonymous() || builder.getProjects().isNotEmpty()
                 || builder.hasGroup() || builder.hasHaving() || builder.isDistinct())
             throw new IllegalArgumentException("MySQL full-text search requires an unprojected single physical table");
-        var spec = Objects.requireNonNull(Objects.requireNonNull(specification, "specification").apply(source.get1Proxy()), "specification result");
-        var table = builder.getFromTable().getEntityTable();
-        var properties = new HashSet<String>();
-        for (var column : spec.columns()) {
+        MySqlSearchSpec spec = Objects.requireNonNull(Objects.requireNonNull(specification, "specification").apply(source.get1Proxy()), "specification result");
+        TableAvailable table = builder.getFromTable().getEntityTable();
+        HashSet<String> properties = new HashSet<String>();
+        for (SQLColumn<?, String> column : spec.columns()) {
             if (column instanceof DSLSQLFunctionAvailable || column.getTable() != table || column.getValue() == null)
                 throw new IllegalArgumentException("MySQL full-text search requires physical mapped columns of the current source");
-            var metadata = table.getEntityMetadata().getColumnNotNull(column.getValue());
+            ColumnMetadata metadata = table.getEntityMetadata().getColumnNotNull(column.getValue());
             if (metadata.getPropertyType() != String.class || metadata.getColumnValueSQLConverter() != null)
                 throw new IllegalArgumentException("MySQL full-text columns must map String without a SQL value converter");
             if (!properties.add(column.getValue()))
@@ -69,11 +76,11 @@ public final class MySqlSearch {
         }
         if (table.getEntityMetadata().getProperty2ColumnMap().values().stream().anyMatch(column -> column.getName().equalsIgnoreCase(SCORE_COLUMN)))
             throw new IllegalArgumentException("MySQL search source conflicts with generated column " + SCORE_COLUMN);
-        var snapshot = source.getClientQueryable().cloneQueryable();
-        var where = snapshot.getSQLEntityExpressionBuilder().getWhere();
+        ClientQueryable<T> snapshot = source.getClientQueryable().cloneQueryable();
+        PredicateSegment where = snapshot.getSQLEntityExpressionBuilder().getWhere();
         if (where.isNotEmpty()) {
             // 保留原 WHERE 整体，防止根级 OR 分支绕过新增 MATCH。
-            var existing = new AndPredicateSegment(false);
+            AndPredicateSegment existing = new AndPredicateSegment(false);
             where.copyTo(existing);
             where.reset();
             where.addPredicateSegment(existing);
@@ -95,17 +102,17 @@ public final class MySqlSearch {
      * 输出采用 fresh Proxy 与独立 DTO 映射；源临时 reader 不传到输出同名属性。
      */
     public <P extends ProxyEntity<P, T>, T> EntityQueryable<P, T> query(Supplier<P> proxyFactory) {
-        var proxy = Objects.requireNonNull(Objects.requireNonNull(proxyFactory, "proxyFactory").get(), "proxyFactory result");
+        P proxy = Objects.requireNonNull(Objects.requireNonNull(proxyFactory, "proxyFactory").get(), "proxyFactory result");
         if (proxy.getTableOrNull() != null)
             throw new IllegalArgumentException("The search result factory must return a fresh unbound proxy");
-        var runtime = searched.getRuntimeContext();
-        var metadata = runtime.getEntityMetadataManager().getEntityMetadata(proxy.getEntityClass());
-        var score = metadata.getProperty2ColumnMap().values().stream().filter(column -> column.getName().equalsIgnoreCase(SCORE_COLUMN)).findFirst()
+        QueryRuntimeContext runtime = searched.getRuntimeContext();
+        EntityMetadata metadata = runtime.getEntityMetadataManager().getEntityMetadata(proxy.getEntityClass());
+        ColumnMetadata score = metadata.getProperty2ColumnMap().values().stream().filter(column -> column.getName().equalsIgnoreCase(SCORE_COLUMN)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("The search result must map " + SCORE_COLUMN + " to a Double property"));
         if (score.getPropertyType() != Double.class)
             throw new IllegalArgumentException("The search result " + SCORE_COLUMN + " property must use Double");
-        var context = runtime.getExpressionBuilderFactory().createExpressionContext(runtime, ContextTypeEnum.QUERY);
-        var builder = new CapturedQuerySourceBuilder(searched, context, proxy.getEntityClass(), MySqlSearch::checkRendering);
+        ExpressionContext context = runtime.getExpressionBuilderFactory().createExpressionContext(runtime, ContextTypeEnum.QUERY);
+        CapturedQuerySourceBuilder builder = new CapturedQuerySourceBuilder(searched, context, proxy.getEntityClass(), MySqlSearch::checkRendering);
         return new EasyEntityQueryable<>(proxy, runtime.getSQLClientApiFactory().createQueryable(proxy.getEntityClass(), builder));
     }
 

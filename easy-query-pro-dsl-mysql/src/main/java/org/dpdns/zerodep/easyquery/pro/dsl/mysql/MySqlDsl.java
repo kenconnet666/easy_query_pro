@@ -79,12 +79,12 @@ public class MySqlDsl extends ProDsl {
     }
 
     public MySqlJsonExpression<String> nativeCast(PropTypeColumn<?> source, MySqlTypes.Json type) {
-        var converted = AbstractJsonExpression.cast(scope, Objects.requireNonNull(type, "type"), source);
+        PropTypeColumn<String> converted = AbstractJsonExpression.cast(scope, Objects.requireNonNull(type, "type"), source);
         return new Json<>(scope, this, converted, factory -> scope.operand(converted, factory));
     }
 
     public MySqlJsonExpression<String> value(JsonInput input, MySqlTypes.Json type) {
-        var value = AbstractJsonExpression.literal(scope, Objects.requireNonNull(type, "type"), input);
+        PropTypeColumn<String> value = AbstractJsonExpression.literal(scope, Objects.requireNonNull(type, "type"), input);
         return new Json<>(scope, this, value, factory -> scope.operand(value, factory));
     }
 

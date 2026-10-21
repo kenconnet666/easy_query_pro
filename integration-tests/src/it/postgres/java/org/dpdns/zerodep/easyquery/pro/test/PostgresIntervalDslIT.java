@@ -16,6 +16,18 @@ import org.junit.jupiter.api.Test;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import org.postgresql.ds.PGSimpleDataSource;
+import java.sql.Statement;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft6Proxy;
+import com.easy.query.core.proxy.core.draft.Draft6;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.PgIntervalExpression;
+import com.easy.query.core.basic.jdbc.tx.Transaction;
+import com.easy.query.core.proxy.core.draft.proxy.Draft2Proxy;
+import com.easy.query.core.proxy.core.draft.Draft2;
+import com.easy.query.core.basic.api.select.Query;
+import com.easy.query.core.proxy.core.draft.proxy.Draft4Proxy;
+import com.easy.query.core.proxy.core.draft.Draft4;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -25,16 +37,16 @@ class PostgresIntervalDslIT {
 
     @BeforeEach
     void createFixture() throws SQLException {
-        var source = PostgresTestDatabase.dataSource();
+        PGSimpleDataSource source = PostgresTestDatabase.dataSource();
         source.setOptions("-c intervalstyle=sql_standard");
         source.setPrepareThreshold(-1);
         schema = PostgresTestDatabase.createSchema(source, "eqp_interval_");
-        try (var statement = schema.connection().createStatement()) {
+        try (Statement statement = schema.connection().createStatement()) {
             statement.execute("CREATE TABLE " + schema.qualified("eqp_pg_interval") + " (id integer PRIMARY KEY, span interval, event_date date, occurred timestamp)");
         }
         query = TestClients.configured(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
         PgSqlExtensions.configureTypeHandlers(query.getRuntimeContext().getJdbcTypeHandlerManager());
-        var row = new PgIntervalRecord();
+        PgIntervalRecord row = new PgIntervalRecord();
         row.setId(1);
         row.setSpan(PgInterval.of(1, 0, 0));
         row.setEventDate(LocalDate.of(2024, 1, 31));
@@ -49,14 +61,14 @@ class PostgresIntervalDslIT {
 
     @Test
     void nativeArithmeticAndComparisonKeepCalendarSemantics() {
-        var selected = query.queryable(PgIntervalRecord.class).select(p -> {
-            var pg = PgSqlDsl.of(p);
-            var span = pg.view(p.span(), PgSqlTypes.interval());
-            var days = pg.value(PgInterval.of(0, 30, 0), PgSqlTypes.interval());
+        EntityQueryable<Draft6Proxy<Boolean, LocalDateTime, LocalDateTime, LocalDateTime, LocalDateTime, LocalDateTime>, Draft6<Boolean, LocalDateTime, LocalDateTime, LocalDateTime, LocalDateTime, LocalDateTime>> selected = query.queryable(PgIntervalRecord.class).select(p -> {
+            PgSqlDsl pg = PgSqlDsl.of(p);
+            PgIntervalExpression<PgInterval> span = pg.view(p.span(), PgSqlTypes.interval());
+            PgIntervalExpression<PgInterval> days = pg.value(PgInterval.of(0, 30, 0), PgSqlTypes.interval());
             return Select.DRAFT.of(span.equalTo(days), span.addToDate(p.eventDate()), days.addToDate(p.eventDate()),
                     span.addToDateTime(p.occurred()), span.subtractFromDate(p.eventDate()), span.subtractFromDateTime(p.occurred()));
         });
-        var row = selected.singleNotNull();
+        Draft6<Boolean, LocalDateTime, LocalDateTime, LocalDateTime, LocalDateTime, LocalDateTime> row = selected.singleNotNull();
         assertTrue(row.getValue1());
         assertEquals(LocalDateTime.of(2024, 2, 29, 0, 0), row.getValue2());
         assertEquals(LocalDateTime.of(2024, 3, 1, 0, 0), row.getValue3());
@@ -65,7 +77,7 @@ class PostgresIntervalDslIT {
         assertEquals(LocalDateTime.of(2023, 12, 31, 12, 30, 0, 123456000), row.getValue6());
         assertEquals(selected.toSQL(), selected.cloneQueryable().toSQL());
         assertEquals(1L, query.queryable(PgIntervalRecord.class).where(p -> {
-            var pg = PgSqlDsl.of(p);
+            PgSqlDsl pg = PgSqlDsl.of(p);
             pg.view(p.span(), PgSqlTypes.interval()).lessThan(pg.value(PgInterval.of(2, 0, 0), PgSqlTypes.interval())).eq(true);
         }).count());
     }
@@ -74,9 +86,9 @@ class PostgresIntervalDslIT {
     void sqlMutationReturnsIntervalValuesAndParticipatesInRollback() {
         assertEquals(PgInterval.of(-1, 0, 0), query.queryable(PgIntervalRecord.class).select(p -> Select.DRAFT.of(
                 PgSqlDsl.of(p).view(p.span(), PgSqlTypes.interval()).negated(), p.id())).singleNotNull().getValue1());
-        try (var transaction = query.getEasyQueryClient().beginTransaction()) {
+        try (Transaction transaction = query.getEasyQueryClient().beginTransaction()) {
             assertEquals(1L, query.updatable(PgIntervalRecord.class).setColumns(p -> {
-                var pg = PgSqlDsl.of(p);
+                PgSqlDsl pg = PgSqlDsl.of(p);
                 p.span().set(pg.view(p.span(), PgSqlTypes.interval()).plus(pg.value(PgInterval.of(0, 2, 3), PgSqlTypes.interval())).negated());
             }).where(p -> p.id().eq(1)).executeRows());
             assertEquals(PgInterval.of(-1, -2, -3), query.queryable(PgIntervalRecord.class).singleNotNull().getSpan());
@@ -84,19 +96,19 @@ class PostgresIntervalDslIT {
         }
         assertEquals(PgInterval.of(1, 0, 0), query.queryable(PgIntervalRecord.class).singleNotNull().getSpan());
         assertEquals(PgInterval.of(0, 0, 0), query.queryable(PgIntervalRecord.class).selectColumn(p -> {
-            var pg = PgSqlDsl.of(p);
+            PgSqlDsl pg = PgSqlDsl.of(p);
             return pg.view(p.span(), PgSqlTypes.interval()).minus(pg.value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()));
         }).singleNotNull());
     }
 
     @Test
     void derivedCteIntervalRetainsItsHandlerThroughArithmetic() {
-        var inner = query.queryable(PgIntervalRecord.class).select(p -> Select.DRAFT.of(p.id(),
+        EntityQueryable<Draft2Proxy<Integer, PgInterval>, Draft2<Integer, PgInterval>> inner = query.queryable(PgIntervalRecord.class).select(p -> Select.DRAFT.of(p.id(),
                 PgSqlDsl.of(p).view(p.span(), PgSqlTypes.interval()).negated())).toCteAs("eqp_interval_readers");
-        var outer = inner.cloneQueryable().select(p -> Select.DRAFT.of(PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.interval()).negated(), p.value1()));
+        EntityQueryable<Draft2Proxy<PgInterval, Integer>, Draft2<PgInterval, Integer>> outer = inner.cloneQueryable().select(p -> Select.DRAFT.of(PgSqlDsl.of(p).view(p.value2(), PgSqlTypes.interval()).negated(), p.value1()));
         assertEquals(PgInterval.of(1, 0, 0), outer.singleNotNull().getValue1());
         assertEquals(PgInterval.of(1, 0, 0), outer.cloneQueryable().singleNotNull().getValue1());
-        var minimum = inner.cloneQueryable().selectColumn(p -> PgSqlDsl.of(p).over(p.value2().min(), PgSqlDsl.of(p).window()));
+        Query<PgInterval> minimum = inner.cloneQueryable().selectColumn(p -> PgSqlDsl.of(p).over(p.value2().min(), PgSqlDsl.of(p).window()));
         assertEquals(PgInterval.of(-1, 0, 0), minimum.singleNotNull());
         assertEquals(PgInterval.of(-1, 0, 0), minimum.cloneQueryable().singleNotNull());
         assertEquals(PgInterval.of(-1, 0, 0), inner.singleNotNull().getValue2());
@@ -104,18 +116,18 @@ class PostgresIntervalDslIT {
 
     @Test
     void customIntervalChainKeepsItsTypeAndMappedValueThroughCte() {
-        var selected = query.queryable(PgIntervalRecord.class).select(p -> {
-            var pg = PgSqlDsl.of(p);
+        EntityQueryable<Draft4Proxy<Integer, PgInterval, Boolean, LocalDateTime>, Draft4<Integer, PgInterval, Boolean, LocalDateTime>> selected = query.queryable(PgIntervalRecord.class).select(p -> {
+            PgSqlDsl pg = PgSqlDsl.of(p);
             ReportInterval<PgInterval> span = pg.view(p.span(), ReportInterval::new);
             ReportInterval<PgInterval> changed = span.plus(pg.value(PgInterval.of(0, 2, 3), PgSqlTypes.interval()))
                     .minus(pg.value(PgInterval.of(0, 1, 1), PgSqlTypes.interval())).negated();
             return Select.DRAFT.of(p.id(), changed, changed.isZero(), changed.addToDate(p.eventDate()));
         }).toCteAs("eqp_custom_interval");
-        var row = selected.cloneQueryable().singleNotNull();
+        Draft4<Integer, PgInterval, Boolean, LocalDateTime> row = selected.cloneQueryable().singleNotNull();
         assertEquals(PgInterval.of(-1, -1, -2), row.getValue2());
         assertFalse(row.getValue3());
         assertEquals(LocalDateTime.of(2023, 12, 29, 23, 59, 59, 999998000), row.getValue4());
-        var outer = selected.cloneQueryable().select(p -> Select.DRAFT.of(p.value4(), p.value2()));
+        EntityQueryable<Draft2Proxy<LocalDateTime, PgInterval>, Draft2<LocalDateTime, PgInterval>> outer = selected.cloneQueryable().select(p -> Select.DRAFT.of(p.value4(), p.value2()));
         assertEquals(row.getValue2(), outer.singleNotNull().getValue2());
     }
 
@@ -125,7 +137,7 @@ class PostgresIntervalDslIT {
         assertSame(PgInterval.Infinity.NEGATIVE, query.queryable(PgIntervalRecord.class)
                 .selectColumn(p -> PgSqlDsl.of(p).value(PgInterval.positiveInfinity(), PgSqlTypes.interval()).negated()).singleNotNull());
         assertThrows(RuntimeException.class, () -> query.queryable(PgIntervalRecord.class).selectColumn(p -> {
-            var pg = PgSqlDsl.of(p);
+            PgSqlDsl pg = PgSqlDsl.of(p);
             return pg.value(PgInterval.positiveInfinity(), PgSqlTypes.interval()).minus(pg.value(PgInterval.positiveInfinity(), PgSqlTypes.interval()));
         }).toList());
         assertThrows(RuntimeException.class, () -> query.queryable(PgIntervalRecord.class).selectColumn(p ->

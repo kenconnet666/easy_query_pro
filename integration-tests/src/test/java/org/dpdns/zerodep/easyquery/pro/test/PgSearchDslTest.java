@@ -21,8 +21,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import java.util.List;
-import java.util.Map;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import org.dpdns.zerodep.easyquery.pro.test.entity.PgSearchDocument;
+import org.dpdns.zerodep.easyquery.pro.test.entity.SearchHit;
+import com.easy.query.core.common.ToSQLResult;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+import com.easy.query.core.proxy.columns.types.SQLAnyTypeColumn;
+import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTsVector;
+import com.easy.query.core.proxy.core.draft.proxy.Draft1Proxy;
+import com.easy.query.core.proxy.core.draft.Draft1;
+import java.util.Collections;
+import com.easy.query.api.proxy.entity.select.EntityQueryable2;
+import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.ShardedProductProxy;
+import com.easy.query.core.basic.api.select.ClientQueryable;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.dpdns.zerodep.easyquery.pro.dsl.pgsql.query.PgSearchSpec.Normalization.*;
@@ -32,43 +45,43 @@ class PgSearchDslTest {
     @ParameterizedTest
     @MethodSource("org.dpdns.zerodep.easyquery.pro.test.DecimalDslTest#backends")
     void eachQueryOccurrenceKeepsItsBindingsAndTheSourceIsCaptured(DecimalDslTest.Backend backend) {
-        var client = TestClients.offline(backend.database(), services -> {
+        DefaultEasyEntityQuery client = TestClients.offline(backend.database(), services -> {
             backend.extensions().accept(services);
             if (backend.dialect() == SqlDialect.POSTGRESQL) PgSqlExtensions.configureQueryScope(services);
         });
         PgSqlExtensions.configureTypeHandlers(client.getRuntimeContext().getJdbcTypeHandlerManager());
-        var source = client.queryable(PgSearchDocumentProxy.createTable()).where(p -> p.id().gt(2));
+        EntityQueryable<PgSearchDocumentProxy, PgSearchDocument> source = client.queryable(PgSearchDocumentProxy.createTable()).where(p -> p.id().gt(2));
         if (backend.dialect() != SqlDialect.POSTGRESQL) {
             assertThrows(IllegalArgumentException.class, () -> PgSearch.from(source,
                     p -> PgSearchSpec.plain("pg_catalog.english", "coffee", p.document())));
             return;
         }
-        var search = PgSearch.from(source, p -> PgSearchSpec.web("pg_catalog.english", "O'Reilly", p.document())
+        PgSearch search = PgSearch.from(source, p -> PgSearchSpec.web("pg_catalog.english", "O'Reilly", p.document())
                 .rankedBy(COVER_DENSITY, DOCUMENT_LENGTH, RANK_OVER_RANK_PLUS_ONE));
         source.where(p -> p.id().eq(99));
-        var result = search.query(SearchHitProxy::createTable).where(p -> p.score().ge(0.2));
-        var sql = result.cloneQueryable().toSQLResult();
+        EntityQueryable<SearchHitProxy, SearchHit> result = search.query(SearchHitProxy::createTable).where(p -> p.score().ge(0.2));
+        ToSQLResult sql = result.cloneQueryable().toSQLResult();
         assertTrue(sql.getSQL().contains("ts_rank_cd("), sql.getSQL());
         assertTrue(sql.getSQL().contains("AS double precision)"), sql.getSQL());
         assertFalse(sql.getSQL().contains("O'Reilly"), sql.getSQL());
         assertFalse(sql.getSQL().contains("pg_catalog.english"), sql.getSQL());
-        assertEquals(List.of("pg_catalog.english", "O'Reilly", 34, 2, "pg_catalog.english", "O'Reilly", 0.2),
-                sql.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(Arrays.asList("pg_catalog.english", "O'Reilly", 34, 2, "pg_catalog.english", "O'Reilly", 0.2),
+                sql.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         assertEquals(sql.getSQL(), result.cloneQueryable().toSQL());
-        var encoded = new PgTsQuery("'coff':*");
-        var direct = PgSearch.from(client.queryable(PgSearchDocumentProxy.createTable()), p -> PgSearchSpec.query(encoded, p.document()))
+        PgTsQuery encoded = new PgTsQuery("'coff':*");
+        ToSQLResult direct = PgSearch.from(client.queryable(PgSearchDocumentProxy.createTable()), p -> PgSearchSpec.query(encoded, p.document()))
                 .query(SearchHitProxy::createTable).toSQLResult();
-        assertEquals(List.of(encoded, 0, encoded), direct.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(Arrays.asList(encoded, 0, encoded), direct.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
     }
 
     @Test
     void physicalColumnsConfigurationsAndRankOptionsAreCheckedBeforeJdbc() {
-        var client = client();
-        var source = client.queryable(PgSearchDocumentProxy.createTable());
-        var vector = source.get1Proxy().document();
-        var foreign = client.queryable(PgSearchDocumentProxy.createTable()).get1Proxy().document();
+        DefaultEasyEntityQuery client = client();
+        EntityQueryable<PgSearchDocumentProxy, PgSearchDocument> source = client.queryable(PgSearchDocumentProxy.createTable());
+        SQLAnyTypeColumn<PgSearchDocumentProxy, PgTsVector> vector = source.get1Proxy().document();
+        SQLAnyTypeColumn<PgSearchDocumentProxy, PgTsVector> foreign = client.queryable(PgSearchDocumentProxy.createTable()).get1Proxy().document();
         assertThrows(IllegalArgumentException.class, () -> PgSearch.from(source, p -> PgSearchSpec.plain("english", "coffee", foreign)));
-        for (String invalid : List.of("", " ", "\0", "\uD800")) {
+        for (String invalid : Arrays.asList("", " ", "\0", "\uD800")) {
             assertThrows(IllegalArgumentException.class, () -> PgSearchSpec.plain(invalid, "coffee", vector));
             assertThrows(IllegalArgumentException.class, () -> PgSearchSpec.web("english", invalid, vector));
         }
@@ -76,27 +89,27 @@ class PgSearchDslTest {
         assertThrows(NullPointerException.class, () -> PgSearchSpec.query(null, vector));
         assertThrows(IllegalArgumentException.class, () -> PgSearchSpec.plain("english", "coffee", vector).rankedBy(FREQUENCY, MEAN_EXTENT_DISTANCE));
         assertDoesNotThrow(() -> PgSearchSpec.query(new PgTsQuery(""), vector));
-        var projected = source.cloneQueryable().select(p -> Select.DRAFT.of(p.document()));
+        EntityQueryable<Draft1Proxy<PgTsVector>, Draft1<PgTsVector>> projected = source.cloneQueryable().select(p -> Select.DRAFT.of(p.document()));
         assertThrows(IllegalArgumentException.class, () -> PgSearch.from(projected, p -> PgSearchSpec.plain("english", "coffee", p.value1())));
-        var cte = client.queryable(PgSearchDocumentProxy.createTable()).toCteAs("projected_vector").cloneQueryable();
+        EntityQueryable<PgSearchDocumentProxy, PgSearchDocument> cte = client.queryable(PgSearchDocumentProxy.createTable()).toCteAs("projected_vector").cloneQueryable();
         assertThrows(IllegalArgumentException.class, () -> PgSearch.from(cte, p -> PgSearchSpec.plain("english", "coffee", p.document())));
-        var definition = PgSearch.from(client.queryable(PgSearchDocumentProxy.createTable()), p -> PgSearchSpec.plain("english", "coffee", p.document()));
+        PgSearch definition = PgSearch.from(client.queryable(PgSearchDocumentProxy.createTable()), p -> PgSearchSpec.plain("english", "coffee", p.document()));
         assertThrows(IllegalArgumentException.class, () -> definition.query(PgSearchDocumentProxy::createTable));
-        var output = SearchHitProxy.createTable();
+        SearchHitProxy output = SearchHitProxy.createTable();
         definition.query(() -> output);
         assertThrows(IllegalArgumentException.class, () -> definition.query(() -> output));
     }
 
     @Test
     void queryScopeIsExplicitAndCannotBeDiscardedByALaterFactory() {
-        var application = new PostgresSQLExpressionFactory();
-        var ordinary = TestClients.offline(new PgSQLDatabaseConfiguration(), services -> {
+        PostgresSQLExpressionFactory application = new PostgresSQLExpressionFactory();
+        DefaultEasyEntityQuery ordinary = TestClients.offline(new PgSQLDatabaseConfiguration(), services -> {
             services.addService(ExpressionFactory.class, application);
             PgSqlExtensions.configure(services);
         });
         assertSame(application, ordinary.getRuntimeContext().getExpressionFactory());
-        for (boolean replacement : List.of(false, true)) {
-            var query = TestClients.offline(new PgSQLDatabaseConfiguration(), services -> {
+        for (boolean replacement : Arrays.asList(false, true)) {
+            DefaultEasyEntityQuery query = TestClients.offline(new PgSQLDatabaseConfiguration(), services -> {
                 PgSqlExtensions.configure(services);
                 if (replacement) {
                     PgSqlExtensions.configureQueryScope(services);
@@ -104,7 +117,7 @@ class PgSearchDslTest {
                 }
             });
             PgSqlExtensions.configureTypeHandlers(query.getRuntimeContext().getJdbcTypeHandlerManager());
-            var hits = PgSearch.from(query.queryable(PgSearchDocumentProxy.createTable()), p -> PgSearchSpec.plain("english", "coffee", p.document()))
+            EntityQueryable<SearchHitProxy, SearchHit> hits = PgSearch.from(query.queryable(PgSearchDocumentProxy.createTable()), p -> PgSearchSpec.plain("english", "coffee", p.document()))
                     .query(SearchHitProxy::createTable);
             assertTrue(assertThrows(IllegalStateException.class, hits::toSQL).getMessage().contains("configureQueryScope"));
         }
@@ -112,33 +125,33 @@ class PgSearchDslTest {
 
     @Test
     void lateShardFlagsSurviveCloneAndCteWhileApplicationFactoriesRemainInstalled() {
-        var factory = new ApplicationFactory();
-        var client = TestClients.offline(new PgSQLDatabaseConfiguration(), services -> {
+        PgSearchDslTest.ApplicationFactory factory = new ApplicationFactory();
+        DefaultEasyEntityQuery client = TestClients.offline(new PgSQLDatabaseConfiguration(), services -> {
             PgSqlExtensions.configure(services);
             PgSqlExtensions.configureQueryScope(services);
             services.addService(ExpressionFactory.class, factory);
         });
         PgSqlExtensions.configureTypeHandlers(client.getRuntimeContext().getJdbcTypeHandlerManager());
         assertSame(factory, client.getRuntimeContext().getExpressionFactory());
-        var search = PgSearch.from(client.queryable(PgSearchDocumentProxy.createTable()), p -> PgSearchSpec.plain("english", "coffee", p.document()));
-        var copy = search.query(SearchHitProxy::createTable).cloneQueryable();
+        PgSearch search = PgSearch.from(client.queryable(PgSearchDocumentProxy.createTable()), p -> PgSearchSpec.plain("english", "coffee", p.document()));
+        EntityQueryable<SearchHitProxy, SearchHit> copy = search.query(SearchHitProxy::createTable).cloneQueryable();
         copy.getClientQueryable().getSQLEntityExpressionBuilder().getExpressionContext().useSharding();
         assertThrows(UnsupportedOperationException.class, copy::toSQL);
         client.getRuntimeContext().getQueryConfiguration().applyShardingInitializer(
-                new ShardedProduct.Tables(Map.of("default", List.of("eqp_pg_search_shard_0", "eqp_pg_search_shard_1"))));
-        var joined = search.query(SearchHitProxy::createTable).toCteAs("search_before_sharding")
+                new ShardedProduct.Tables(Collections.singletonMap("default", Arrays.asList("eqp_pg_search_shard_0", "eqp_pg_search_shard_1"))));
+        EntityQueryable2<SearchHitProxy, SearchHit, ShardedProductProxy, ShardedProduct> joined = search.query(SearchHitProxy::createTable).toCteAs("search_before_sharding")
                 .innerJoin(client.queryable(ShardedProduct.class), (hit, product) -> hit.id().eq(product.id()));
         assertThrows(UnsupportedOperationException.class, joined::toSQL);
-        var left = client.getEasyQueryClient().queryable(TestProduct.class).where(p -> p.eq("id", 1));
-        var right = client.getEasyQueryClient().queryable(TestProduct.class).where(p -> p.eq("id", 2));
-        var ordinary = left.unionAll(right).toCteAs("ordinary_union");
+        ClientQueryable<TestProduct> left = client.getEasyQueryClient().queryable(TestProduct.class).where(p -> p.eq("id", 1));
+        ClientQueryable<TestProduct> right = client.getEasyQueryClient().queryable(TestProduct.class).where(p -> p.eq("id", 2));
+        ClientQueryable<TestProduct> ordinary = left.unionAll(right).toCteAs("ordinary_union");
         assertEquals(ordinary.toSQL(), ordinary.cloneQueryable().toSQL());
-        assertEquals(List.of(1, 2), ordinary.toSQLResult().getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(Arrays.asList(1, 2), ordinary.toSQLResult().getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
         assertTrue(factory.queries >= 4);
     }
 
     private static com.easy.query.api.proxy.client.DefaultEasyEntityQuery client() {
-        var client = TestClients.offline(new PgSQLDatabaseConfiguration(), services -> {
+        DefaultEasyEntityQuery client = TestClients.offline(new PgSQLDatabaseConfiguration(), services -> {
             PgSqlExtensions.configure(services);
             PgSqlExtensions.configureQueryScope(services);
         });

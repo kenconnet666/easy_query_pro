@@ -58,7 +58,7 @@ public final class PgSqlExtensions {
 
     public static void configureTypeHandlers(JdbcTypeHandlerManager handlers) {
         handlers.appendHandler(PgArrayValue.class, new PgArrayTypeHandler(), false);
-        var interval = new PgIntervalTypeHandler();
+        PgIntervalTypeHandler interval = new PgIntervalTypeHandler();
         handlers.appendHandler(PgInterval.class, interval, false);
         handlers.appendHandler(PgInterval.Finite.class, interval, false);
         handlers.appendHandler(PgInterval.Infinity.class, interval, false);

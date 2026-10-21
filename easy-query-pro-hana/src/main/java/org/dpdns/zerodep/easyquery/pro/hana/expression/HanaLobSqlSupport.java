@@ -14,6 +14,8 @@ import com.easy.query.core.func.SQLFunctionTranslateImpl;
 import com.easy.query.core.util.EasySQLSegmentUtil;
 
 import java.util.Objects;
+import java.util.List;
+import com.easy.query.core.expression.segment.scec.expression.ParamExpression;
 
 /**
  * Carries a known LOB result through the public native-segment factory without inspecting rendered SQL.
@@ -46,20 +48,28 @@ public final class HanaLobSqlSupport {
 
             @Override
             public void consume(SQLNativeChainExpressionContext context) {
-                var segment = new SQLFunctionTranslateImpl(delegate).toSQLSegment(context.getExpressionContext(), context.getDefaultTable(), context.getRuntimeContext(), null);
+                SQLSegment segment = new SQLFunctionTranslateImpl(delegate).toSQLSegment(context.getExpressionContext(), context.getDefaultTable(), context.getRuntimeContext(), null);
                 context.sql(new LobValue(context.getDefaultTable(), segment));
             }
         };
     }
 
     static boolean isLobReturn(String template, SQLNativeExpression expression) {
-        var arguments = expression.getExpressions();
+        List<ParamExpression> arguments = expression.getExpressions();
         boolean identity = template.equals("{0}") || template.equals("{0} ASC") || template.equals("{0} DESC");
-        return identity && arguments.size() == 1 && arguments.get(0) instanceof SQLSegmentParamExpression value
-                && (value.getSQLSegment() instanceof LobValue || HanaSQLSegmentFactory.hasLobResult(value.getSQLSegment()));
+        if (!identity || arguments.size() != 1 || !(arguments.get(0) instanceof SQLSegmentParamExpression)) return false;
+        SQLSegment segment = ((SQLSegmentParamExpression) arguments.get(0)).getSQLSegment();
+        return segment instanceof LobValue || HanaSQLSegmentFactory.hasLobResult(segment);
     }
 
-    private record LobValue(TableAvailable table, SQLSegment delegate) implements TableSQLSegment {
+    private static final class LobValue implements TableSQLSegment {
+        private final TableAvailable table;
+        private final SQLSegment delegate;
+
+        private LobValue(TableAvailable table, SQLSegment delegate) {
+            this.table = table;
+            this.delegate = delegate;
+        }
         @Override
         public TableAvailable getTable() {
             return table;
@@ -78,6 +88,33 @@ public final class HanaLobSqlSupport {
         @Override
         public void accept(TableVisitor visitor) {
             EasySQLSegmentUtil.sqlSegmentTableVisit(delegate, visitor);
+        }
+
+        public TableAvailable table() {
+            return table;
+        }
+
+        public SQLSegment delegate() {
+            return delegate;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof LobValue)) return false;
+            LobValue other = (LobValue) o;
+            return Objects.equals(table, other.table)
+                    && Objects.equals(delegate, other.delegate);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(table, delegate);
+        }
+
+        @Override
+        public String toString() {
+            return "LobValue[table=" + table + ", delegate=" + delegate + "]";
         }
     }
 }

@@ -6,12 +6,13 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.sql.SQLException;
+import com.mysql.cj.jdbc.MysqlDataSource;
 
 class MySqlRangeWindowIT {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void rangeOffsetsBindWithBothPreparationModes(boolean serverPrepared) throws SQLException {
-        var source = MySqlTestDatabase.dataSource();
+        MysqlDataSource source = MySqlTestDatabase.dataSource();
         source.setUseServerPrepStmts(serverPrepared);
         source.setEmulateUnsupportedPstmts(false);
         RangeWindowContract.verify(TestClients.configured(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure));

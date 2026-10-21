@@ -20,6 +20,18 @@ import com.easy.query.core.basic.jdbc.parameter.SQLParameter;
 import java.math.BigDecimal;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import com.easy.query.core.configuration.dialect.SQLKeyword;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft4Proxy;
+import com.easy.query.core.proxy.core.draft.Draft4;
+import java.util.Arrays;
+import java.util.stream.Collectors;
+import com.easy.query.core.common.ToSQLResult;
+import com.easy.query.core.proxy.core.draft.Draft2;
+import com.easy.query.core.proxy.core.draft.proxy.Draft6Proxy;
+import com.easy.query.core.proxy.core.draft.Draft6;
+import com.easy.query.core.proxy.core.draft.Draft5;
+import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -56,17 +68,18 @@ final class RangeWindowContract {
         if (proxy.getEntitySQLContext().getRuntimeContext().getService(SqlDialect.class) == SqlDialect.MYSQL)
             return MySqlDsl.of(proxy).nativeWindow().orderBy(key, ascending).rangeIntervalBetween(
                     RangeBoundary.preceding(new MySqlRangeInterval(amount, unit)), RangeBoundary.currentRow());
-        var interval = switch (unit) {
-            case MONTHS -> PgInterval.of(amount, 0, 0);
-            case DAYS -> PgInterval.of(0, amount, 0);
-            case MICROS -> PgInterval.of(0, 0, amount);
-            default -> throw new IllegalArgumentException("Unsupported test interval unit");
-        };
+        PgInterval.Finite interval;
+        switch (unit) {
+            case MONTHS: interval = PgInterval.of(amount, 0, 0); break;
+            case DAYS: interval = PgInterval.of(0, amount, 0); break;
+            case MICROS: interval = PgInterval.of(0, 0, amount); break;
+            default: throw new IllegalArgumentException("Unsupported test interval unit");
+        }
         return PgSqlDsl.of(proxy).nativeWindow().orderBy(key, ascending).rangeIntervalBetween(RangeBoundary.preceding(interval), RangeBoundary.currentRow());
     }
 
     private static String sales(DefaultEasyEntityQuery query) {
-        var quote = query.getRuntimeContext().getQueryConfiguration().getDialect();
+        SQLKeyword quote = query.getRuntimeContext().getQueryConfiguration().getDialect();
         return "SELECT 1 AS " + quote.getQuoteName("id") + ",'A' AS " + quote.getQuoteName("region")
                 + ",DATE '2024-01-01' AS " + quote.getQuoteName("report_day") + ",CAST(10 AS DECIMAL(19,4)) AS " + quote.getQuoteName("amount")
                 + " UNION ALL SELECT 1,'A',DATE '2024-01-01',20"
@@ -75,8 +88,8 @@ final class RangeWindowContract {
     }
 
     private static void verifyNumericPeers(DefaultEasyEntityQuery query) {
-        var selected = query.queryable(sales(query), ReportSale.class).select(p -> {
-            var pro = ProDsl.of(p);
+        EntityQueryable<Draft4Proxy<Integer, BigDecimal, BigDecimal, BigDecimal>, Draft4<Integer, BigDecimal, BigDecimal, BigDecimal>> selected = query.queryable(sales(query), ReportSale.class).select(p -> {
+            ProDsl pro = ProDsl.of(p);
             return Select.DRAFT.of(p.id(), p.amount(),
                     pro.over(p.amount().sumBigDecimal(), numeric(p, p.id(), RangeBoundary.preceding(1), RangeBoundary.currentRow(), true)),
                     pro.over(p.amount().sumBigDecimal(), numeric(p, p.id(), RangeBoundary.preceding(1), RangeBoundary.currentRow(), false)));
@@ -84,56 +97,56 @@ final class RangeWindowContract {
             p.value1().asc();
             p.value2().asc();
         });
-        var result = selected.cloneQueryable().toList();
-        decimals(List.of("30", "30", "35", "7"), result.stream().map(r -> r.getValue3()).toList());
-        decimals(List.of("35", "35", "5", "7"), result.stream().map(r -> r.getValue4()).toList());
+        List<Draft4<Integer, BigDecimal, BigDecimal, BigDecimal>> result = selected.cloneQueryable().toList();
+        decimals(Arrays.asList("30", "30", "35", "7"), result.stream().map(r -> r.getValue3()).collect(Collectors.toList()));
+        decimals(Arrays.asList("35", "35", "5", "7"), result.stream().map(r -> r.getValue4()).collect(Collectors.toList()));
         assertEquals(4L, selected.cloneQueryable().count());
         assertEquals(4L, selected.cloneQueryable().toCteAs("eqp_range_report").toPageResult(1, 2).getTotal());
-        var copy = selected.cloneQueryable().toSQLResult();
-        var original = selected.toSQLResult();
+        ToSQLResult copy = selected.cloneQueryable().toSQLResult();
+        ToSQLResult original = selected.toSQLResult();
         assertEquals(original.getSQL(), copy.getSQL());
-        assertEquals(original.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList(),
-                copy.getSqlContext().getParameters().stream().map(SQLParameter::getValue).toList());
+        assertEquals(original.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()),
+                copy.getSqlContext().getParameters().stream().map(SQLParameter::getValue).collect(Collectors.toList()));
     }
 
     private static void verifyDecimalDistance(DefaultEasyEntityQuery query) {
-        var quote = query.getRuntimeContext().getQueryConfiguration().getDialect();
+        SQLKeyword quote = query.getRuntimeContext().getQueryConfiguration().getDialect();
         String source = "SELECT 1 AS " + quote.getQuoteName("id") + ",CAST(1.0 AS DECIMAL(19,4)) AS " + quote.getQuoteName("amount")
                 + " UNION ALL SELECT 2,1.1 UNION ALL SELECT 3,1.2";
-        var result = query.queryable(source, ReportSale.class).select(p -> Select.DRAFT.of(p.id(), ProDsl.of(p).over(p.id().sumLong(),
+        List<Draft2<Integer, Long>> result = query.queryable(source, ReportSale.class).select(p -> Select.DRAFT.of(p.id(), ProDsl.of(p).over(p.id().sumLong(),
                         numeric(p, p.amount(), RangeBoundary.preceding(new BigDecimal("0.1")), RangeBoundary.currentRow(), true))))
                 .orderBy(p -> p.value1().asc()).toList();
-        assertEquals(List.of(1L, 3L, 5L), result.stream().map(r -> r.getValue2()).toList());
+        assertEquals(Arrays.asList(1L, 3L, 5L), result.stream().map(r -> r.getValue2()).collect(Collectors.toList()));
     }
 
     private static void verifyZeroAndEmptyFrames(DefaultEasyEntityQuery query) {
-        var selected = query.queryable(sales(query), ReportSale.class).select(p -> {
-            var pro = ProDsl.of(p);
-            var empty = numeric(p, p.id(), RangeBoundary.preceding(1), RangeBoundary.preceding(2), true);
-            var zero = numeric(p, p.id(), RangeBoundary.following(0), RangeBoundary.following(0), true);
-            var reversed = numeric(p, p.id(), RangeBoundary.following(1), RangeBoundary.following(0), true);
+        EntityQueryable<Draft6Proxy<Integer, BigDecimal, Long, BigDecimal, BigDecimal, Long>, Draft6<Integer, BigDecimal, Long, BigDecimal, BigDecimal, Long>> selected = query.queryable(sales(query), ReportSale.class).select(p -> {
+            ProDsl pro = ProDsl.of(p);
+            WindowSpec<? extends WindowSpec<?>> empty = numeric(p, p.id(), RangeBoundary.preceding(1), RangeBoundary.preceding(2), true);
+            WindowSpec<? extends WindowSpec<?>> zero = numeric(p, p.id(), RangeBoundary.following(0), RangeBoundary.following(0), true);
+            WindowSpec<? extends WindowSpec<?>> reversed = numeric(p, p.id(), RangeBoundary.following(1), RangeBoundary.following(0), true);
             return Select.DRAFT.of(p.id(), p.amount(), pro.over(p.amount().count(), empty), pro.over(p.amount().sumBigDecimal(), empty),
                     pro.over(p.amount().sumBigDecimal(), zero), pro.over(p.amount().count(), reversed));
         }).orderBy(p -> {
             p.value1().asc();
             p.value2().asc();
         });
-        var result = selected.toList();
+        List<Draft6<Integer, BigDecimal, Long, BigDecimal, BigDecimal, Long>> result = selected.toList();
         assertTrue(result.stream().allMatch(r -> r.getValue3() == 0 && r.getValue4() == null && r.getValue6() == 0));
-        decimals(List.of("30", "30", "5", "7"), result.stream().map(r -> r.getValue5()).toList());
+        decimals(Arrays.asList("30", "30", "5", "7"), result.stream().map(r -> r.getValue5()).collect(Collectors.toList()));
     }
 
     private static void verifyNullKeys(DefaultEasyEntityQuery query) {
-        var result = query.queryable(sales(query) + " UNION ALL SELECT NULL,'A',DATE '2024-01-03',11", ReportSale.class)
+        List<Draft2<BigDecimal, BigDecimal>> result = query.queryable(sales(query) + " UNION ALL SELECT NULL,'A',DATE '2024-01-03',11", ReportSale.class)
                 .select(p -> Select.DRAFT.of(p.amount(), ProDsl.of(p).over(p.amount().sumBigDecimal(),
                         numeric(p, p.id(), RangeBoundary.preceding(1), RangeBoundary.currentRow(), true))))
                 .orderBy(p -> p.value1().asc()).toList();
-        decimals(List.of("35", "7", "30", "11", "30"), result.stream().map(r -> r.getValue2()).toList());
+        decimals(Arrays.asList("35", "7", "30", "11", "30"), result.stream().map(r -> r.getValue2()).collect(Collectors.toList()));
     }
 
     private static void verifyCalendarDistance(DefaultEasyEntityQuery query) {
-        var result = query.queryable(sales(query), ReportSale.class).select(p -> {
-            var pro = ProDsl.of(p);
+        List<Draft5<LocalDate, BigDecimal, BigDecimal, BigDecimal, BigDecimal>> result = query.queryable(sales(query), ReportSale.class).select(p -> {
+            ProDsl pro = ProDsl.of(p);
             return Select.DRAFT.of(p.day(), p.amount(), pro.over(p.amount().sumBigDecimal(), temporal(p, p.day(), 2, ChronoUnit.DAYS)),
                     pro.over(p.amount().sumBigDecimal(), pro.window().orderBy(p.day(), p.amount()).rowsBetween(RowBoundary.preceding(2), RowBoundary.currentRow())),
                     pro.over(p.amount().sumBigDecimal(), temporal(p, p.day(), 2, ChronoUnit.DAYS, false)));
@@ -141,30 +154,30 @@ final class RangeWindowContract {
             p.value1().asc();
             p.value2().asc();
         }).toList();
-        decimals(List.of("30", "30", "35", "7"), result.stream().map(r -> r.getValue3()).toList());
-        decimals(List.of("10", "30", "35", "32"), result.stream().map(r -> r.getValue4()).toList());
-        decimals(List.of("35", "35", "5", "7"), result.stream().map(r -> r.getValue5()).toList());
-        var quote = query.getRuntimeContext().getQueryConfiguration().getDialect();
+        decimals(Arrays.asList("30", "30", "35", "7"), result.stream().map(r -> r.getValue3()).collect(Collectors.toList()));
+        decimals(Arrays.asList("10", "30", "35", "32"), result.stream().map(r -> r.getValue4()).collect(Collectors.toList()));
+        decimals(Arrays.asList("35", "35", "5", "7"), result.stream().map(r -> r.getValue5()).collect(Collectors.toList()));
+        SQLKeyword quote = query.getRuntimeContext().getQueryConfiguration().getDialect();
         String months = "SELECT 1 AS " + quote.getQuoteName("id") + ",DATE '2024-01-31' AS " + quote.getQuoteName("report_day")
                 + ",CAST(1 AS DECIMAL(19,4)) AS " + quote.getQuoteName("amount")
                 + " UNION ALL SELECT 2,DATE '2024-02-28',2 UNION ALL SELECT 3,DATE '2024-02-29',4 UNION ALL SELECT 4,DATE '2024-03-31',8";
-        var calendar = query.queryable(months, ReportSale.class).select(p -> Select.DRAFT.of(p.id(),
+        List<Draft2<Integer, BigDecimal>> calendar = query.queryable(months, ReportSale.class).select(p -> Select.DRAFT.of(p.id(),
                         ProDsl.of(p).over(p.amount().sumBigDecimal(), temporal(p, p.day(), 1, ChronoUnit.MONTHS))))
                 .orderBy(p -> p.value1().asc()).toList();
-        decimals(List.of("1", "3", "7", "12"), calendar.stream().map(r -> r.getValue2()).toList());
+        decimals(Arrays.asList("1", "3", "7", "12"), calendar.stream().map(r -> r.getValue2()).collect(Collectors.toList()));
     }
 
     private static void verifyMicrosecondDistance(DefaultEasyEntityQuery query) {
-        var quote = query.getRuntimeContext().getQueryConfiguration().getDialect();
+        SQLKeyword quote = query.getRuntimeContext().getQueryConfiguration().getDialect();
         String timestamp = query.getRuntimeContext().getService(SqlDialect.class) == SqlDialect.MYSQL ? "DATETIME(6)" : "TIMESTAMP(6)";
         String source = "SELECT CAST('2024-01-01 12:00:00.000000' AS " + timestamp + ") AS " + quote.getQuoteName("occurred")
                 + ",1 AS " + quote.getQuoteName("delta")
                 + " UNION ALL SELECT CAST('2024-01-01 12:00:00.000001' AS " + timestamp + "),2"
                 + " UNION ALL SELECT CAST('2024-01-01 12:00:00.000003' AS " + timestamp + "),3";
-        var result = query.queryable(source, TestEvent.class).select(p -> Select.DRAFT.of(p.delta(),
+        List<Draft2<Integer, Long>> result = query.queryable(source, TestEvent.class).select(p -> Select.DRAFT.of(p.delta(),
                         ProDsl.of(p).over(p.delta().sumLong(), temporal(p, p.occurred(), 1, ChronoUnit.MICROS))))
                 .orderBy(p -> p.value1().asc()).toList();
-        assertEquals(List.of(1L, 3L, 3L), result.stream().map(r -> r.getValue2()).toList());
+        assertEquals(Arrays.asList(1L, 3L, 3L), result.stream().map(r -> r.getValue2()).collect(Collectors.toList()));
     }
 
     private static void decimals(List<String> expected, List<BigDecimal> actual) {

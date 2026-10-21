@@ -8,6 +8,8 @@ import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.PgTsVector;
 
 import java.util.List;
 import java.util.Objects;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
+import com.easy.query.core.util.EasyStringUtil;
 
 /**
  * 对已映射 tsvector 列的不可变检索规格。词典配置必须与构建该列时的配置一致。
@@ -78,14 +80,14 @@ public final class PgSearchSpec {
      * 已经按 PostgreSQL 词素/运算符编码的查询；空编码合法，NULL 查询不隐式省略筛选。
      */
     public static PgSearchSpec query(PgTsQuery query, SQLColumn<?, PgTsVector> vector) {
-        return new PgSearchSpec(vector, "CAST({1} AS tsquery)", List.of(Objects.requireNonNull(query, "query")),
+        return new PgSearchSpec(vector, "CAST({1} AS tsquery)", ImmutableCollections.listOf(Objects.requireNonNull(query, "query")),
                 Ranking.FREQUENCY, 0);
     }
 
     public PgSearchSpec rankedBy(Ranking ranking, Normalization... normalization) {
         Objects.requireNonNull(ranking, "ranking");
         int mask = 0;
-        for (var value : Objects.requireNonNull(normalization, "normalization"))
+        for (PgSearchSpec.Normalization value : Objects.requireNonNull(normalization, "normalization"))
             mask |= Objects.requireNonNull(value, "normalization value").flag;
         if (ranking != Ranking.COVER_DENSITY && (mask & Normalization.MEAN_EXTENT_DISTANCE.flag) != 0)
             throw new IllegalArgumentException("Mean extent distance normalization requires COVER_DENSITY ranking");
@@ -97,13 +99,13 @@ public final class PgSearchSpec {
         requireText(text, "PostgreSQL search text");
         // function 只来自本类固定入口；配置名与用户文本均保留为 JDBC 参数。
         return new PgSearchSpec(vector, function + "(CAST({1} AS regconfig),CAST({2} AS text))",
-                List.of(configuration, text), Ranking.FREQUENCY, 0);
+                ImmutableCollections.listOf(configuration, text), Ranking.FREQUENCY, 0);
     }
 
     private static void requireText(String value, String name) {
         Objects.requireNonNull(value, name);
         UnicodeStrings.requirePortable(value, name);
-        if (value.isBlank()) throw new IllegalArgumentException(name + " must not be blank");
+        if (EasyStringUtil.isBlank(value)) throw new IllegalArgumentException(name + " must not be blank");
     }
 
     SQLColumn<?, PgTsVector> vector() {

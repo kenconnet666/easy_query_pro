@@ -19,6 +19,9 @@ import com.easy.query.core.expression.visitor.TableVisitor;
 import com.easy.query.core.util.EasySQLSegmentUtil;
 
 import java.util.Collection;
+import java.util.List;
+import com.easy.query.core.expression.segment.scec.expression.ParamExpression;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 在上游 SQL segment 创建点维护同一查询层的窗口边界。
@@ -148,7 +151,7 @@ public class ProSQLSegmentFactory extends DefaultSQLSegmentFactory {
 
         @Override
         public NativeBoundary cloneSQLColumnSegment() {
-            var copy = delegate.cloneSQLColumnSegment();
+            SQLNativeSegment copy = delegate.cloneSQLColumnSegment();
             copy.setAlias(getAlias());
             return new NativeBoundary(copy, expression);
         }
@@ -157,7 +160,7 @@ public class ProSQLSegmentFactory extends DefaultSQLSegmentFactory {
         public void accept(TableVisitor visitor) {
             if (visitor instanceof ExpressionScope.SemanticVisitor) {
                 // 原生 expression(query) 不经过 ScalarSubquery，需在参数节点处单独守住计算层边界。
-                var sameLevel = expression.getExpressions().stream().filter(argument -> !(argument instanceof SubQueryParamExpression)).toList();
+                List<ParamExpression> sameLevel = expression.getExpressions().stream().filter(argument -> !(argument instanceof SubQueryParamExpression)).collect(ImmutableCollections.toList());
                 EasySQLSegmentUtil.paramExpressionTableVisit(sameLevel, visitor);
             } else delegate.accept(visitor);
         }

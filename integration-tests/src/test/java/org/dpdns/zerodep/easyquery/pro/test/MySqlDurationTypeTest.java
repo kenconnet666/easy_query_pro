@@ -9,13 +9,17 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.LocalTime;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationType;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import com.easy.query.core.basic.jdbc.types.JdbcTypeHandlerManager;
+import com.easy.query.core.basic.jdbc.types.handler.JdbcTypeHandler;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class MySqlDurationTypeTest {
     @Test
     void precisionAndCapacityAreCheckedWithoutTakingAnOverflowingAbsoluteValue() {
-        var micros = MySqlTypes.durationTime(6);
+        MySqlDurationType micros = MySqlTypes.durationTime(6);
         assertEquals(Duration.ofSeconds(3_020_399), micros.prepareValue(Duration.ofSeconds(3_020_399)));
         assertEquals(Duration.ofSeconds(-3_020_399), micros.prepareValue(Duration.ofSeconds(-3_020_399)));
         assertEquals(Duration.ofNanos(-1000), micros.prepareValue(Duration.ofNanos(-1000)));
@@ -29,9 +33,9 @@ class MySqlDurationTypeTest {
 
     @Test
     void viewPrecisionAndClockMappingStayExplicit() {
-        var query = TestClients.offline(new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
-        var handlers = query.getRuntimeContext().getJdbcTypeHandlerManager();
-        var clock = handlers.getHandler(LocalTime.class);
+        DefaultEasyEntityQuery query = TestClients.offline(new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+        JdbcTypeHandlerManager handlers = query.getRuntimeContext().getJdbcTypeHandlerManager();
+        JdbcTypeHandler clock = handlers.getHandler(LocalTime.class);
         MySqlExtensions.configureTypeHandlers(handlers);
         assertSame(clock, handlers.getHandler(LocalTime.class));
         assertThrows(IllegalArgumentException.class, () -> query.queryable(MySqlDurationRecord.class).selectColumn(p ->

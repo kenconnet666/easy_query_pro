@@ -7,11 +7,12 @@ import org.dpdns.zerodep.easyquery.pro.dsl.SqlDialect;
 import org.dpdns.zerodep.easyquery.pro.dsl.type.CommonTypes;
 
 import java.sql.SQLException;
+import com.mysql.cj.jdbc.MysqlDataSource;
 
 class MySqlConnectionIT {
     @Test
     void upstreamAdapterWorksWithTheConfiguredMysql() throws SQLException {
-        var dataSource = MySqlTestDatabase.dataSource();
+        MysqlDataSource dataSource = MySqlTestDatabase.dataSource();
         JdbcContract.verify(dataSource, new MySQLDatabaseConfiguration(), CommonTypes.unicodeText(255).ddlType(SqlDialect.MYSQL));
         DecimalDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
         NullSafeDslContract.verify(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);

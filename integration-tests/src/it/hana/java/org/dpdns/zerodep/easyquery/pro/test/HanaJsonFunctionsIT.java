@@ -17,6 +17,10 @@ import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
+import com.easy.query.core.basic.api.select.Query;
+import java.sql.Connection;
+import java.sql.Statement;
+import java.util.Collections;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -30,10 +34,8 @@ class HanaJsonFunctionsIT {
 
     @Test
     void existingTypedGettersPreserveJsonKindsAndNulls() {
-        String json = """
-                {"message":"中文", "number":42, "amount":123.45, "enabled":true,
-                 "empty":null, "object":{"child":"nested"}, "items":["first", 7, null, {"child":"array"}]}
-                """;
+        String json = "{\"message\":\"中文\", \"number\":42, \"amount\":123.45, \"enabled\":true,\n" +
+                " \"empty\":null, \"object\":{\"child\":\"nested\"}, \"items\":[\"first\", 7, null, {\"child\":\"array\"}]}\n";
         assertEquals("中文", source(query, json).selectColumn(p -> p.name().asJSONObject().getString("message")).toList().get(0));
         assertEquals(42, source(query, json).selectColumn(p -> p.name().asJSONObject().getInteger("number")).toList().get(0));
         assertEquals(0, new BigDecimal("123.45").compareTo(source(query, json)
@@ -59,14 +61,12 @@ class HanaJsonFunctionsIT {
 
     @Test
     void literalKeysAreEscapedWithoutBecomingSqlOrTemplateSyntax() {
-        String json = """
-                {"中":"unicode", "a.b":"dot", "q\\\"x":"quote", "a\\\\b":"slash", "O'Reilly":"apostrophe", "{0}":"braces"}
-                """;
-        var keys = List.of("中", "a.b", "q\"x", "a\\b", "O'Reilly", "{0}");
-        var values = List.of("unicode", "dot", "quote", "slash", "apostrophe", "braces");
+        String json = "{\"中\":\"unicode\", \"a.b\":\"dot\", \"q\\\"x\":\"quote\", \"a\\\\b\":\"slash\", \"O'Reilly\":\"apostrophe\", \"{0}\":\"braces\"}\n";
+        List<String> keys = Arrays.asList("中", "a.b", "q\"x", "a\\b", "O'Reilly", "{0}");
+        List<String> values = Arrays.asList("unicode", "dot", "quote", "slash", "apostrophe", "braces");
         for (int i = 0; i < keys.size(); i++) {
             String key = keys.get(i);
-            var selected = source(query, json).selectColumn(p -> new StringTypeExpressionImpl<String>(
+            Query<String> selected = source(query, json).selectColumn(p -> new StringTypeExpressionImpl<String>(
                     p.getEntitySQLContext(), p.getTable(), null, fx -> fx.jsonObjectField(args -> {
                         PropTypeColumn.columnFuncSelector(args, p.name());
                         args.format(key);
@@ -80,11 +80,11 @@ class HanaJsonFunctionsIT {
     void arrayLengthHasExplicitDeploymentAndNullEmptyInvalidInputBehavior() throws SQLException {
         assertThrows(IllegalStateException.class, () -> arrayLength(query, "[]"));
         String schema = HanaTestDatabase.uniqueName("JSON_SUPPORT") + "{0}";
-        try (var connection = HanaTestDatabase.connect(); var statement = connection.createStatement()) {
+        try (Connection connection = HanaTestDatabase.connect(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE SCHEMA \"" + schema + "\"");
             try {
                 statement.execute(HanaJsonSupport.createArrayLengthFunctionSql(schema));
-                var supported = HanaTestDatabase.client(new HanaOptions(5000, schema));
+                DefaultEasyEntityQuery supported = HanaTestDatabase.client(new HanaOptions(5000, schema));
                 assertEquals(3, arrayLength(supported, "[1,null,3]"));
                 assertEquals(0, arrayLength(supported, "[]"));
                 assertEquals(0, arrayLength(supported, " \t\r\n[ ]"));
@@ -93,12 +93,12 @@ class HanaJsonFunctionsIT {
                 assertThrows(RuntimeException.class, () -> arrayLength(supported, "invalid json"));
                 assertThrows(RuntimeException.class, () -> arrayLength(supported, "[1,"));
                 assertThrows(RuntimeException.class, () -> arrayLength(supported, "{}"));
-                var rows = supported.queryable("SELECT 1 AS \"id\",'[1,2]' AS \"name\" FROM DUMMY"
+                Query<Integer> rows = supported.queryable("SELECT 1 AS \"id\",'[1,2]' AS \"name\" FROM DUMMY"
                         + " UNION ALL SELECT 2,'[]' FROM DUMMY UNION ALL SELECT 3,'[1]' FROM DUMMY", TestProduct.class)
                         .where(p -> length(p.name()).gt(0))
                         .orderBy(p -> length(p.name()).desc())
                         .selectColumn(p -> length(p.name()));
-                assertEquals(List.of(2, 1), rows.toList());
+                assertEquals(Arrays.asList(2, 1), rows.toList());
                 assertEquals(rows.toSQL(), rows.cloneQueryable().toSQL());
             } finally {
                 statement.execute("DROP SCHEMA \"" + schema + "\" CASCADE");
@@ -110,9 +110,9 @@ class HanaJsonFunctionsIT {
 
     @Test
     void outputCapacityIsExplicitAndIsolatedPerClient() throws SQLException {
-        String text = "中".repeat(6000);
+        String text = String.join("", Collections.nCopies(6000, "中"));
         String json = "{\"message\":\"" + text + "\"}";
-        var larger = HanaTestDatabase.client(new HanaOptions(10000));
+        DefaultEasyEntityQuery larger = HanaTestDatabase.client(new HanaOptions(10000));
         assertEquals(text, source(larger, json).selectColumn(p -> p.name().asJSONObject().getString("message")).toList().get(0));
         assertEquals(1, source(larger, json).where(p -> p.name().asJSONObject().containsKey("message")).toList().size());
         assertThrows(RuntimeException.class, () -> source(query, json).selectColumn(p -> p.name().asJSONObject().getString("message")).toList());

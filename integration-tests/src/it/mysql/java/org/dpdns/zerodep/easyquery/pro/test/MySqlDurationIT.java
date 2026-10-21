@@ -21,6 +21,16 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.ArrayList;
+import com.mysql.cj.jdbc.MysqlDataSource;
+import javax.sql.DataSource;
+import java.util.List;
+import java.util.stream.Collectors;
+import com.easy.query.core.basic.jdbc.tx.Transaction;
+import com.easy.query.api.proxy.entity.select.EntityQueryable;
+import com.easy.query.core.proxy.core.draft.proxy.Draft6Proxy;
+import com.easy.query.core.proxy.core.draft.Draft6;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationType;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationExpression;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,26 +38,26 @@ class MySqlDurationIT {
     @ParameterizedTest
     @CsvSource({"false,false", "false,true", "true,false", "true,true"})
     void elapsedTimeUsesDurationAndPreservesMicroseconds(boolean serverPrepared, boolean pooled) throws SQLException {
-        var source = MySqlTestDatabase.dataSource();
+        MysqlDataSource source = MySqlTestDatabase.dataSource();
         source.setUseServerPrepStmts(serverPrepared);
         source.setRewriteBatchedStatements(true);
         source.setSessionVariables("sql_mode='STRICT_ALL_TABLES',div_precision_increment=0");
-        var config = new HikariConfig();
+        HikariConfig config = new HikariConfig();
         config.setDataSource(source);
         config.setMaximumPoolSize(2);
         config.setMinimumIdle(0);
-        try (var pool = pooled ? new HikariDataSource(config) : null) {
-            var dataSource = pool == null ? source : pool;
-            try (var fixture = MySqlTestDatabase.createTable(dataSource, "eqp_duration_", "id int PRIMARY KEY, elapsed "
+        try (HikariDataSource pool = pooled ? new HikariDataSource(config) : null) {
+            DataSource dataSource = pool == null ? source : pool;
+            try (MySqlTestDatabase.Table fixture = MySqlTestDatabase.createTable(dataSource, "eqp_duration_", "id int PRIMARY KEY, elapsed "
                     + MySqlTypes.durationTime(6).ddlType(SqlDialect.MYSQL) + ", clock TIME, started DATETIME(6)")) {
                 String table = fixture.name();
-                var query = TestClients.configured(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+                DefaultEasyEntityQuery query = TestClients.configured(dataSource, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
                 MySqlExtensions.configureTypeHandlers(query.getRuntimeContext().getJdbcTypeHandlerManager());
-                var values = Arrays.asList(Duration.ZERO, Duration.ofNanos(-1000), Duration.ofHours(27).plusNanos(123456000),
+                List<Duration> values = Arrays.asList(Duration.ZERO, Duration.ofNanos(-1000), Duration.ofHours(27).plusNanos(123456000),
                         Duration.ofHours(27).plusNanos(123456000).negated(), Duration.ofSeconds(3_020_399), Duration.ofSeconds(-3_020_399), null);
-                var input = new ArrayList<MySqlDurationRecord>();
+                ArrayList<MySqlDurationRecord> input = new ArrayList<MySqlDurationRecord>();
                 for (int i = 0; i < values.size(); i++) {
-                    var row = new MySqlDurationRecord();
+                    MySqlDurationRecord row = new MySqlDurationRecord();
                     row.setId(i);
                     row.setElapsed(values.get(i));
                     row.setClock(LocalTime.of(12, 34, 56));
@@ -55,22 +65,22 @@ class MySqlDurationIT {
                     input.add(row);
                 }
                 assertEquals(values.size(), query.insertable(input).asTable(table).setSQLStrategy(SQLExecuteStrategyEnum.ALL_COLUMNS).executeRows());
-                var rows = query.queryable(MySqlDurationRecord.class).asTable(table).orderBy(p -> p.id().asc()).toList();
-                assertEquals(values, rows.stream().map(MySqlDurationRecord::getElapsed).toList());
+                List<MySqlDurationRecord> rows = query.queryable(MySqlDurationRecord.class).asTable(table).orderBy(p -> p.id().asc()).toList();
+                assertEquals(values, rows.stream().map(MySqlDurationRecord::getElapsed).collect(Collectors.toList()));
                 assertTrue(rows.stream().allMatch(row -> row.getClock().equals(LocalTime.of(12, 34, 56))));
-                var seconds = query.queryable(MySqlDurationRecord.class).asTable(table).orderBy(p -> p.id().asc()).selectColumn(p ->
+                List<BigDecimal> seconds = query.queryable(MySqlDurationRecord.class).asTable(table).orderBy(p -> p.id().asc()).selectColumn(p ->
                         MySqlDsl.of(p).view(p.elapsed(), MySqlTypes.durationTime(6)).toSeconds()).toList();
                 for (int i = 0; i < values.size(); i++) {
-                    var value = values.get(i);
+                    Duration value = values.get(i);
                     if (value == null) assertNull(seconds.get(i));
                     else
                         assertEquals(0, BigDecimal.valueOf(value.getSeconds()).add(BigDecimal.valueOf(value.getNano(), 9)).compareTo(seconds.get(i)), value.toString());
                 }
-                var total = query.queryable(MySqlDurationRecord.class).asTable(table).selectColumn(p ->
+                BigDecimal total = query.queryable(MySqlDurationRecord.class).asTable(table).selectColumn(p ->
                         MySqlDsl.of(p).view(p.elapsed(), MySqlTypes.durationTime(6)).toSeconds().sum(BigDecimal.class)).singleNotNull();
                 assertEquals(0, new BigDecimal("-0.000001").compareTo(total));
                 verifyExpressions(query, table);
-                try (var transaction = query.getEasyQueryClient().beginTransaction()) {
+                try (Transaction transaction = query.getEasyQueryClient().beginTransaction()) {
                     assertEquals(1L, query.updatable(MySqlDurationRecord.class).asTable(table).setColumns(p ->
                             p.elapsed().set(MySqlDsl.of(p).view(p.elapsed(), MySqlTypes.durationTime(6)).negated())).where(p -> p.id().eq(2)).executeRows());
                     assertEquals(values.get(3), query.queryable(MySqlDurationRecord.class).asTable(table).where(p -> p.id().eq(2)).singleNotNull().getElapsed());
@@ -82,15 +92,15 @@ class MySqlDurationIT {
     }
 
     private static void verifyExpressions(DefaultEasyEntityQuery query, String table) {
-        var selected = query.queryable(MySqlDurationRecord.class).asTable(table).where(p -> p.id().eq(2)).select(p -> {
-            var mysql = MySqlDsl.of(p);
-            var type = MySqlTypes.durationTime(6);
-            var value = mysql.view(p.elapsed(), type);
-            var hour = mysql.value(Duration.ofHours(1), type);
+        EntityQueryable<Draft6Proxy<Duration, Duration, Duration, LocalDateTime, LocalDateTime, Boolean>, Draft6<Duration, Duration, Duration, LocalDateTime, LocalDateTime, Boolean>> selected = query.queryable(MySqlDurationRecord.class).asTable(table).where(p -> p.id().eq(2)).select(p -> {
+            MySqlDsl mysql = MySqlDsl.of(p);
+            MySqlDurationType type = MySqlTypes.durationTime(6);
+            MySqlDurationExpression<Duration> value = mysql.view(p.elapsed(), type);
+            MySqlDurationExpression<Duration> hour = mysql.value(Duration.ofHours(1), type);
             return Select.DRAFT.of(value.plus(hour), value.minus(hour), value.negated(), value.addToDateTime(p.started()),
                     value.subtractFromDateTime(p.started()), value.lessThan(hour));
         });
-        var row = selected.singleNotNull();
+        Draft6<Duration, Duration, Duration, LocalDateTime, LocalDateTime, Boolean> row = selected.singleNotNull();
         assertEquals(Duration.ofHours(28).plusNanos(123456000), row.getValue1());
         assertEquals(Duration.ofHours(26).plusNanos(123456000), row.getValue2());
         assertEquals(Duration.ofHours(27).plusNanos(123456000).negated(), row.getValue3());

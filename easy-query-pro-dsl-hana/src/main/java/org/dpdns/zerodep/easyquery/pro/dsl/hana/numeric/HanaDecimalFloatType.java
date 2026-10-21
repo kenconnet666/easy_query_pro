@@ -44,7 +44,7 @@ public enum HanaDecimalFloatType implements NumericType<BigDecimal> {
         if (value.signum() == 0) return BigDecimal.ZERO;
         // Check the exponent before stripping zeros: BigDecimal can underflow its own int scale.
         if ((long) value.precision() - value.scale() > maxIntegerDigits) throw outOfRange();
-        var normalized = value.stripTrailingZeros();
+        BigDecimal normalized = value.stripTrailingZeros();
         if (normalized.precision() > precision || normalized.scale() > maxScale) throw outOfRange();
         return normalized;
     }

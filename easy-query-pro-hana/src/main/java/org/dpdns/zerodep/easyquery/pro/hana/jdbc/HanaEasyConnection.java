@@ -53,7 +53,7 @@ public final class HanaEasyConnection extends DefaultEasyConnection {
     }
 
     private void restoreDdlMode() throws SQLException {
-        var session = ddlSession;
+        HanaDdlSession session = ddlSession;
         ddlSession = null;
         if (session != null) session.close();
     }

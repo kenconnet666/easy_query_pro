@@ -15,20 +15,20 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.List;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class PgArrayLifecycleTest {
     @Test
     void readFailureFreesArrayAndKeepsCleanupFailureSuppressed() throws SQLException {
-        var array = new FailingArray();
-        var result = (StreamResultSet) Proxy.newProxyInstance(StreamResultSet.class.getClassLoader(), new Class<?>[]{StreamResultSet.class},
+        PgArrayLifecycleTest.FailingArray array = new FailingArray();
+        StreamResultSet result = (StreamResultSet) Proxy.newProxyInstance(StreamResultSet.class.getClassLoader(), new Class<?>[]{StreamResultSet.class},
                 (proxy, method, args) -> {
                     if (method.getName().equals("getObject")) return array;
                     throw new AssertionError(method.getName());
                 });
-        var error = assertThrows(SQLException.class, () -> new PgArrayTypeHandler().getValue(new BasicJdbcProperty(0, PgArrayValue.class), result));
+        SQLException error = assertThrows(SQLException.class, () -> new PgArrayTypeHandler().getValue(new BasicJdbcProperty(0, PgArrayValue.class), result));
         assertSame(array.failure, error);
         assertEquals(1, array.frees);
         assertArrayEquals(new Throwable[]{array.cleanup}, error.getSuppressed());
@@ -36,21 +36,23 @@ class PgArrayLifecycleTest {
 
     @Test
     void bindingFailureFreesArrayAndKeepsCleanupFailureSuppressed() throws SQLException {
-        var array = new FailingArray();
-        var connection = (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(), new Class<?>[]{Connection.class},
+        PgArrayLifecycleTest.FailingArray array = new FailingArray();
+        Connection connection = (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(), new Class<?>[]{Connection.class},
                 (proxy, method, args) -> {
                     if (method.getName().equals("createArrayOf")) return array;
                     throw new AssertionError(method.getName());
                 });
-        var statement = (PreparedStatement) Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(), new Class<?>[]{PreparedStatement.class},
-                (proxy, method, args) -> switch (method.getName()) {
-                    case "getConnection" -> connection;
-                    case "setArray" -> throw array.failure;
-                    default -> throw new AssertionError(method.getName());
+        PreparedStatement statement = (PreparedStatement) Proxy.newProxyInstance(PreparedStatement.class.getClassLoader(), new Class<?>[]{PreparedStatement.class},
+                (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "getConnection": return connection;
+                        case "setArray": throw array.failure;
+                        default: throw new AssertionError(method.getName());
+                    }
                 });
-        var parameter = new EasyParameter(statement, List.of(new EasyConstSQLParameter(null, null, PgSqlTypes.array(Integer.class).value(List.of(1)))));
+        EasyParameter parameter = new EasyParameter(statement, Arrays.asList(new EasyConstSQLParameter(null, null, PgSqlTypes.array(Integer.class).value(Arrays.asList(1)))));
         parameter.setIndex(0);
-        var error = assertThrows(SQLException.class, () -> new PgArrayTypeHandler().setParameter(parameter));
+        SQLException error = assertThrows(SQLException.class, () -> new PgArrayTypeHandler().setParameter(parameter));
         assertSame(array.failure, error);
         assertEquals(1, array.frees);
         assertArrayEquals(new Throwable[]{array.cleanup}, error.getSuppressed());

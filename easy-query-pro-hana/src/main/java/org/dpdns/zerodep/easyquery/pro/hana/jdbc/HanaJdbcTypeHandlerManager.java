@@ -21,19 +21,20 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Map;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
 
 public final class HanaJdbcTypeHandlerManager extends EasyJdbcTypeHandlerManager {
     private final Map<Class<?>, JdbcTypeHandler> aliases;
     private final HanaLobBindings lobBindings = new HanaLobBindings();
 
     public HanaJdbcTypeHandlerManager() {
-        var byteHandler = new HanaByteTypeHandler();
-        var decimal = new HanaBigDecimalTypeHandler();
-        var date = new HanaTemporalHandlers.Date();
-        var time = new HanaTemporalHandlers.Time();
-        var dateTime = new HanaTemporalHandlers.DateTime();
-        var blob = lobBindings.new Binary();
-        var clob = lobBindings.new Characters();
+        HanaByteTypeHandler byteHandler = new HanaByteTypeHandler();
+        HanaBigDecimalTypeHandler decimal = new HanaBigDecimalTypeHandler();
+        HanaTemporalHandlers.Date date = new HanaTemporalHandlers.Date();
+        HanaTemporalHandlers.Time time = new HanaTemporalHandlers.Time();
+        HanaTemporalHandlers.DateTime dateTime = new HanaTemporalHandlers.DateTime();
+        HanaLobBindings.Binary blob = lobBindings.new Binary();
+        HanaLobBindings.Characters clob = lobBindings.new Characters();
         appendHandler(Byte.class, byteHandler, true);
         appendHandler(byte.class, byteHandler, true);
         appendHandler(BigDecimal.class, decimal, true);
@@ -43,9 +44,10 @@ public final class HanaJdbcTypeHandlerManager extends EasyJdbcTypeHandlerManager
         appendHandler(Instant.class, new HanaTemporalHandlers.UtcInstant(), true);
         appendHandler(Blob.class, blob, true);
         appendHandler(Clob.class, clob, true);
-        aliases = Map.of(ByteTypeHandler.class, byteHandler, LocalDateTypeHandler.class, date,
-                LocalTimeTypeHandler.class, time, LocalDateTimeTypeHandler.class, dateTime,
-                BlobTypeHandler.class, blob, CLobTypeHandler.class, clob, BigDecimalTypeHandler.class, decimal);
+        aliases = ImmutableCollections.<Class<?>, JdbcTypeHandler>mapBuilder()
+                .put(ByteTypeHandler.class, byteHandler).put(LocalDateTypeHandler.class, date)
+                .put(LocalTimeTypeHandler.class, time).put(LocalDateTimeTypeHandler.class, dateTime)
+                .put(BlobTypeHandler.class, blob).put(CLobTypeHandler.class, clob).put(BigDecimalTypeHandler.class, decimal).build();
     }
 
     HanaLobBindings.Scope openLobBindings() {
@@ -54,7 +56,7 @@ public final class HanaJdbcTypeHandlerManager extends EasyJdbcTypeHandlerManager
 
     @Override
     public @NotNull JdbcTypeHandler getHandler(@Nullable Class<?> type) {
-        var handler = super.getHandler(type);
+        JdbcTypeHandler handler = super.getHandler(type);
         // 上游按具体类查找；SerialClob/驱动 locator 走 setObject 会被 ngdbc 当作 toString() 写入。
         // 仅对未注册的具体类回退到 JDBC 接口，显式自定义 handler 保持优先。
         if (type != null && handler == super.getHandler(null)) {
@@ -70,7 +72,7 @@ public final class HanaJdbcTypeHandlerManager extends EasyJdbcTypeHandlerManager
             // 应用显式注册的精确类实例优先；兼容别名只补未注册的旧默认类名。
             return super.getHandlerByHandlerClass(type);
         } catch (EasyQueryInvalidOperationException missing) {
-            var handler = aliases.get(type);
+            JdbcTypeHandler handler = aliases.get(type);
             if (handler != null) return handler;
             throw missing;
         }

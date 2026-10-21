@@ -11,6 +11,7 @@ import com.easy.query.core.func.def.AnySQLFunction;
 import org.dpdns.zerodep.easyquery.pro.hana.config.HanaOptions;
 
 import java.util.List;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
 
 final class HanaJsonFunction extends AbstractExpressionSQLFunction {
     private final List<ColumnExpression> arguments;
@@ -19,17 +20,18 @@ final class HanaJsonFunction extends AbstractExpressionSQLFunction {
 
     private HanaJsonFunction(ColumnExpression document, String path, HanaOptions options, boolean fragment) {
         // 通过 format 参数插入已转义的 SQL 字面量，避免键中的 {0} 被当成模板占位符。
-        arguments = List.of(document, new ColumnFuncFormatExpressionImpl("'" + path.replace("'", "''") + "'"));
+        arguments = ImmutableCollections.listOf(document, new ColumnFuncFormatExpressionImpl("'" + path.replace("'", "''") + "'"));
         this.options = options;
         this.fragment = fragment;
     }
 
     static HanaJsonFunction object(List<ColumnExpression> arguments, HanaOptions options, boolean fragment) {
         if (arguments.size() < 2) throw new IllegalArgumentException("JSON object extraction requires a document and a key");
-        var path = new StringBuilder("$");
+        StringBuilder path = new StringBuilder("$");
         for (int i = 1; i < arguments.size(); i++) {
             Object key = constant(arguments.get(i));
-            if (!(key instanceof String name)) throw new IllegalArgumentException("JSON member names must be constant strings");
+            if (!(key instanceof String)) throw new IllegalArgumentException("JSON member names must be constant strings");
+            String name = (String) key;
             path.append("[\"").append(escapeMember(name)).append("\"]");
         }
         return new HanaJsonFunction(arguments.get(0), path.toString(), options, fragment);
@@ -38,10 +40,10 @@ final class HanaJsonFunction extends AbstractExpressionSQLFunction {
     static HanaJsonFunction array(List<ColumnExpression> arguments, HanaOptions options, boolean fragment) {
         if (arguments.size() != 2) throw new IllegalArgumentException("JSON array extraction requires two arguments");
         Object value = constant(arguments.get(1));
-        if (!(value instanceof Integer index) || index < 0) {
+        if (!(value instanceof Integer) || ((Integer) value) < 0) {
             throw new IllegalArgumentException("JSON array index must be a nonnegative int");
         }
-        return new HanaJsonFunction(arguments.get(0), "$[" + index + "]", options, fragment);
+        return new HanaJsonFunction(arguments.get(0), "$[" + ((Integer) value) + "]", options, fragment);
     }
 
     HanaJsonFunction scalar() {
@@ -81,13 +83,13 @@ final class HanaJsonFunction extends AbstractExpressionSQLFunction {
     }
 
     private static Object constant(ColumnExpression argument) {
-        if (argument instanceof ColumnFuncFormatExpression format) return format.getFormat();
-        if (argument instanceof ColumnFuncValueExpression value) return value.getValue();
+        if (argument instanceof ColumnFuncFormatExpression) return ((ColumnFuncFormatExpression) argument).getFormat();
+        if (argument instanceof ColumnFuncValueExpression) return ((ColumnFuncValueExpression) argument).getValue();
         throw new IllegalArgumentException("HANA JSON paths require constant members and indexes");
     }
 
     private static String escapeMember(String value) {
-        var result = new StringBuilder();
+        StringBuilder result = new StringBuilder();
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if (c == '\\' || c == '"') result.append('\\').append(c);

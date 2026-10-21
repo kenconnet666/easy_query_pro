@@ -11,6 +11,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.nio.charset.StandardCharsets;
+import javax.tools.JavaCompiler;
+import javax.tools.StandardJavaFileManager;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -54,7 +58,7 @@ class DslCompilationTest {
 
     @Test
     void nullSafeComparisonRequiresCompatibleOperandsAndReturnsBoolean() throws IOException {
-        compile(true, "var type = CommonTypes.decimal(9, 2); BooleanTypeExpression<Boolean> result = d.nullSafeEquals(d.value(BigDecimal.ONE, type), d.nullValue(type)); result.eq(true);");
+        compile(true, "NumericType<BigDecimal> type = CommonTypes.decimal(9, 2); BooleanTypeExpression<Boolean> result = d.nullSafeEquals(d.value(BigDecimal.ONE, type), d.nullValue(type)); result.eq(true);");
         compile(true, "d.nullSafeEqualsValue(d.nullValue(CommonTypes.decimal(9, 2)), null).eq(true); d.isDistinctFromValue(d.nullValue(CommonTypes.decimal(9, 2)), BigDecimal.ONE).eq(false);");
         compile(false, "StringTypeExpression<String> result = d.nullSafeEquals(d.nullValue(CommonTypes.decimal(9, 2)), d.nullValue(CommonTypes.decimal(9, 2)));");
         compile(false, "d.nullSafeEquals(d.nullValue(CommonTypes.decimal(9, 2)), d.nullValue(CommonTypes.decimal(9, 2)).asStr());");
@@ -94,7 +98,7 @@ class DslCompilationTest {
     @Test
     void postgresTypesSelectDifferentApisAndRetainBusinessMappings() throws IOException {
         compile(true, "PgJsonExpression<String> json = PgSqlDsl.of(p).value(JsonInput.encoded(\"{}\"), PgSqlTypes.json()); PgJsonbExpression<String> jsonb = json.toJsonb(); jsonb.containsJson(JsonInput.jsonNull()).eq(true);");
-        compile(true, "PgJsonbExpression<org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload> jsonb = PgSqlDsl.of(j).view(j.payload(), PgSqlTypes.jsonb()); j.payload().set(jsonb.setPath(java.util.List.of(\"name\"), JsonInput.encoded(\"\\\"new\\\"\"), true));");
+        compile(true, "PgJsonbExpression<org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload> jsonb = PgSqlDsl.of(j).view(j.payload(), PgSqlTypes.jsonb()); j.payload().set(jsonb.setPath(java.util.Arrays.asList(\"name\"), JsonInput.encoded(\"\\\"new\\\"\"), true));");
         compile(false, "PgSqlDsl.of(p).value(JsonInput.encoded(\"{}\"), PgSqlTypes.json()).containsJson(JsonInput.jsonNull());");
         compile(false, "PgSqlDsl.of(p).value(\"{}\", PgSqlTypes.jsonb());");
         compile(false, "PgJsonbExpression<String> jsonb = PgSqlDsl.of(p).value(JsonInput.encoded(\"{}\"), PgSqlTypes.jsonb()).asText();");
@@ -112,13 +116,13 @@ class DslCompilationTest {
 
     @Test
     void sqlArrayOperationsKeepElementsDistinctFromTheirWholeColumnMapping() throws IOException {
-        compile(true, "var pg = PgSqlDsl.of(p); PgArrayExpression<Integer, PgArrayValue<Integer>> a = pg.value(java.util.List.of(1, 2), PgSqlTypes.array(Integer.class)); AnyTypeExpression<Integer> element = a.elementAtSqlIndex(1); BooleanTypeExpression<Boolean> matched = a.anyEq(p.id()); NumberTypeExpression<Integer> total = a.cardinality();");
-        compile(true, "PgArrayExpression<String, java.util.List<String>> a = PgSqlDsl.of(aRecord).view(aRecord.labels(), PgSqlTypes.array(String.class)); a.overlapsValues(java.util.List.of(\"one\")).eq(true); aRecord.labels().set(a);");
-        compile(false, "PgSqlDsl.of(p).value(java.util.List.of(\"wrong\"), PgSqlTypes.array(Integer.class));");
-        compile(false, "PgSqlDsl.of(p).value(java.util.List.of(1), PgSqlTypes.array(Integer.class)).anyEqValue(\"wrong\");");
-        compile(false, "PgSqlDsl.of(p).value(java.util.List.of(1), PgSqlTypes.array(Integer.class)).overlaps(PgSqlDsl.of(p).value(java.util.List.of(\"wrong\"), PgSqlTypes.array(String.class)));");
-        compile(false, "AnyTypeExpression<String> element = PgSqlDsl.of(p).value(java.util.List.of(1), PgSqlTypes.array(Integer.class)).elementAtSqlIndex(1);");
-        compile(false, "PgSqlDsl.of(p).value(java.util.List.of(1), PgSqlTypes.array(Integer.class)).anyEq(p.name());");
+        compile(true, "PgSqlDsl pg = PgSqlDsl.of(p); PgArrayExpression<Integer, PgArrayValue<Integer>> a = pg.value(java.util.Arrays.asList(1, 2), PgSqlTypes.array(Integer.class)); AnyTypeExpression<Integer> element = a.elementAtSqlIndex(1); BooleanTypeExpression<Boolean> matched = a.anyEq(p.id()); NumberTypeExpression<Integer> total = a.cardinality();");
+        compile(true, "PgArrayExpression<String, java.util.List<String>> a = PgSqlDsl.of(aRecord).view(aRecord.labels(), PgSqlTypes.array(String.class)); a.overlapsValues(java.util.Arrays.asList(\"one\")).eq(true); aRecord.labels().set(a);");
+        compile(false, "PgSqlDsl.of(p).value(java.util.Arrays.asList(\"wrong\"), PgSqlTypes.array(Integer.class));");
+        compile(false, "PgSqlDsl.of(p).value(java.util.Arrays.asList(1), PgSqlTypes.array(Integer.class)).anyEqValue(\"wrong\");");
+        compile(false, "PgSqlDsl.of(p).value(java.util.Arrays.asList(1), PgSqlTypes.array(Integer.class)).overlaps(PgSqlDsl.of(p).value(java.util.Arrays.asList(\"wrong\"), PgSqlTypes.array(String.class)));");
+        compile(false, "AnyTypeExpression<String> element = PgSqlDsl.of(p).value(java.util.Arrays.asList(1), PgSqlTypes.array(Integer.class)).elementAtSqlIndex(1);");
+        compile(false, "PgSqlDsl.of(p).value(java.util.Arrays.asList(1), PgSqlTypes.array(Integer.class)).anyEq(p.name());");
     }
 
     @Test
@@ -169,7 +173,7 @@ class DslCompilationTest {
 
     @Test
     void extensionFactoriesRetainTheirDeclaredValueTypes() throws IOException {
-        compile(true, "class Reports extends PgSqlDsl { Reports(ExpressionScope scope) { super(scope); } String marker() { return \"report\"; } } Reports report = ProDsl.of(p, Reports::new); report.marker(); report.nullIfValue(p.name(), \"\");");
+        compile(true, "class Reports extends PgSqlDsl { Reports(ExpressionScope scope) { super(scope); } String marker() { return \"report\"; } } Reports report = ProDsl.of(p, scope -> new Reports(scope)); report.marker(); report.nullIfValue(p.name(), \"\");");
         compile(true, "NumberTypeExpression<BigDecimal> result = d.nativeCast(p.id(), CommonTypes.decimal(10, 2), (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl<BigDecimal>(scope.context(), source.getTable(), source.getValue(), function, BigDecimal.class));");
         compile(false, "ExpressionFactory<String, NumberTypeExpression<BigDecimal>> mismatched = (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl<BigDecimal>(scope.context(), source.getTable(), source.getValue(), function, BigDecimal.class); d.view(p.name(), mismatched);");
         compile(false, "StringTypeExpression<String> invalid = d.nativeCast(p.id(), CommonTypes.decimal(10, 2), (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl<String>(scope.context(), source.getTable(), source.getValue(), function, String.class));");
@@ -177,16 +181,16 @@ class DslCompilationTest {
 
     @Test
     void customWholeValueChainsKeepSelfButScalarResultsDoNot() throws IOException {
-        compile(true, "var mysql = MySqlDsl.of(m); ReportJson<org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload> json = mysql.view(m.payload(), (scope, source, function) -> new ReportJson<>(scope, mysql, source, function)); json.setPath(JsonPath.root().key(\"count\"), JsonInput.encoded(\"7\")).removePath(JsonPath.root().key(\"absent\")).hasName().eq(true);");
-        compile(true, "var pg = PgSqlDsl.of(p); ReportInterval<PgInterval> span = pg.view(pg.value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()), ReportInterval::new); span.plus(span).minus(span).negated().isZero().eq(false);");
-        compile(false, "var mysql = MySqlDsl.of(m); var json = mysql.view(m.payload(), (scope, source, function) -> new ReportJson<>(scope, mysql, source, function)); json.asText().hasName();");
-        compile(false, "var pg = PgSqlDsl.of(p); var span = pg.view(pg.value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()), ReportInterval::new); span.addToDate(e.eventDate()).isZero();");
+        compile(true, "MySqlDsl mysql = MySqlDsl.of(m); ReportJson<org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload> json = mysql.view(m.payload(), (scope, source, function) -> new ReportJson<>(scope, mysql, source, function)); json.setPath(JsonPath.root().key(\"count\"), JsonInput.encoded(\"7\")).removePath(JsonPath.root().key(\"absent\")).hasName().eq(true);");
+        compile(true, "PgSqlDsl pg = PgSqlDsl.of(p); ReportInterval<PgInterval> span = pg.view(pg.value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()), ReportInterval::new); span.plus(span).minus(span).negated().isZero().eq(false);");
+        compile(false, "MySqlDsl mysql = MySqlDsl.of(m); ReportJson<org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload> json = mysql.view(m.payload(), (scope, source, function) -> new ReportJson<>(scope, mysql, source, function)); json.asText().hasName();");
+        compile(false, "PgSqlDsl pg = PgSqlDsl.of(p); ReportInterval<PgInterval> span = pg.view(pg.value(PgInterval.of(1, 0, 0), PgSqlTypes.interval()), ReportInterval::new); span.addToDate(e.eventDate()).isZero();");
     }
 
     @Test
     void windowFactoriesKeepSelfAndResultTypes() throws IOException {
         compile(true, "ReportWindow frame = d.window(ReportWindow::new).partitionBy(p.name()).orderBy(p.id()).rowsBetween(RowBoundary.unboundedPreceding(), RowBoundary.currentRow()).trailing(2); NumberTypeExpression<BigDecimal> result = d.over(p.amount().sum(), frame);");
-        compile(true, "var frame = d.window(); NumberTypeExpression<BigDecimal> result = d.over(p.amount().sum(), frame, (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl<BigDecimal>(scope.context(), source.getTable(), source.getValue(), function, BigDecimal.class));");
+        compile(true, "RowsWindowSpec frame = d.window(); NumberTypeExpression<BigDecimal> result = d.over(p.amount().sum(), frame, (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.NumberTypeExpressionImpl<BigDecimal>(scope.context(), source.getTable(), source.getValue(), function, BigDecimal.class));");
         compile(false, "d.over(p.amount().sum(), d.window(), (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl<String>(scope.context(), source.getTable(), source.getValue(), function, String.class));");
         compile(true, "StringTypeExpression<String> result = d.overValue(p.name(), d.window().orderBy(p.id()), (scope, source, function) -> new com.easy.query.core.proxy.extension.functions.type.impl.StringTypeExpressionImpl<String>(scope.context(), source.getTable(), source.getValue(), function, String.class)).firstValue();");
         compile(false, "NumberTypeExpression<Integer> invalid = d.overValue(p.name(), d.window().orderBy(p.id())).firstValue();");
@@ -201,51 +205,49 @@ class DslCompilationTest {
     }
 
     private void compile(boolean expected, String body) throws IOException {
-        var source = directory.resolve("Consumer.java");
-        Files.writeString(source, """
-                import java.math.BigDecimal;
-                import com.easy.query.core.proxy.extension.functions.type.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;
-                import org.dpdns.zerodep.easyquery.pro.dsl.ProGroups;
-                import org.dpdns.zerodep.easyquery.pro.dsl.group.GroupingSet;
-                import com.easy.query.core.proxy.sql.GroupKeys;
-                import com.easy.query.core.proxy.sql.Select;
-                import org.dpdns.zerodep.easyquery.pro.dsl.window.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.mysql.window.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.window.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.spi.*;
-                import org.dpdns.zerodep.easyquery.pro.test.extension.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.TruncationUnit;
-                import org.dpdns.zerodep.easyquery.pro.dsl.json.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.query.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.mysql.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.mysql.query.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.hana.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.*;
-                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaViewRowProxy;
-                import org.dpdns.zerodep.easyquery.pro.dsl.hana.lob.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.*;
-                import org.dpdns.zerodep.easyquery.pro.dsl.type.*;
-                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;
-                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;
-                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgJsonRecordProxy;
-                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.MySqlJsonRecordProxy;
-                import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgArrayRecordProxy;
-                final class Consumer { void use(ProDsl d, TestProductProxy p, TestEventProxy e, PgJsonRecordProxy j, MySqlJsonRecordProxy m, PgArrayRecordProxy aRecord,
-                    com.easy.query.api.proxy.entity.select.EntityQueryable<TestProductProxy, org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct> q) { %s } }
-                """.formatted(body));
-        var compiler = ToolProvider.getSystemJavaCompiler();
+        Path source = directory.resolve("Consumer.java");
+        Files.write(source, ("import java.math.BigDecimal;\n" +
+                "import com.easy.query.core.proxy.extension.functions.type.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.ProDsl;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.ProGroups;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.group.GroupingSet;\n" +
+                "import com.easy.query.core.proxy.sql.GroupKeys;\n" +
+                "import com.easy.query.core.proxy.sql.Select;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.window.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.mysql.window.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.window.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.spi.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.test.extension.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.TruncationUnit;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.json.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.json.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.array.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.interval.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.search.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.pgsql.query.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.mysql.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.mysql.query.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.hana.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.hana.query.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaViewRowProxy;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.hana.lob.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.dsl.type.*;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestProductProxy;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.TestEventProxy;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgJsonRecordProxy;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.MySqlJsonRecordProxy;\n" +
+                "import org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgArrayRecordProxy;\n" +
+                "final class Consumer { void use(ProDsl d, TestProductProxy p, TestEventProxy e, PgJsonRecordProxy j, MySqlJsonRecordProxy m, PgArrayRecordProxy aRecord,\n" +
+                String.format("    com.easy.query.api.proxy.entity.select.EntityQueryable<TestProductProxy, org.dpdns.zerodep.easyquery.pro.test.entity.TestProduct> q) { %s } }\n", body)).getBytes(StandardCharsets.UTF_8));
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
         assertNotNull(compiler, "Consumer compilation requires a JDK");
-        var diagnostics = new DiagnosticCollector<JavaFileObject>();
-        try (var files = compiler.getStandardFileManager(diagnostics, null, null)) {
-            var options = List.of("--release", "17", "-proc:none", "-d", directory.toString(), "-classpath",
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<JavaFileObject>();
+        try (StandardJavaFileManager files = compiler.getStandardFileManager(diagnostics, null, null)) {
+            List<String> options = Arrays.asList("-source", "8", "-target", "8", "-proc:none", "-d", directory.toString(), "-classpath",
                     System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")));
             boolean compiled = compiler.getTask(null, files, diagnostics, options, null,
                     files.getJavaFileObjects(source.toFile())).call();
@@ -264,7 +266,7 @@ class DslCompilationTest {
 
     @Test
     void nativeWindowFactoriesPreserveSelfAndRejectOtherIntervalTypes() throws IOException {
-        compile(true, "var mysql = d.window(MySqlWindowSpec::create).orderBy(p.id()).rangeNumericBetween(RangeBoundary.preceding(1), RangeBoundary.currentRow()); var pg = d.window(PgWindowSpec::create).orderBy(p.amount()).rangeNumericBetween(RangeBoundary.preceding(BigDecimal.ONE), RangeBoundary.currentRow());");
+        compile(true, "MySqlWindowSpec<?> mysql = d.window(MySqlWindowSpec::create).orderBy(p.id()).rangeNumericBetween(RangeBoundary.preceding(1), RangeBoundary.currentRow()); PgWindowSpec<?> pg = d.window(PgWindowSpec::create).orderBy(p.amount()).rangeNumericBetween(RangeBoundary.preceding(BigDecimal.ONE), RangeBoundary.currentRow());");
         compile(true, "ReportPgWindow frame = d.window(ReportPgWindow::new).partitionBy(p.name()).orderBy(e.eventDate()).rangeIntervalBetween(RangeBoundary.preceding(PgInterval.of(1,0,0)),RangeBoundary.currentRow()).calendarDays(2);");
         compile(false, "PgSqlDsl.of(p).nativeWindow().rangeIntervalBetween(RangeBoundary.preceding(PgInterval.positiveInfinity()),RangeBoundary.currentRow());");
         compile(false, "MySqlDsl.of(p).nativeWindow().rangeIntervalBetween(RangeBoundary.preceding(PgInterval.of(0,1,0)),RangeBoundary.currentRow());");
@@ -273,30 +275,30 @@ class DslCompilationTest {
 
     @Test
     void reportGroupsKeepKeysSourceTuplesAndResultTypes() throws IOException {
-        compile(true, "var grouped = q.groupBy(x -> GroupKeys.of(x.id(), x.name())); var report = ProGroups.rollup(grouped, g -> Select.DRAFT.of(g.key1(), g.key2(), ProGroups.mask(g, g.key1(), g.key2()))); Integer id = report.singleNotNull().getValue1(); String name = report.singleNotNull().getValue2(); Integer mask = report.singleNotNull().getValue3();");
-        compile(true, "var grouped = q.leftJoin(q, (a,b) -> a.id().eq(b.id())).groupBy((a,b) -> GroupKeys.of(a.id(), b.name())); var report = PgGroups.groupingSets(grouped, g -> java.util.List.of(GroupingSet.of(g.key1()), GroupingSet.of(g.key2())), g -> Select.DRAFT.of(g.key1(), g.key2(), g.groupTable().t2.amount().sumBigDecimal())); BigDecimal total = report.singleNotNull().getValue3();");
-        compile(false, "var grouped = q.groupBy(x -> GroupKeys.of(x.id())); var report = ProGroups.rollup(grouped, g -> Select.DRAFT.of(g.key1())); String wrong = report.singleNotNull().getValue1();");
+        compile(true, "com.easy.query.api.proxy.entity.select.EntityQueryable<com.easy.query.core.proxy.grouping.proxy.Grouping2Proxy<com.easy.query.core.proxy.columns.types.SQLIntegerTypeColumn<TestProductProxy>, Integer, com.easy.query.core.proxy.columns.types.SQLStringTypeColumn<TestProductProxy>, String, TestProductProxy>, com.easy.query.core.proxy.grouping.Grouping2<Integer, String>> grouped = q.groupBy(x -> GroupKeys.of(x.id(), x.name())); com.easy.query.api.proxy.entity.select.EntityQueryable<com.easy.query.core.proxy.core.draft.proxy.Draft3Proxy<Integer, String, Integer>, com.easy.query.core.proxy.core.draft.Draft3<Integer, String, Integer>> report = ProGroups.rollup(grouped, g -> Select.DRAFT.of(g.key1(), g.key2(), ProGroups.mask(g, g.key1(), g.key2()))); Integer id = report.singleNotNull().getValue1(); String name = report.singleNotNull().getValue2(); Integer mask = report.singleNotNull().getValue3();");
+        compile(true, "com.easy.query.api.proxy.entity.select.EntityQueryable<com.easy.query.core.proxy.grouping.proxy.Grouping2Proxy<com.easy.query.core.proxy.columns.types.SQLIntegerTypeColumn<TestProductProxy>, Integer, com.easy.query.core.proxy.columns.types.SQLStringTypeColumn<TestProductProxy>, String, com.easy.query.core.common.tuple.MergeTuple2<TestProductProxy, TestProductProxy>>, com.easy.query.core.proxy.grouping.Grouping2<Integer, String>> grouped = q.leftJoin(q, (a,b) -> a.id().eq(b.id())).groupBy((a,b) -> GroupKeys.of(a.id(), b.name())); com.easy.query.api.proxy.entity.select.EntityQueryable<com.easy.query.core.proxy.core.draft.proxy.Draft3Proxy<Integer, String, BigDecimal>, com.easy.query.core.proxy.core.draft.Draft3<Integer, String, BigDecimal>> report = PgGroups.groupingSets(grouped, g -> java.util.Arrays.asList(GroupingSet.of(g.key1()), GroupingSet.of(g.key2())), g -> Select.DRAFT.of(g.key1(), g.key2(), g.groupTable().t2.amount().sumBigDecimal())); BigDecimal total = report.singleNotNull().getValue3();");
+        compile(false, "com.easy.query.api.proxy.entity.select.EntityQueryable<com.easy.query.core.proxy.grouping.proxy.Grouping1Proxy<com.easy.query.core.proxy.columns.types.SQLIntegerTypeColumn<TestProductProxy>, Integer, TestProductProxy>, com.easy.query.core.proxy.grouping.Grouping1<Integer>> grouped = q.groupBy(x -> GroupKeys.of(x.id())); com.easy.query.api.proxy.entity.select.EntityQueryable<com.easy.query.core.proxy.core.draft.proxy.Draft1Proxy<Integer>, com.easy.query.core.proxy.core.draft.Draft1<Integer>> report = ProGroups.rollup(grouped, g -> Select.DRAFT.of(g.key1())); String wrong = report.singleNotNull().getValue1();");
     }
 
     @Test
     void hanaSourceInputsAndOutputProxyStayTyped() throws IOException {
-        compile(true, "var name = HanaInput.required(\"P_NAME\", String.class); var view = HanaCalculationView.of(\"REPORT\", \"VIEW\", HanaViewRowProxy::createTable, name); BigDecimal amount = view.query(null, name.bind(\"text\")).singleNotNull().getAmount();");
-        compile(false, "var name = HanaInput.required(\"P_NAME\", String.class); name.bind(7);");
-        compile(false, "var view = HanaCalculationView.of(\"REPORT\", \"VIEW\", HanaViewRowProxy::createTable); String wrong = view.query(null).singleNotNull().getAmount();");
-        compile(true, "var names = HanaInput.requiredTextList(\"P_NAMES\"); names.bind(java.util.List.of(\"a\", \"b\")); var ids = HanaInput.requiredNumericList(\"P_IDS\", Integer.class); ids.bind(java.util.List.of(1, 2));");
-        compile(false, "HanaInput.requiredTextList(\"P_NAMES\").bind(java.util.List.of(1,2));");
-        compile(false, "HanaInput.requiredNumericList(\"P_IDS\", Integer.class).bind(java.util.List.of(1L));");
-        compile(true, "var amount = HanaInput.optional(\"P_MIN_AMOUNT\", BigDecimal.class); var function = HanaTableFunction.of(\"REPORT\", \"FUNCTION\", HanaViewRowProxy::createTable, amount); BigDecimal value = function.query(null, amount.bind(BigDecimal.ONE)).singleNotNull().getAmount();");
-        compile(false, "var function = HanaTableFunction.of(\"REPORT\", \"FUNCTION\", HanaViewRowProxy::createTable); String wrong = function.query(null).singleNotNull().getAmount();");
+        compile(true, "HanaInput<String> name = HanaInput.required(\"P_NAME\", String.class); HanaCalculationView<HanaViewRowProxy, org.dpdns.zerodep.easyquery.pro.test.entity.HanaViewRow> view = HanaCalculationView.of(\"REPORT\", \"VIEW\", HanaViewRowProxy::createTable, name); BigDecimal amount = view.query(null, name.bind(\"text\")).singleNotNull().getAmount();");
+        compile(false, "HanaInput<String> name = HanaInput.required(\"P_NAME\", String.class); name.bind(7);");
+        compile(false, "HanaCalculationView<HanaViewRowProxy, org.dpdns.zerodep.easyquery.pro.test.entity.HanaViewRow> view = HanaCalculationView.of(\"REPORT\", \"VIEW\", HanaViewRowProxy::createTable); String wrong = view.query(null).singleNotNull().getAmount();");
+        compile(true, "HanaInput<java.util.List<String>> names = HanaInput.requiredTextList(\"P_NAMES\"); names.bind(java.util.Arrays.asList(\"a\", \"b\")); HanaInput<java.util.List<Integer>> ids = HanaInput.requiredNumericList(\"P_IDS\", Integer.class); ids.bind(java.util.Arrays.asList(1, 2));");
+        compile(false, "HanaInput.requiredTextList(\"P_NAMES\").bind(java.util.Arrays.asList(1,2));");
+        compile(false, "HanaInput.requiredNumericList(\"P_IDS\", Integer.class).bind(java.util.Arrays.asList(1L));");
+        compile(true, "HanaInput<BigDecimal> amount = HanaInput.optional(\"P_MIN_AMOUNT\", BigDecimal.class); HanaTableFunction<HanaViewRowProxy, org.dpdns.zerodep.easyquery.pro.test.entity.HanaViewRow> function = HanaTableFunction.of(\"REPORT\", \"FUNCTION\", HanaViewRowProxy::createTable, amount); BigDecimal value = function.query(null, amount.bind(BigDecimal.ONE)).singleNotNull().getAmount();");
+        compile(false, "HanaTableFunction<HanaViewRowProxy, org.dpdns.zerodep.easyquery.pro.test.entity.HanaViewRow> function = HanaTableFunction.of(\"REPORT\", \"FUNCTION\", HanaViewRowProxy::createTable); String wrong = function.query(null).singleNotNull().getAmount();");
     }
 
     @Test
     void hanaHierarchyKeysRootsAndOutputRemainTyped() throws IOException {
-        compile(true, "HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id()).roots(java.util.List.of(1))); Long rank = hierarchy.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyRowProxy::createTable).singleNotNull().getRank();");
+        compile(true, "HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id()).roots(java.util.Arrays.asList(1))); Long rank = hierarchy.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyRowProxy::createTable).singleNotNull().getRank();");
         compile(false, "HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.name()));");
-        compile(false, "HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id()).roots(java.util.List.of(\"bad\")));");
-        compile(true, "HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id())); Integer distance = hierarchy.ancestorsOf(java.util.List.of(1)).distanceBetween(-2, 0).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyNavigationRowProxy::createTable).singleNotNull().getDistance();");
-        compile(false, "HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id())).descendantsOf(java.util.List.of(\"bad\"));");
+        compile(false, "HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id()).roots(java.util.Arrays.asList(\"bad\")));");
+        compile(true, "HanaHierarchy<Integer> hierarchy = HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id())); Integer distance = hierarchy.ancestorsOf(java.util.Arrays.asList(1)).distanceBetween(-2, 0).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.HanaHierarchyNavigationRowProxy::createTable).singleNotNull().getDistance();");
+        compile(false, "HanaHierarchy.from(q, x -> HanaHierarchySpec.of(x.id(), x.id())).descendantsOf(java.util.Arrays.asList(\"bad\"));");
     }
 
     @Test
@@ -310,7 +312,7 @@ class DslCompilationTest {
 
     @Test
     void mysqlSearchRequiresPhysicalTextAndKeepsTheScoreType() throws IOException {
-        compile(true, "var search = MySqlSearch.from(q, x -> MySqlSearchSpec.booleanMode(\"+coffee -tea\", x.name())); Double score = search.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
+        compile(true, "MySqlSearch search = MySqlSearch.from(q, x -> MySqlSearchSpec.booleanMode(\"+coffee -tea\", x.name())); Double score = search.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
         compile(false, "MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.id()));");
         compile(false, "MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.name().toUpper()));");
         compile(false, "String score = MySqlSearch.from(q, x -> MySqlSearchSpec.naturalLanguage(\"coffee\", x.name())).query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
@@ -319,7 +321,7 @@ class DslCompilationTest {
     @Test
     void postgresSearchRequiresVectorColumnsAndTypedEncodedQueries() throws IOException {
         String source = "com.easy.query.api.proxy.entity.select.EntityQueryable<org.dpdns.zerodep.easyquery.pro.test.entity.proxy.PgSearchDocumentProxy, org.dpdns.zerodep.easyquery.pro.test.entity.PgSearchDocument> sq = null;";
-        compile(true, source + "var search = PgSearch.from(sq, x -> PgSearchSpec.plain(\"pg_catalog.english\", \"coffee\", x.document()).rankedBy(PgSearchSpec.Ranking.COVER_DENSITY, PgSearchSpec.Normalization.DOCUMENT_LENGTH)); Double score = search.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
+        compile(true, source + "PgSearch search = PgSearch.from(sq, x -> PgSearchSpec.plain(\"pg_catalog.english\", \"coffee\", x.document()).rankedBy(PgSearchSpec.Ranking.COVER_DENSITY, PgSearchSpec.Normalization.DOCUMENT_LENGTH)); Double score = search.query(org.dpdns.zerodep.easyquery.pro.test.entity.proxy.SearchHitProxy::createTable).singleNotNull().getScore();");
         compile(true, source + "PgSearch.from(sq, x -> PgSearchSpec.query(new PgTsQuery(\"'coff':*\"), x.document()));");
         compile(false, source + "PgSearch.from(sq, x -> PgSearchSpec.web(\"english\", \"coffee\", x.title()));");
         compile(false, source + "PgSearch.from(sq, x -> PgSearchSpec.plain(\"english\", \"coffee\", x.condition()));");

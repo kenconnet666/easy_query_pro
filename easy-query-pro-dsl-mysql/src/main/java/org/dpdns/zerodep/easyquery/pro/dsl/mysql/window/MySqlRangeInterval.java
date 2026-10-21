@@ -10,19 +10,24 @@ import java.util.Objects;
  * <p>它是查询边界，不是 TIME 存储值，因此不采用 TIME 的 ±838:59:59 限制。
  * 数量使用 JDBC 参数，单位只从受控 ChronoUnit 集合映射。MONTHS/YEARS 保留日历语义，
  * 不换算为固定天数；固定 Duration 可以通过 {@link #duration(Duration)} 转成精确微秒。
- *
- * @param amount 非负数量；零值仍由 RangeBoundary 保留方向类别
- * @param unit   支持年、月、日、小时、分钟、秒、微秒；其他单位明确拒绝
  */
-public record MySqlRangeInterval(long amount, ChronoUnit unit) {
-    public MySqlRangeInterval {
+public final class MySqlRangeInterval {
+    private final long amount;
+    private final ChronoUnit unit;
+
+    /**
+     * @param amount 非负数量；零值仍由 RangeBoundary 保留方向类别
+     * @param unit   支持年、月、日、小时、分钟、秒、微秒；其他单位明确拒绝
+     */
+    public MySqlRangeInterval(long amount, ChronoUnit unit) {
         Objects.requireNonNull(unit, "unit");
         if (amount < 0) throw new IllegalArgumentException("A RANGE interval cannot be negative");
         switch (unit) {
-            case YEARS, MONTHS, DAYS, HOURS, MINUTES, SECONDS, MICROS -> {
-            }
-            default -> throw new IllegalArgumentException("Unsupported MySQL RANGE interval unit: " + unit);
+            case YEARS: case MONTHS: case DAYS: case HOURS: case MINUTES: case SECONDS: case MICROS: break;
+            default: throw new IllegalArgumentException("Unsupported MySQL RANGE interval unit: " + unit);
         }
+        this.amount = amount;
+        this.unit = unit;
     }
 
     /**
@@ -42,15 +47,42 @@ public record MySqlRangeInterval(long amount, ChronoUnit unit) {
     }
 
     String sqlUnit() {
-        return switch (unit) {
-            case YEARS -> "YEAR";
-            case MONTHS -> "MONTH";
-            case DAYS -> "DAY";
-            case HOURS -> "HOUR";
-            case MINUTES -> "MINUTE";
-            case SECONDS -> "SECOND";
-            case MICROS -> "MICROSECOND";
-            default -> throw new IllegalStateException("Unvalidated RANGE unit");
-        };
+        switch (unit) {
+            case YEARS: return "YEAR";
+            case MONTHS: return "MONTH";
+            case DAYS: return "DAY";
+            case HOURS: return "HOUR";
+            case MINUTES: return "MINUTE";
+            case SECONDS: return "SECOND";
+            case MICROS: return "MICROSECOND";
+            default: throw new IllegalStateException("Unvalidated RANGE unit");
+        }
+    }
+
+    public long amount() {
+        return amount;
+    }
+
+    public ChronoUnit unit() {
+        return unit;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof MySqlRangeInterval)) return false;
+        MySqlRangeInterval other = (MySqlRangeInterval) o;
+        return amount == other.amount
+                && Objects.equals(unit, other.unit);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(amount, unit);
+    }
+
+    @Override
+    public String toString() {
+        return "MySqlRangeInterval[amount=" + amount + ", unit=" + unit + "]";
     }
 }

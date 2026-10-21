@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 邻接树的不可变构建规格。节点键与父键必须具有相同的 Java 类型，并在数据库中具有相同 SQL 类型。
@@ -36,8 +37,8 @@ public final class HanaHierarchySpec<K> {
                               List<K> roots, Integer depth, Orphans orphans, Cycles cycles, Multiparent multiparent) {
         this.node = Objects.requireNonNull(node, "node");
         this.parent = Objects.requireNonNull(parent, "parent");
-        this.siblings = List.copyOf(siblings);
-        this.roots = roots == null ? null : List.copyOf(roots);
+        this.siblings = ImmutableCollections.listCopyOf(siblings);
+        this.roots = roots == null ? null : ImmutableCollections.listCopyOf(roots);
         this.depth = depth;
         this.orphans = Objects.requireNonNull(orphans, "orphans");
         this.cycles = Objects.requireNonNull(cycles, "cycles");
@@ -50,7 +51,7 @@ public final class HanaHierarchySpec<K> {
     }
 
     public static <K> HanaHierarchySpec<K> of(SQLColumn<?, K> node, SQLColumn<?, K> parent) {
-        return new HanaHierarchySpec<>(node, parent, List.of(), null, null, Orphans.IGNORE, Cycles.ERROR, Multiparent.ERROR);
+        return new HanaHierarchySpec<>(node, parent, ImmutableCollections.listOf(), null, null, Orphans.IGNORE, Cycles.ERROR, Multiparent.ERROR);
     }
 
     /**
@@ -60,7 +61,7 @@ public final class HanaHierarchySpec<K> {
         Objects.requireNonNull(values, "roots");
         if (values.stream().anyMatch(Objects::isNull))
             throw new IllegalArgumentException("Explicit hierarchy roots cannot contain SQL NULL");
-        return new HanaHierarchySpec<>(node, parent, siblings, List.copyOf(values), depth, orphans, cycles, multiparent);
+        return new HanaHierarchySpec<>(node, parent, siblings, ImmutableCollections.listCopyOf(values), depth, orphans, cycles, multiparent);
     }
 
     /**
@@ -97,7 +98,7 @@ public final class HanaHierarchySpec<K> {
     }
 
     private HanaHierarchySpec<K> sibling(SQLColumn<?, ?> column, boolean ascending) {
-        var copy = new ArrayList<>(siblings);
+        ArrayList<HanaHierarchySpec.Sibling> copy = new ArrayList<>(siblings);
         copy.add(new Sibling(Objects.requireNonNull(column, "column"), ascending));
         return new HanaHierarchySpec<>(node, parent, copy, roots, depth, orphans, cycles, multiparent);
     }
@@ -134,6 +135,40 @@ public final class HanaHierarchySpec<K> {
         return multiparent;
     }
 
-    record Sibling(SQLColumn<?, ?> column, boolean ascending) {
+    static final class Sibling {
+        private final SQLColumn<?, ?> column;
+        private final boolean ascending;
+
+        Sibling(SQLColumn<?, ?> column, boolean ascending) {
+            this.column = column;
+            this.ascending = ascending;
+        }
+
+        public SQLColumn<?, ?> column() {
+            return column;
+        }
+
+        public boolean ascending() {
+            return ascending;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Sibling)) return false;
+            Sibling other = (Sibling) o;
+            return Objects.equals(column, other.column)
+                    && ascending == other.ascending;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(column, ascending);
+        }
+
+        @Override
+        public String toString() {
+            return "Sibling[column=" + column + ", ascending=" + ascending + "]";
+        }
     }
 }

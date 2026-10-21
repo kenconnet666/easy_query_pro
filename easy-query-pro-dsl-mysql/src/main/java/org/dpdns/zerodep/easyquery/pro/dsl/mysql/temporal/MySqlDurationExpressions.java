@@ -23,6 +23,9 @@ import java.time.LocalTime;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Function;
+import com.easy.query.core.metadata.ColumnMetadata;
+import java.lang.reflect.Field;
+import com.easy.query.core.util.EasyStringUtil;
 
 /**
  * Internal TIME duration operations, preserving the existing client, transaction and result mapping.
@@ -38,10 +41,10 @@ public final class MySqlDurationExpressions {
             throw new IllegalArgumentException("A clock-time mapping cannot represent general durations; use nativeCast to Duration");
         }
         if (!(source instanceof DSLSQLFunctionAvailable) && source.getValue() != null && source.getTable() != null) {
-            var column = source.getTable().getEntityMetadata().getColumnNotNull(source.getValue());
-            var field = EasyClassUtil.getAllFieldsMap(source.getTable().getEntityClass()).get(column.getFieldName());
-            var annotation = field == null ? null : field.getAnnotation(Column.class);
-            if (column.getColumnValueSQLConverter() == null && annotation != null && !annotation.dbType().isBlank()) {
+            ColumnMetadata column = source.getTable().getEntityMetadata().getColumnNotNull(source.getValue());
+            Field field = EasyClassUtil.getAllFieldsMap(source.getTable().getEntityClass()).get(column.getFieldName());
+            Column annotation = field == null ? null : field.getAnnotation(Column.class);
+            if (column.getColumnValueSQLConverter() == null && annotation != null && !EasyStringUtil.isBlank(annotation.dbType())) {
                 String declared = annotation.dbType().toUpperCase(Locale.ROOT).replaceAll("\\s+", "");
                 String expected = type.ddlType(scope.dialect());
                 if (!declared.equals(expected) && !(declared.equals("TIME") && type.fractionalPrecision() == 0)) {
@@ -55,7 +58,7 @@ public final class MySqlDurationExpressions {
     public static MySqlDurationExpression<Duration> value(ExpressionScope scope, Duration value, MySqlDurationType type) {
         Duration checked = Objects.requireNonNull(type, "type").prepareValue(value);
         String template = type.castTemplate(scope.dialect());
-        var source = new AnyTypeExpressionImpl<Duration>(scope.context(), scope.anchor(), null,
+        AnyTypeExpressionImpl<Duration> source = new AnyTypeExpressionImpl<Duration>(scope.context(), scope.anchor(), null,
                 factory -> scope.function(factory.anySQLFunction(template, args -> args.value(checked)), AggregationType.UNKNOWN, false), Duration.class);
         return new Expression<>(scope, source, factory -> scope.operand(source, factory));
     }
@@ -63,7 +66,7 @@ public final class MySqlDurationExpressions {
     public static MySqlDurationExpression<Duration> cast(ExpressionScope scope, PropTypeColumn<?> source, MySqlDurationType type) {
         scope.requireSource(source);
         String template = Objects.requireNonNull(type, "type").castTemplate(scope.dialect());
-        var cast = new AnyTypeExpressionImpl<Duration>(scope.context(), source.getTable(), null,
+        AnyTypeExpressionImpl<Duration> cast = new AnyTypeExpressionImpl<Duration>(scope.context(), source.getTable(), null,
                 factory -> scope.scalar(factory, source, value -> factory.anySQLFunction(template, args -> args.sqlFunc(value))), Duration.class);
         return new Expression<>(scope, cast, factory -> scope.operand(cast, factory));
     }

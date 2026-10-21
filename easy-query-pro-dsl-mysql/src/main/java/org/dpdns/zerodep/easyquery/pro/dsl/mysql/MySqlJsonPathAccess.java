@@ -11,15 +11,16 @@ final class MySqlJsonPathAccess implements JsonPathAccess {
     @Override
     public SQLFunction fragment(SQLFunc factory, SQLFunction document, JsonPath path) {
         // Connector/J 在 NO_BACKSLASH_ESCAPES 的客户端预处理下会用 binary 十六进制绑定字符串。
-        var unicodeDocument = factory.anySQLFunction("CONVERT({0} USING utf8mb4)", args -> args.sqlFunc(document));
-        var prefixes = new ArrayList<String>();
-        var sql = new StringBuilder();
-        var prefix = JsonPath.root();
-        for (var segment : path.segments()) {
+        SQLFunction unicodeDocument = factory.anySQLFunction("CONVERT({0} USING utf8mb4)", args -> args.sqlFunc(document));
+        ArrayList<String> prefixes = new ArrayList<String>();
+        StringBuilder sql = new StringBuilder();
+        JsonPath prefix = JsonPath.root();
+        for (JsonPath.Segment segment : path.segments()) {
             sql.append(prefixes.isEmpty() ? "CASE WHEN " : " AND ");
             prefixes.add(prefix.toSqlJsonPath());
             sql.append("JSON_TYPE(JSON_EXTRACT({0},CONVERT({").append(prefixes.size()).append("} USING utf8mb4))) = '");
-            if (segment instanceof JsonPath.Key key) {
+            if (segment instanceof JsonPath.Key) {
+                JsonPath.Key key = (JsonPath.Key) segment;
                 sql.append("OBJECT'");
                 prefix = prefix.key(key.name());
             } else {

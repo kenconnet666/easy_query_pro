@@ -6,7 +6,8 @@
     <artifactId>java-client</artifactId>
     <version>1.0-SNAPSHOT</version>
     <properties>
-        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <easyquerypro.version>1.0-SNAPSHOT</easyquerypro.version>
         <easyquery.version>3.2.17</easyquery.version>
@@ -33,7 +34,7 @@
         <dependency>
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
-            <version>7.0.2</version>
+            <version>4.0.3</version>
         </dependency>
         <dependency>
             <groupId>com.mysql</groupId>
@@ -56,18 +57,38 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>6.1.3</version>
+            <version>5.14.4</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.junit.platform</groupId>
             <artifactId>junit-platform-launcher</artifactId>
-            <version>6.1.3</version>
+            <version>1.14.4</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
     <build>
         <plugins>
+            <plugin>
+                <!-- Compile and test like a Java 8 application; Maven itself may run on a newer JDK. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-toolchains-plugin</artifactId>
+                <version>3.3.0</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>toolchain</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <toolchains>
+                        <jdk>
+                            <version>[1.8,1.9),[8,9)</version>
+                        </jdk>
+                    </toolchains>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
@@ -79,9 +100,6 @@
                         </goals>
                         <configuration>
                             <rules>
-                                <requireJavaVersion>
-                                    <version>[17,18)</version>
-                                </requireJavaVersion>
                                 <dependencyConvergence/>
                             </rules>
                         </configuration>
@@ -103,7 +121,6 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.16.0</version>
                 <configuration>
-                    <proc>full</proc>
                     <parameters>true</parameters>
                     <annotationProcessorPaths>
                         <path>

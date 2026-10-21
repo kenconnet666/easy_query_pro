@@ -18,6 +18,11 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
+import com.easy.query.core.expression.sql.builder.EntityQueryExpressionBuilder;
+import com.easy.query.core.context.QueryRuntimeContext;
+import com.easy.query.core.metadata.ColumnMetadata;
+import com.easy.query.core.expression.sql.builder.ExpressionContext;
 
 /**
  * 由原 EntityQueryable 生成 HANA 邻接树/森林，保留原查询的绑定和数据库执行链。
@@ -33,7 +38,7 @@ import java.util.function.Supplier;
  * @param <K> 节点键类型，保留根集合的编译约束
  */
 public final class HanaHierarchy<K> {
-    private static final Set<String> GENERATED_COLUMNS = Set.of("HIERARCHY_RANK", "HIERARCHY_TREE_SIZE",
+    private static final Set<String> GENERATED_COLUMNS = ImmutableCollections.setOf("HIERARCHY_RANK", "HIERARCHY_TREE_SIZE",
             "HIERARCHY_PARENT_RANK", "HIERARCHY_ROOT_RANK", "HIERARCHY_LEVEL", "HIERARCHY_IS_CYCLE", "HIERARCHY_IS_ORPHAN");
     private final ClientQueryable<?> source;
     private final HanaHierarchySpec<K> spec;
@@ -48,8 +53,8 @@ public final class HanaHierarchy<K> {
     public static <P extends ProxyEntity<P, T>, T, K> HanaHierarchy<K> from(
             EntityQueryable<P, T> source, SQLFuncExpression1<P, HanaHierarchySpec<K>> specification) {
         Objects.requireNonNull(source, "source");
-        var builder = source.getClientQueryable().getSQLEntityExpressionBuilder();
-        var runtime = builder.getRuntimeContext();
+        EntityQueryExpressionBuilder builder = source.getClientQueryable().getSQLEntityExpressionBuilder();
+        QueryRuntimeContext runtime = builder.getRuntimeContext();
         SqlDialect dialect;
         try {
             dialect = runtime.getService(SqlDialect.class);
@@ -59,20 +64,20 @@ public final class HanaHierarchy<K> {
         if (dialect != SqlDialect.HANA) throw new IllegalArgumentException("HANA hierarchies require a HANA client");
         if (builder.getExpressionContext().isSharding())
             throw new UnsupportedOperationException("HANA hierarchies require one database source without shard merging");
-        var spec = Objects.requireNonNull(Objects.requireNonNull(specification, "specification").apply(source.get1Proxy()), "specification result");
-        var table = builder.getFromTable().getEntityTable();
+        HanaHierarchySpec<K> spec = Objects.requireNonNull(Objects.requireNonNull(specification, "specification").apply(source.get1Proxy()), "specification result");
+        TableAvailable table = builder.getFromTable().getEntityTable();
         requireColumn(spec.node(), table);
         requireColumn(spec.parent(), table);
         spec.siblings().forEach(sibling -> requireColumn(sibling.column(), table));
         // APT 对业务 record 可能暴露 Object.class 载体；实际值类型必须取实体映射，不能因此放过 raw 调用。
-        var keyType = keyType(spec.node());
+        Class<?> keyType = keyType(spec.node());
         if (keyType != keyType(spec.parent()))
             throw new IllegalArgumentException("Hierarchy node and parent keys must have the same Java type");
         if (spec.roots() != null && spec.roots().stream().anyMatch(root -> !keyType.isInstance(root)))
             throw new IllegalArgumentException("Hierarchy roots require " + keyType.getName());
         String nodeName = columnName(spec.node());
         String parentName = columnName(spec.parent());
-        for (var column : table.getEntityMetadata().getProperty2ColumnMap().values()) {
+        for (ColumnMetadata column : table.getEntityMetadata().getProperty2ColumnMap().values()) {
             String name = column.getName();
             if (GENERATED_COLUMNS.contains(name)
                     || name.equals("NODE_ID") && !name.equals(nodeName)
@@ -80,7 +85,7 @@ public final class HanaHierarchy<K> {
                 throw new IllegalArgumentException("Hierarchy source column conflicts with generated output: " + name);
         }
         // 只复制 ClientQueryable，避免 EntityQueryable.clone 重绑定调用方的可变 Proxy。
-        var snapshot = EasySQLExpressionUtil.cloneAndSelectAllQueryable(source.getClientQueryable());
+        ClientQueryable<T> snapshot = EasySQLExpressionUtil.cloneAndSelectAllQueryable(source.getClientQueryable());
         return new HanaHierarchy<>(snapshot, spec, null);
     }
 
@@ -115,14 +120,14 @@ public final class HanaHierarchy<K> {
         if (navigation != null)
             throw new IllegalStateException("Start another navigation from the original hierarchy definition");
         Objects.requireNonNull(starts, "starts");
-        var type = keyType(spec.node());
+        Class<?> type = keyType(spec.node());
         if (starts.isEmpty() || starts.stream().anyMatch(value -> !type.isInstance(value)))
             throw new IllegalArgumentException("Hierarchy navigation requires nonempty, non-null " + type.getName() + " start keys");
-        for (var column : spec.node().getTable().getEntityMetadata().getProperty2ColumnMap().values()) {
+        for (ColumnMetadata column : spec.node().getTable().getEntityMetadata().getProperty2ColumnMap().values()) {
             if (column.getName().equals("START_RANK") || column.getName().equals("HIERARCHY_DISTANCE"))
                 throw new IllegalArgumentException("Hierarchy source column conflicts with navigation output: " + column.getName());
         }
-        return new HanaHierarchy<>(source, spec, new Navigation<>(direction, List.copyOf(starts), null, null));
+        return new HanaHierarchy<>(source, spec, new Navigation<>(direction, ImmutableCollections.listCopyOf(starts), null, null));
     }
 
     /**
@@ -130,13 +135,13 @@ public final class HanaHierarchy<K> {
      * where/order/group/CTE/page 在层级计算之后执行；DEPTH 则属于前面的构树阶段。
      */
     public <P extends ProxyEntity<P, T>, T> EntityQueryable<P, T> query(Supplier<P> proxyFactory) {
-        var proxy = Objects.requireNonNull(Objects.requireNonNull(proxyFactory, "proxyFactory").get(), "proxyFactory result");
+        P proxy = Objects.requireNonNull(Objects.requireNonNull(proxyFactory, "proxyFactory").get(), "proxyFactory result");
         if (proxy.getTableOrNull() != null)
             throw new IllegalArgumentException("The hierarchy result factory must return a fresh unbound proxy");
-        var runtime = source.getSQLEntityExpressionBuilder().getRuntimeContext();
+        QueryRuntimeContext runtime = source.getSQLEntityExpressionBuilder().getRuntimeContext();
         // source 的 resultPropTypes/reader map 不能污染新的 DTO 形状；extract 仅提升来源/CTE 等查询依赖。
-        var context = runtime.getExpressionBuilderFactory().createExpressionContext(runtime, ContextTypeEnum.QUERY);
-        var builder = new HanaHierarchyQueryBuilder(source.cloneQueryable(), spec, navigation, context, proxy.getEntityClass());
+        ExpressionContext context = runtime.getExpressionBuilderFactory().createExpressionContext(runtime, ContextTypeEnum.QUERY);
+        HanaHierarchyQueryBuilder builder = new HanaHierarchyQueryBuilder(source.cloneQueryable(), spec, navigation, context, proxy.getEntityClass());
         return new EasyEntityQueryable<>(proxy, runtime.getSQLClientApiFactory().createQueryable(proxy.getEntityClass(), builder));
     }
 
@@ -157,6 +162,54 @@ public final class HanaHierarchy<K> {
 
     enum Direction {DESCENDANTS, ANCESTORS}
 
-    record Navigation<K>(Direction direction, List<K> starts, Integer minimumDistance, Integer maximumDistance) {
+    static final class Navigation<K> {
+        private final Direction direction;
+        private final List<K> starts;
+        private final Integer minimumDistance;
+        private final Integer maximumDistance;
+
+        Navigation(Direction direction, List<K> starts, Integer minimumDistance, Integer maximumDistance) {
+            this.direction = direction;
+            this.starts = starts;
+            this.minimumDistance = minimumDistance;
+            this.maximumDistance = maximumDistance;
+        }
+
+        public Direction direction() {
+            return direction;
+        }
+
+        public List<K> starts() {
+            return starts;
+        }
+
+        public Integer minimumDistance() {
+            return minimumDistance;
+        }
+
+        public Integer maximumDistance() {
+            return maximumDistance;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof Navigation)) return false;
+            Navigation<?> other = (Navigation<?>) o;
+            return Objects.equals(direction, other.direction)
+                    && Objects.equals(starts, other.starts)
+                    && Objects.equals(minimumDistance, other.minimumDistance)
+                    && Objects.equals(maximumDistance, other.maximumDistance);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(direction, starts, minimumDistance, maximumDistance);
+        }
+
+        @Override
+        public String toString() {
+            return "Navigation[direction=" + direction + ", starts=" + starts + ", minimumDistance=" + minimumDistance + ", maximumDistance=" + maximumDistance + "]";
+        }
     }
 }

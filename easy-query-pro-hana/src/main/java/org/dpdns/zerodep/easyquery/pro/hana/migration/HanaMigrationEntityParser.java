@@ -20,6 +20,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.dpdns.zerodep.easyquery.pro.hana.internal.ImmutableCollections;
+import com.easy.query.core.metadata.EntityMetadata;
+import com.easy.query.core.metadata.NavigateMetadata;
 
 /**
  * 保留上游注解、枚举和自定义 parser 契约，只替换 HANA 的类型与默认值。
@@ -28,7 +31,7 @@ public class HanaMigrationEntityParser extends DefaultMigrationEntityParser {
     private static final Map<Class<?>, ColumnDbTypeResult> TYPES = types();
 
     private static Map<Class<?>, ColumnDbTypeResult> types() {
-        var types = new HashMap<Class<?>, ColumnDbTypeResult>();
+        HashMap<Class<?>, ColumnDbTypeResult> types = new HashMap<Class<?>, ColumnDbTypeResult>();
         add(types, boolean.class, Boolean.class, "BOOLEAN", "FALSE");
         // Java Byte 有符号，HANA TINYINT 无符号；默认映射必须能表示 -128。
         add(types, byte.class, Byte.class, "SMALLINT", "0");
@@ -49,7 +52,7 @@ public class HanaMigrationEntityParser extends DefaultMigrationEntityParser {
         types.put(java.sql.Time.class, new ColumnDbTypeResult("TIME", null));
         types.put(java.sql.Timestamp.class, new ColumnDbTypeResult("TIMESTAMP", null));
         types.put(java.util.Date.class, new ColumnDbTypeResult("TIMESTAMP", null));
-        return Map.copyOf(types);
+        return ImmutableCollections.mapCopyOf(types);
     }
 
     private static void add(Map<Class<?>, ColumnDbTypeResult> types, Class<?> primitive, Class<?> boxed, String sql, String defaultValue) {
@@ -64,7 +67,7 @@ public class HanaMigrationEntityParser extends DefaultMigrationEntityParser {
 
     @Override
     protected String replaceSqlTypeLength(String sql, int length, int scale) {
-        var type = HanaColumnType.parse(sql);
+        HanaColumnType type = HanaColumnType.parse(sql);
         if (length < 0) return type.sql();
         String parameters = length == 0 ? "" : "(" + length + (type.name().equals("DECIMAL") ? "," + scale : "") + ")";
         if (!type.name().equals("DECIMAL") && scale != 0) {
@@ -75,7 +78,7 @@ public class HanaMigrationEntityParser extends DefaultMigrationEntityParser {
 
     @Override
     public @NotNull ColumnDbTypeResult getColumnDbType(EntityMigrationMetadata entity, ColumnMetadata column) {
-        var result = super.getColumnDbType(entity, column);
+        ColumnDbTypeResult result = super.getColumnDbType(entity, column);
         try {
             return new ColumnDbTypeResult(HanaColumnType.parse(result.columnType).sql(), result.defValue);
         } catch (IllegalArgumentException failure) {
@@ -86,14 +89,14 @@ public class HanaMigrationEntityParser extends DefaultMigrationEntityParser {
 
     @Override
     public @NotNull List<TableForeignKeyResult> getTableForeignKeys(EntityMigrationMetadata migration, QueryRuntimeContext context) {
-        var entity = migration.getEntityMetadata();
-        var result = new ArrayList<TableForeignKeyResult>();
-        for (var navigate : entity.getNavigateMetadatas()) {
-            var annotation = migration.getFieldByName(navigate.getPropertyName()).getAnnotation(ForeignKey.class);
+        EntityMetadata entity = migration.getEntityMetadata();
+        ArrayList<TableForeignKeyResult> result = new ArrayList<TableForeignKeyResult>();
+        for (NavigateMetadata navigate : entity.getNavigateMetadatas()) {
+            ForeignKey annotation = migration.getFieldByName(navigate.getPropertyName()).getAnnotation(ForeignKey.class);
             if (annotation == null) continue;
-            var target = context.getEntityMetadataManager().getEntityMetadata(navigate.getNavigatePropertyType());
-            var selfColumns = Arrays.stream(navigate.getSelfPropertiesOrPrimary()).map(property -> entity.getColumnNotNull(property).getName()).toArray(String[]::new);
-            var targetColumns = Arrays.stream(navigate.getTargetPropertiesOrPrimary(context)).map(property -> target.getColumnNotNull(property).getName()).toArray(String[]::new);
+            EntityMetadata target = context.getEntityMetadataManager().getEntityMetadata(navigate.getNavigatePropertyType());
+            String[] selfColumns = Arrays.stream(navigate.getSelfPropertiesOrPrimary()).map(property -> entity.getColumnNotNull(property).getName()).toArray(String[]::new);
+            String[] targetColumns = Arrays.stream(navigate.getTargetPropertiesOrPrimary(context)).map(property -> target.getColumnNotNull(property).getName()).toArray(String[]::new);
             String name = entity.getTableName() + "_" + target.getTableName() + "_" + String.join("_", targetColumns) + "_fk";
             result.add(new SchemaForeignKey(name, annotation.action(), entity.getTableName(), target.getTableName(),
                     selfColumns, targetColumns, target.getSchemaOrNull()));

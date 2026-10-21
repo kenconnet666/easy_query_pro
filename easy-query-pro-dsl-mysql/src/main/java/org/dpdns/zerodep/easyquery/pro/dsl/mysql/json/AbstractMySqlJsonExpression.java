@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.BiFunction;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 可扩展的 MySQL JSON 整文档操作基类，统一保留源 reader、参数校验和作用域。
@@ -37,14 +38,14 @@ public abstract class AbstractMySqlJsonExpression<T, S extends MySqlJsonExpressi
 
     @Override
     public BooleanTypeExpression<Boolean> containsJson(JsonInput candidate) {
-        var parameter = literal(scope, MySqlTypes.json(), candidate);
+        PropTypeColumn<String> parameter = literal(scope, MySqlTypes.json(), candidate);
         return predicate((factory, document) -> factory.anySQLFunction("JSON_CONTAINS({0},{1})", args ->
                 args.sqlFunc(document).sqlFunc(scope.operand(parameter, factory))));
     }
 
     @Override
     public BooleanTypeExpression<Boolean> containsJson(JsonInput candidate, JsonPath path) {
-        var parameter = literal(scope, MySqlTypes.json(), candidate);
+        PropTypeColumn<String> parameter = literal(scope, MySqlTypes.json(), candidate);
         String checked = Objects.requireNonNull(path, "path").toSqlJsonPath();
         return predicate((factory, document) -> factory.anySQLFunction("JSON_CONTAINS({0},{1},CONVERT({2} USING utf8mb4))", args ->
                 args.sqlFunc(document).sqlFunc(scope.operand(parameter, factory)).value(checked)));
@@ -61,7 +62,7 @@ public abstract class AbstractMySqlJsonExpression<T, S extends MySqlJsonExpressi
     }
 
     private BooleanTypeExpression<Boolean> containsPaths(String mode, JsonPath[] paths) {
-        var checked = checkedPaths(paths);
+        List<JsonPath> checked = checkedPaths(paths);
         String template = "JSON_CONTAINS_PATH({0},'" + mode + "'" + pathArguments(checked.size()) + ")";
         return predicate((factory, document) -> factory.anySQLFunction(template, args -> {
             args.sqlFunc(document);
@@ -76,10 +77,10 @@ public abstract class AbstractMySqlJsonExpression<T, S extends MySqlJsonExpressi
 
     @Override
     public S setPaths(MySqlJsonChange... changes) {
-        var checked = List.of(Objects.requireNonNull(changes, "changes"));
+        List<MySqlJsonChange> checked = ImmutableCollections.listOf(Objects.requireNonNull(changes, "changes"));
         if (checked.isEmpty()) throw new IllegalArgumentException("JSON_SET requires at least one change");
-        var values = checked.stream().map(change -> literal(scope, MySqlTypes.json(), change.value())).toList();
-        var template = new StringBuilder("JSON_SET({0}");
+        List<PropTypeColumn<String>> values = checked.stream().map(change -> literal(scope, MySqlTypes.json(), change.value())).collect(ImmutableCollections.toList());
+        StringBuilder template = new StringBuilder("JSON_SET({0}");
         // 客户端 prepare 配合 NO_BACKSLASH_ESCAPES 可能产生二进制参数字面量，显式 UTF-8 转换确保路径为文本。
         for (int i = 0; i < checked.size(); i++) {
             template.append(",CONVERT({").append(2 * i + 1).append("} USING utf8mb4),{").append(2 * i + 2).append('}');
@@ -100,7 +101,7 @@ public abstract class AbstractMySqlJsonExpression<T, S extends MySqlJsonExpressi
 
     @Override
     public S removePaths(JsonPath... paths) {
-        var checked = checkedPaths(paths);
+        List<JsonPath> checked = checkedPaths(paths);
         if (checked.stream().anyMatch(path -> path.segments().isEmpty())) {
             throw new IllegalArgumentException("JSON_REMOVE cannot remove the document root");
         }
@@ -117,13 +118,13 @@ public abstract class AbstractMySqlJsonExpression<T, S extends MySqlJsonExpressi
     }
 
     private static List<JsonPath> checkedPaths(JsonPath[] paths) {
-        var checked = List.of(Objects.requireNonNull(paths, "paths"));
+        List<JsonPath> checked = ImmutableCollections.listOf(Objects.requireNonNull(paths, "paths"));
         if (checked.isEmpty()) throw new IllegalArgumentException("At least one JSON path is required");
         return checked;
     }
 
     private static String pathArguments(int count) {
-        var arguments = new StringBuilder();
+        StringBuilder arguments = new StringBuilder();
         for (int i = 1; i <= count; i++) arguments.append(",CONVERT({").append(i).append("} USING utf8mb4)");
         return arguments.toString();
     }

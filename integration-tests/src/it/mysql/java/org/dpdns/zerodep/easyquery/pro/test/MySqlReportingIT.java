@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import java.sql.SQLException;
 import java.util.function.BiConsumer;
 import javax.sql.DataSource;
+import com.mysql.cj.jdbc.MysqlDataSource;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -50,9 +52,9 @@ class MySqlReportingIT {
     }
 
     private void withSales(BiConsumer<EntityQueryable<ReportSaleProxy, ReportSale>, DataSource> contract) throws SQLException {
-        var source = MySqlTestDatabase.dataSource();
-        try (var table = MySqlTestDatabase.createTable(source, "eqp_window_", "id INTEGER PRIMARY KEY, region VARCHAR(20), report_day DATE, amount DECIMAL(19,4)")) {
-            var query = TestClients.configured(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
+        MysqlDataSource source = MySqlTestDatabase.dataSource();
+        try (MySqlTestDatabase.Table table = MySqlTestDatabase.createTable(source, "eqp_window_", "id INTEGER PRIMARY KEY, region VARCHAR(20), report_day DATE, amount DECIMAL(19,4)")) {
+            DefaultEasyEntityQuery query = TestClients.configured(source, new MySQLDatabaseConfiguration(), MySqlExtensions::configure);
             assertEquals(6L, query.insertable(WindowReportContract.sales()).asTable(table.name()).executeRows());
             contract.accept(query.queryable(ReportSale.class).asTable(table.name()), source);
         }

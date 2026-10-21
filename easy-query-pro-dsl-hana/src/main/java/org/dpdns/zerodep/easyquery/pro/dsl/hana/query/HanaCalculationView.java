@@ -6,6 +6,7 @@ import com.easy.query.core.proxy.ProxyEntity;
 
 import java.util.List;
 import java.util.function.Supplier;
+import org.dpdns.zerodep.easyquery.pro.dsl.internal.ImmutableCollections;
 
 /**
  * 一个已部署 HANA 计算视图的类型化来源定义。对象部署和授权由应用迁移或 HDI 管理。
@@ -31,7 +32,7 @@ public class HanaCalculationView<P extends ProxyEntity<P, T>, T> {
      */
     public static <P extends ProxyEntity<P, T>, T> HanaCalculationView<P, T> of(
             String schema, String view, Supplier<P> proxyFactory, HanaInput<?>... inputs) {
-        return new HanaCalculationView<>(schema, view, proxyFactory, List.of(inputs));
+        return new HanaCalculationView<>(schema, view, proxyFactory, ImmutableCollections.listOf(inputs));
     }
 
     /**

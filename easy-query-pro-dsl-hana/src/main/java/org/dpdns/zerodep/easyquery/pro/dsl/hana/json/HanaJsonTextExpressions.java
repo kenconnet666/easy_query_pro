@@ -29,12 +29,12 @@ public final class HanaJsonTextExpressions {
     }
 
     public static HanaJsonTextExpression<String> value(ExpressionScope scope, ProDsl portable, JsonInput value, HanaJsonTextType type) {
-        var source = AbstractJsonExpression.literal(scope, Objects.requireNonNull(type, "type"), value);
+        PropTypeColumn<String> source = AbstractJsonExpression.literal(scope, Objects.requireNonNull(type, "type"), value);
         return new Expression<>(scope, portable, source, type, factory -> scope.operand(source, factory));
     }
 
     public static HanaJsonTextExpression<String> cast(ExpressionScope scope, ProDsl portable, PropTypeColumn<?> source, HanaJsonTextType type) {
-        var cast = AbstractJsonExpression.cast(scope, Objects.requireNonNull(type, "type"), source);
+        PropTypeColumn<String> cast = AbstractJsonExpression.cast(scope, Objects.requireNonNull(type, "type"), source);
         return new Expression<>(scope, portable, cast, type, factory -> scope.operand(cast, factory));
     }
 
@@ -48,9 +48,9 @@ public final class HanaJsonTextExpressions {
 
         @Override
         public Function<SQLFunc, SQLFunction> func() {
-            var function = super.func();
+            Function<SQLFunc, SQLFunction> function = super.func();
             return lob ? factory -> {
-                var value = function.apply(factory);
+                SQLFunction value = function.apply(factory);
                 return scope.operation(HanaLobSqlSupport.lobResult(value), AggregationType.UNKNOWN, value);
             } : function;
         }

@@ -9,13 +9,15 @@ import org.dpdns.zerodep.easyquery.pro.hana.config.HanaDatabaseConfiguration;
 import org.dpdns.zerodep.easyquery.pro.test.entity.HanaJsonTextRecord;
 import org.dpdns.zerodep.easyquery.pro.test.entity.JsonPayload;
 import org.junit.jupiter.api.Test;
+import com.easy.query.api.proxy.client.DefaultEasyEntityQuery;
+import org.dpdns.zerodep.easyquery.pro.dsl.hana.json.HanaJsonTextType;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class HanaJsonTextDslTest {
     @Test
     void fullTextConversionDoesNotRequireNavigationHelpersButPathsStillDo() {
-        var query = TestClients.offline(new HanaDatabaseConfiguration(), HanaExtensions::configure);
+        DefaultEasyEntityQuery query = TestClients.offline(new HanaDatabaseConfiguration(), HanaExtensions::configure);
         query.getRuntimeContext().getQueryConfiguration().applyValueConverter(new JsonPayload.Converter());
         assertDoesNotThrow(() -> query.queryable(HanaJsonTextRecord.class).selectColumn(p -> HanaDsl.of(p).view(p.wide(), HanaTypes.jsonNclob()).asText()).toSQL());
         assertThrows(IllegalStateException.class, () -> query.queryable(HanaJsonTextRecord.class).selectColumn(p -> HanaDsl.of(p).view(p.wide(), HanaTypes.jsonNclob()).existsAt(JsonPath.root())));
@@ -26,16 +28,16 @@ class HanaJsonTextDslTest {
 
     @Test
     void boundedJsonTextChecksUtf16CapacityAndDescriptorEquality() {
-        var type = HanaTypes.jsonNvarchar(5);
+        HanaJsonTextType type = HanaTypes.jsonNvarchar(5);
         assertEquals(type, HanaTypes.jsonNvarchar(5));
         assertNotEquals(type, HanaTypes.jsonNclob());
         assertEquals("\"😀\"", type.prepareValue("\"😀\""));
         assertThrows(IllegalArgumentException.class, () -> type.prepareValue("\"😀ab\""));
         assertThrows(IllegalArgumentException.class, () -> HanaTypes.jsonNvarchar(5001));
-        var query = TestClients.offline(new HanaDatabaseConfiguration(), HanaExtensions::configure);
+        DefaultEasyEntityQuery query = TestClients.offline(new HanaDatabaseConfiguration(), HanaExtensions::configure);
         query.getRuntimeContext().getQueryConfiguration().applyValueConverter(new JsonPayload.Converter());
         assertDoesNotThrow(() -> query.queryable(HanaJsonTextRecord.class).selectColumn(p -> {
-            var hana = HanaDsl.of(p);
+            HanaDsl hana = HanaDsl.of(p);
             return hana.view(hana.value(JsonInput.jsonNull(), type), HanaTypes.jsonNvarchar(5)).asText();
         }).toSQL());
     }
