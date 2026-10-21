@@ -35,6 +35,15 @@ class PgTemporalMappingTest {
         assertSame(standard, handlers.getHandlerByHandlerClass(LocalDateTimeTypeHandler.class));
     }
 
+    @Test
+    void explicitLegacyClassUsesAnApplicationRegisteredInstance() {
+        var query = TestClients.offline(new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+        var handlers = query.getRuntimeContext().getJdbcTypeHandlerManager();
+        var custom = new LocalDateTimeTypeHandler();
+        handlers.appendHandler(LocalDateTime.class, custom, true);
+        assertSame(custom, handlers.getHandlerByHandlerClass(LocalDateTimeTypeHandler.class));
+    }
+
     public static final class CustomDateTime extends LocalDateTimeTypeHandler {
     }
 }

@@ -843,3 +843,13 @@ MySqlExtensions 构建时安装专属默认 Float manager，只覆盖 Float/floa
 指定 JBR 17 的第一轮回归于 08:12:21 通过 7 个离线及 16 个 MySQL 原生用例（既有 DECIMAL、unsigned、JSON、时长与 JDBC 对照）；三库新类型最终于 08:14:10 通过 8 个离线/消费者及 9 个原生用例。alias 优先级修复后又于 08:17:09 通过 4 个映射离线与 4 个 MySQL 基础数值原生用例。IDEA 格式与构建通过，MCP 确认本次三库物理表/schema 遗留为零；六份本轮根诊断日志记录后清理，标准报告保留。
 
 前序重复测量 `3eae6b05684142eef92c67b6d9a7716477f6746e` 的 [CI 39517642251](https://github.com/kenconnet666/easy_query_pro/actions/runs/39517642251) 已由主线程确认 success。随后 unsigned 重载提交 d7dcad0 的 [CI 39518796112](https://github.com/kenconnet666/easy_query_pro/actions/runs/39518796112) 首次运行的三库及两平台构建通过，两平台独立消费者在依赖解析阶段失败：Ubuntu 的 JUnit launcher POM 从 Maven Central 下载时 Connection reset，Windows 的 dependency 插件未能读取 plexus-component-annotations 描述。已核对归档日志并只重跑失败任务，尚不视为通过，不等待重跑推进下一批。完整小宽整数/其他标量角色继续审计，协议边界见 dsl-types.md。
+
+## 既有 PostgreSQL/HANA 处理器别名优先级
+
+将 MySQL 修复中发现的精确类名问题独立对照既有两库实现。PG 的 LocalDateTime 和 HANA 的 Byte、BigDecimal、三种 java.time、Blob、Clob 共八项真实红测确认：应用 appendHandler 注册旧类的新实例后，按 Java 类型查找得到应用实例，但显式 typeHandler 类查找仍被默认 alias 挡住。
+
+两处实现改为先使用上游 getHandlerByHandlerClass；仅抛出代表未注册的 EasyQueryInvalidOperationException 时，才查询已知兼容别名。默认安装仍回到修正处理器，应用精确类和子类仍按原身份解析，未知类保留原错误。没有修改 JDBC 绑定/读取、LOB 资源或 metadata 缓存时机，也没有为三个很小的方言规则跨层抽公共基类。
+
+指定 JBR 17 执行 `mvnw.cmd --batch-mode test -Dtest=HanaTypeMappingTest,PgTemporalMappingTest,MySqlNumericMappingTest -Dsurefire.failIfNoSpecifiedTests=false`，15 个离线用例于 2026-10-21 08:25:30 全部通过，包含七类 HANA、PG 与已交付 MySQL 的一致性回归。IDEA 格式与构建通过；本批没有创建数据库对象，两份红绿诊断日志记录后清理。
+
+前一基础数值 `15d06c7b033612af415cfb28c2bab7cd53f17cbe` 的 [CI 39520937577](https://github.com/kenconnet666/easy_query_pro/actions/runs/39520937577) 检查时仍 in_progress；d7dcad0 的依赖下载失败重跑继续后台执行，下一步继续 H11 DECIMAL 多值模型实证。

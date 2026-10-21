@@ -9,6 +9,7 @@ import com.easy.query.core.basic.jdbc.types.handler.LocalDateTimeTypeHandler;
 import com.easy.query.core.basic.jdbc.types.handler.LocalTimeTypeHandler;
 import com.easy.query.core.basic.jdbc.types.handler.BlobTypeHandler;
 import com.easy.query.core.basic.jdbc.types.handler.CLobTypeHandler;
+import com.easy.query.core.exception.EasyQueryInvalidOperationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -65,8 +66,13 @@ public final class HanaJdbcTypeHandlerManager extends EasyJdbcTypeHandlerManager
 
     @Override
     public @NotNull JdbcTypeHandler getHandlerByHandlerClass(@NotNull Class<?> type) {
-        // 替换默认映射后，保留实体中显式引用上游处理器类的配置入口。
-        var handler = aliases.get(type);
-        return handler != null ? handler : super.getHandlerByHandlerClass(type);
+        try {
+            // 应用显式注册的精确类实例优先；兼容别名只补未注册的旧默认类名。
+            return super.getHandlerByHandlerClass(type);
+        } catch (EasyQueryInvalidOperationException missing) {
+            var handler = aliases.get(type);
+            if (handler != null) return handler;
+            throw missing;
+        }
     }
 }

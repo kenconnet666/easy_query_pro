@@ -11,7 +11,7 @@
 - `PgJdbcTypeHandlerManager`：保留上游 PostgreSQL UUID handler，并修正默认 LocalDateTime 映射。
 - `PgJdbcSQLExecutor`：继续执行上游 query，在结果进入分片合并之前保留无时区时间字段。
 
-原实体中的 `@Column(typeHandler = LocalDateTimeTypeHandler.class)` 仍可解析，映射到修正后的默认处理器。其他自定义处理器及其子类不被这个精确类名别名截获。
+原实体中的 `@Column(typeHandler = LocalDateTimeTypeHandler.class)` 仍可解析；没有应用注册的精确同类实例时，映射到修正后的默认处理器。若应用显式注册了 LocalDateTimeTypeHandler 新实例，精确类名查找优先使用该实例，不被兼容别名挡住。其他自定义处理器及其子类保留各自类名与实例。
 
 应用可在构建后、首次实体元数据加载之前用 `appendHandler(type, handler, true)` 注册自己的处理器；后续 `PgSqlExtensions.configureTypeHandlers` 不覆盖这些定制。需要替换整个服务时，在 Pro 安装之后注册，或者继承上述两个公开类保留时间基础。元数据会缓存列处理器，不能在首次查询后才注册并假设已经加载的实体会自动更新。
 

@@ -55,6 +55,8 @@ HANA 的 `transactionalLobs` 默认值会使结果集/statement 的部分释放�
 
 继续使用上游 `ValueConverter`、`ColumnValueSQLConverter` 和列级 `typeHandler`。业务值对象应明确 `@Column(dbType=...)`；需要从 NCLOB 读取字符串再反序列化时，指定 `StringTypeHandler`，不依赖驱动 `getObject()` 恰好返回 String。转换器在 client 的 QueryConfiguration 中注册，不能把特定业务字段的序列化规则注册为全局 String 行为。
 
+Byte、BigDecimal、LocalDate、LocalTime、LocalDateTime、Blob、Clob 的旧默认处理器类名保留兼容别名。精确类名查找先使用应用已注册的同类实例，未注册时才回到 HANA 修正后的默认值；自定义子类使用自己的精确类名，未知类继续报错。应用注册须早于首次实体 metadata 加载，显式选择旧处理器实例时也采用该实例自己的读写语义。HanaTypeMappingTest 覆盖七类的默认别名与后置实例优先级。
+
 生成键回填现在复用上游 `EntityResultColumnMetadata` 与 `EasyJdbcExecutorUtil.fromValue`，与普通读取使用相同的解密/ValueConverter 路径。`RowId` 一类不可变业务主键可声明 BIGINT、LongTypeHandler 和对应 ValueConverter，直接回填为业务值；不再将 Long 写入业务对象属性导致 ClassCastException。
 
 已验证实体/DTO、NULL、两个 client 的不同转换器实例、普通列与 NCLOB 列、更新条件，以及 `asStr()` 后的原始存储值和字符串组合。上游已有 `asStr` 与 IgnoreValueConverterTypeExpression 能处理这类视图转换，不新建平行的转换框架。

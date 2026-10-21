@@ -6,6 +6,7 @@ import com.easy.query.core.basic.jdbc.types.EasyJdbcTypeHandlerManager;
 import com.easy.query.core.basic.jdbc.types.EasyParameter;
 import com.easy.query.core.basic.jdbc.types.handler.JdbcTypeHandler;
 import com.easy.query.core.basic.jdbc.types.handler.LocalDateTimeTypeHandler;
+import com.easy.query.core.exception.EasyQueryInvalidOperationException;
 import com.easy.query.pgsql.types.PgSQLUUIDTypeHandler;
 
 import java.sql.SQLException;
@@ -26,8 +27,13 @@ public class PgJdbcTypeHandlerManager extends EasyJdbcTypeHandlerManager {
 
     @Override
     public JdbcTypeHandler getHandlerByHandlerClass(Class<?> type) {
-        // 上游按 handler.getClass 精确查找；替换默认值后仍保留实体显式引用旧类名的配置。
-        return type == LocalDateTimeTypeHandler.class ? dateTime : super.getHandlerByHandlerClass(type);
+        try {
+            // 应用显式注册的精确类实例优先；兼容别名只补未注册的旧默认类名。
+            return super.getHandlerByHandlerClass(type);
+        } catch (EasyQueryInvalidOperationException missing) {
+            if (type == LocalDateTimeTypeHandler.class) return dateTime;
+            throw missing;
+        }
     }
 
     private static final class DateTime extends LocalDateTimeTypeHandler {
