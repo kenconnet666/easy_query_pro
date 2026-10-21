@@ -33,7 +33,7 @@
 | H10 | 目录、创建、预览、幂等、受控增量和权限已有验收；任意依赖对象迁移不泛化 | [迁移](hana-migrations.md) |
 | H11 | 真实 HDI 标量/多值计算视图、标量表函数及独立运行时 SELECT/EXECUTE 已验收 | [HDI](hana-hdi.md)、[查询来源](hana-query-sources.md) |
 | H12 | 原生树/森林、根/深度/顺序、循环/孤儿、祖先/后代和选定事实汇总；物理表 SELECT/撤权已验收 | [层级](hana-hierarchy.md) |
-| D01 | 通用 DECIMAL、有界 Unicode 文本、typed value/NULL、DDL/CAST 角色与编译负例 | [精确类型](dsl-types.md) |
+| D01 | 通用 BIGINT、有限浮点参数、DECIMAL、有界 Unicode 文本、typed value/NULL、DDL/CAST 角色与编译负例 | [精确类型](dsl-types.md) |
 | D02 | 三库原生数值、unsigned、时长/interval、受限字符/LOB 等已有验收；全目录角色矩阵继续收敛 | [原生数值](native-numeric.md)、[完整设计](dsl-design.md) |
 | D03 | 通用 JSON path 与三库选定读/谓词，MySQL JSON/PG JSONB 路径修改删除已有验收 | [通用 JSON](dsl-json.md)、[MySQL](mysql-json.md)、[PG](pgsql-json.md) |
 | D04 | PG 一维数组绑定/读取、ANY、包含/重叠/元素与长度、NULL 和资源边界已有验收 | [PG 数组](pgsql-arrays.md) |
@@ -55,6 +55,7 @@
 - H03 的零显式列插入尚未完成。省略部分普通列、应用明确传 NULL 或 sequence 生成一个实际 SQL 列，均不能冒充全默认空行。HANA 88 已有崩溃证据的 identity/default 语句不在共享实例或默认 CI 重跑。
 - H08 的直接 `joining(..., distinct=true)` 仍拒绝。已有单列投影→DISTINCT→CTE→普通 joining 组合是显式方案，不是该标志已支持。
 - 类型的 storage、cast、view、绑定和读取角色分别验证。原生 CAST 的舍入/截断不作跨库统一承诺；Java 表达式视图不是 SQL CAST。HANA 历法缺口、TIME 整秒与 LocalDateTime 的 100ns 精度约束保持。共同日期截断的已验收现代日期范围不能推广到任意历史列值；PG date_bin 当前仅 LocalDateTime 固定微秒桶。
+- MySQL Float 默认绑定通过精确提升为 Double 避免客户端预处理的上界文本舍入；FLOAT 文本结果仍可能丢有效位，精确单精度回读使用明确的服务端预处理（关闭静默降级）或显式 DOUBLE 投影。不会暗改应用连接配置，也不把这一限制泛化为 BIGINT/DOUBLE。
 - 上游无其他操作的右侧 JOIN 查询可能丢动态 schema/table，需真实投影保留来源。克隆仍遵守上游代理生命周期；并发使用独立 fresh query，不共享可变 Queryable。窗口、统计、全文评分和不安全聚合后计算不能套用逐行分片合并。
 - Code First 只执行已建模的受控变更。HANA 88 带双引号列名的 ALTER 定义当前提前拒绝，不用重建表或改名隐藏差异；复杂依赖对象迁移继续验收。
 - HDI 实库多值模型为 NVARCHAR/INTEGER，其他模型精度和参数类型仍需对应模型。列表 NULL/空列表不开放；HANA 多 SCORE 子查询 JOIN 与 MySQL 全文事务可见性按各自文档保留。

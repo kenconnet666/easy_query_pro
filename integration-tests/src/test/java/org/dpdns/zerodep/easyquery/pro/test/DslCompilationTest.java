@@ -37,6 +37,14 @@ class DslCompilationTest {
     }
 
     @Test
+    void basicNumericWidthsRemainVisibleToConsumers() throws IOException {
+        compile(true, "NumberTypeExpression<Long> integer = d.value(Long.MAX_VALUE, CommonTypes.bigint()); NumberTypeExpression<Float> real = d.value(Float.MIN_VALUE, CommonTypes.real()); NumberTypeExpression<Double> wide = d.nullValue(CommonTypes.doublePrecision()); real.multiply(2f);");
+        compile(false, "d.value(1, CommonTypes.bigint());");
+        compile(false, "d.value(1d, CommonTypes.real());");
+        compile(false, "NumberTypeExpression<Float> value = d.nativeCast(p.amount(), CommonTypes.doublePrecision());");
+    }
+
+    @Test
     void hanaCharacterValuesUseStringOperationsWhileShorttextOnlyDescribesStorage() throws IOException {
         compile(true, "StringTypeExpression<String> alpha = d.nativeCast(p.name(), HanaTypes.alphanum(6)); alpha.toUpper(); d.value(\"中😀\", HanaTypes.nvarchar(20)).isNull(); StorageType<String> stored = HanaTypes.shortText(20);");
         compile(false, "d.nativeCast(p.name(), HanaTypes.shortText(20));");

@@ -1,6 +1,6 @@
 # 精确类型表达式
 
-当前已落地 DECIMAL 与有界 Unicode 文本路径，使用 EasyQuery 3.2.17 与 JDK 17。完整类型目录、列视图和方言类型仍按 [DSL 设计](dsl-design.md) 继续实施；本文只描述已经有实现的接口。
+当前已落地 BIGINT、有限浮点参数、DECIMAL 与有界 Unicode 文本路径，使用 EasyQuery 3.2.17 与 JDK 17。完整类型目录、列视图和方言类型仍按 [DSL 设计](dsl-design.md) 继续实施；本文只描述已经有实现的接口。
 
 更大的 decimal 容量、PG 特殊 scale、HANA SMALLDECIMAL/浮点 DECIMAL 与 TINYINT 见 [原生数值目录](native-numeric.md)，继续使用本文的共同数字表达式入口。
 
@@ -50,6 +50,43 @@ MySQL 的写入/转换行为还受上下文和 SQL mode 影响，表中的 SELEC
 
 ## 表达式、转换器与作用域
 
+### 基础整数和浮点类型
+
+三个基础描述继续返回 `NumericType<T>`，直接使用已有 value、nullValue、nativeCast 与数字表达式；不新增运算方法、执行器或全局 handler。
+
+| 工厂 | Java 类型 | MySQL DDL / CAST | PostgreSQL DDL / CAST | HANA DDL / CAST |
+| --- | --- | --- | --- | --- |
+| `CommonTypes.bigint()` | Long | BIGINT / SIGNED | BIGINT / BIGINT | BIGINT / BIGINT |
+| `CommonTypes.real()` | Float | FLOAT / FLOAT | REAL / REAL | REAL / REAL |
+| `CommonTypes.doublePrecision()` | Double | DOUBLE / DOUBLE | DOUBLE PRECISION / DOUBLE PRECISION | DOUBLE / DOUBLE |
+
+BIGINT 参数覆盖 Java Long 的完整 signed 64 位范围。没有把 MySQL 的 SIGNED CAST 宣称为 SMALLINT 或 INTEGER 转换；较窄整数的完整角色目录仍需独立定型。REAL 明确是 32 位浮点，MySQL 不使用受 REAL_AS_FLOAT 影响的 REAL 别名；`nativeCast(..., CommonTypes.real())` 与只改变 Java reader 的类型视图不同。
+
+Float/Double 的显式参数只接受有限值，NaN 和正负 Infinity 在生成 SQL 前拒绝；SQL NULL 保持 null。负零规范为正零，因为 HANA 存储不保留该符号。该约束只属于 typed value：普通实体 setter 没有自动增加校验，原生 CAST、后续算术和聚合仍遵循数据库的舍入、溢出及特殊值规则。二进制浮点的 0.1 本来就不是精确十进制，金额等精确值继续使用 DECIMAL。
+
+```java
+var dsl = ProDsl.of(row);
+NumberTypeExpression<Long> counter = dsl.value(Long.MAX_VALUE, CommonTypes.bigint());
+NumberTypeExpression<Float> ratio = dsl.nativeCast(row.amount(), CommonTypes.real());
+NumberTypeExpression<Double> absent = dsl.nullValue(CommonTypes.doublePrecision());
+```
+
+官方依据：[MySQL CAST 与 REAL 模式](https://dev.mysql.com/doc/refman/8.4/en/cast-functions.html)、[PostgreSQL 17 数值类型](https://www.postgresql.org/docs/17/datatype-numeric.html)、[HANA 数值类型和零符号](https://help.sap.com/docs/SAP_HANA_PLATFORM/4fe29514fd584807ac9f2a04f6754767/4ee2f261e9c44003807d08ccc2e249ac.html)。实际驱动极值、物理列和查询组合由 BasicNumericContract 定向验收，不从 SQL 类型名称推断 JDBC 结果。
+
+MySQL 的 Float 输入与输出还有两项独立边界。Connector/J 9.7.0 客户端预处理把 Float.MAX_VALUE 编码为短十进制文本 `3.4028235E38`，高于真实 FLOAT 上界，strict 写入报 1264；`MySqlExtensions.configure` 安装的默认 Float handler 以精确 `(double) float` 调用 JDBC setDouble，保留实际 binary32 数值。处理器沿用原读取/NULL 行为，保留显式旧 FloatTypeHandler 类别名；应用随后注册的 handler 或 manager 保持优先。自定义 manager 要保留这项修复可继承 MySqlJdbcTypeHandlerManager；不会通过快照重建已配置的服务。
+
+但 MySQL FLOAT **文本结果**自身只输出有限有效位；最大值实际返回 `3.40282E38`，此时 getFloat 已无法恢复原值。需要精确单精度回读时，应用明确启用 Connector/J 服务端预处理并关闭不支持语句的静默降级，或在查询里显式投影为 DOUBLE：
+
+```java
+source.setUseServerPrepStmts(true);
+source.setEmulateUnsupportedPstmts(false);
+// Or explicitly widen an existing FLOAT for a text-protocol result.
+query.queryable(Product.class).selectColumn(p ->
+        ProDsl.of(p).nativeCast(p.ratio(), CommonTypes.doublePrecision()));
+```
+
+后者得到 Double，不能把结果继续标为原生 REAL 描述。本项目不更改应用 DataSource，不在 handler 中猜测协议或扩大误差容限。实库同时保留原 FLOAT 文本丢精度的负证据，以及 CAST AS DOUBLE 后严格相等的物理存储对照；BIGINT/DOUBLE 在两种协议中继续严格校验。HANA/PG 的 REAL 使用各自实际 JDBC 路径验证。
+
 ### 有界 Unicode 文本
 
 `CommonTypes.unicodeText(maxUtf16Length)` 返回 TextType，容量范围为 1–5000 个 **UTF-16 单元**，与 Java String.length() 的单位相同。它不是字节数、Unicode 码点数或用户看到的字形数；例如 `😀a` 占 3 个 UTF-16 单元。
@@ -93,5 +130,6 @@ query.queryable(Product.class).selectColumn(p ->
 - `DecimalDslContract`：通过三个真实数据库执行相同消费用例；由 `MySqlConnectionIT`、`PostgresConnectionIT`、`HanaDecimalDslIT` 调用。
 - `HanaConversionIT`：业务主键转换后投影为数字，以及 SQL 属性转换与精确 CAST 的协作。
 - `TextDslTest,TextDslContract`：UTF-16 容量与合法性、三库真实文本绑定和 CAST；JdbcContract 同时验证物理 DDL。
+- `BasicNumericTypeTest,BasicNumericContract`：基础数值描述、有限参数/零规范化、三库 JDBC 极值与物理列、Draft/CTE/标量/count/page。
 
 这组证据不会替代后续字符长度单位、时间精度、原生 JSON/数组/interval、独立发布产物消费者和完整 CI 的验收。

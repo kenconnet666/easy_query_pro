@@ -16,6 +16,20 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class PostgresNativeNumericIT {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
+    void basicNumericWidthsSurviveTextAndBinary(boolean binary) throws SQLException {
+        var source = PostgresTestDatabase.dataSource();
+        source.setPrepareThreshold(binary ? -1 : 0);
+        try (var schema = PostgresTestDatabase.createSchema(source, "eqp_basic_numeric_");
+             var ddl = schema.connection().createStatement()) {
+            var client = TestClients.configured(source, new PgSQLDatabaseConfiguration(), PgSqlExtensions::configure);
+            ddl.execute("CREATE TABLE " + schema.qualified("basic_numbers") + " ("
+                    + BasicNumericContract.columns(client, SqlDialect.POSTGRESQL) + ")");
+            BasicNumericContract.verify(client, "basic_numbers");
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
     void nativeScalesAndUnconstrainedNumbersSurviveTextAndBinary(boolean binary) throws SQLException {
         var source = PostgresTestDatabase.dataSource();
         source.setPrepareThreshold(binary ? -1 : 0);

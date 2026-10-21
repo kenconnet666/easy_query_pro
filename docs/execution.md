@@ -829,3 +829,17 @@ IDEA 构建、actionlint 与 diff 检查通过，未运行无关实库回归。�
 指定 JBR 17 的 `mvnw.cmd --batch-mode verify -Pmysql -Dtest=MySqlUnsignedTypeTest,DslCompilationTest#unsignedStorageWidthsDoNotPretendToBeNarrowNativeCastTargets -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=MySqlUnsignedIT` 在 2026-10-21 07:58:18 完成，3 个离线/消费者检查和 4 个实库组合通过。原生用例直接走 MySqlDsl 绑定最大值与 NULL，保留两种预处理及两种 unsigned 减法模式。IDEA 格式与构建通过，MCP 确认 eqp_unsigned_ 测试表遗留为零。
 
 前一 `3eae6b05684142eef92c67b6d9a7716477f6746e` 的 [CI 39517642251](https://github.com/kenconnet666/easy_query_pro/actions/runs/39517642251) 检查时仍 in_progress，继续后台验证。本次红绿根日志记录后清理，标准测试报告保留；完整类型角色矩阵仍开放。
+
+## 基础数值描述与 MySQL Float 的真实协议边界
+
+沿已有 NumericType 增加 CommonTypes.bigint/real/doublePrecision，不增加 ParameterType、平行表达式或执行器。三库真实 DDL 与原生 CAST 分别描述；MySQL 使用 SIGNED/FLOAT/DOUBLE，避开 REAL_AS_FLOAT。Float/Double typed value 拒绝 NaN/Infinity，并将负零规范为正零；nativeCast 和普通实体 setter 保留原生规则。通过 Context7 核对三库官方数值范围与转换语法，不把文档列出的最小正常值当作次正规值支持结论。
+
+首轮 5 个离线检查通过，7 组原生中 HANA、PG 和 MySQL 服务端预处理通过；MySQL 客户端预处理在 Float.MAX_VALUE 写入失败。独立 JDBC 对照和本机 Connector/J 9.7.0 NumberValueEncoder 源码确认 setFloat 的短文本会高于 FLOAT 真实上界，strict 模式报 1264。setDouble((double) value) 精确提升后两种模式均写入正确；原 FLOAT 文本结果却只返回 3.40282E38，而 CAST AS DOUBLE 可严格读回物理值。输入问题与输出协议限制分别处理，没有放宽误差或伪装 DOUBLE 为 REAL。
+
+MySqlExtensions 构建时安装专属默认 Float manager，只覆盖 Float/float 的绑定，读取沿原 handler。兼容旧 FloatTypeHandler 类名，应用后置 handler/manager 仍优先。只读复审发现精确默认类的新实例也必须优先于 alias，新增 identity 红测后改为先调用上游精确类查找、仅未注册时回退默认别名；自定义子类继续使用自己的类名。
+
+真实 fixture 覆盖 Long 上下界及超过 2^53 的整数，Float/Double 正负最大值、最小正常值、最小次正规值、0.1、规范零和 NULL。完整实体、typed 参数、Draft、真实 CAST、CTE、clone、标量、count/page 均验证；MySQL 两种 prepare × 两种 REAL 模式明确区分 FLOAT 精确二进制读取与文本损失。服务端预处理关闭静默降级，文本路径以显式 DOUBLE 投影对照全部实际浮点值。测试没有修改生产 DataSource。
+
+指定 JBR 17 的第一轮回归于 08:12:21 通过 7 个离线及 16 个 MySQL 原生用例（既有 DECIMAL、unsigned、JSON、时长与 JDBC 对照）；三库新类型最终于 08:14:10 通过 8 个离线/消费者及 9 个原生用例。alias 优先级修复后又于 08:17:09 通过 4 个映射离线与 4 个 MySQL 基础数值原生用例。IDEA 格式与构建通过，MCP 确认本次三库物理表/schema 遗留为零；六份本轮根诊断日志记录后清理，标准报告保留。
+
+前序重复测量 `3eae6b05684142eef92c67b6d9a7716477f6746e` 的 [CI 39517642251](https://github.com/kenconnet666/easy_query_pro/actions/runs/39517642251) 已由主线程确认 success。随后 unsigned 重载提交 d7dcad0 的 [CI 39518796112](https://github.com/kenconnet666/easy_query_pro/actions/runs/39518796112) 首次运行的三库及两平台构建通过，两平台独立消费者在依赖解析阶段失败：Ubuntu 的 JUnit launcher POM 从 Maven Central 下载时 Connection reset，Windows 的 dependency 插件未能读取 plexus-component-annotations 描述。已核对归档日志并只重跑失败任务，尚不视为通过，不等待重跑推进下一批。完整小宽整数/其他标量角色继续审计，协议边界见 dsl-types.md。

@@ -38,7 +38,7 @@
 | G3.2 | Code First 创建、受控增量、预览、幂等和失败后状态 | G3.1 | 创建/重命名/扩宽/默认值/回滚通过；依赖对象和复杂迁移继续验收 |
 | G3.3 | 专用测试 schema 与非 SYSTEM 应用用户验证 | G3.2 | 非管理员迁移/目录已有验证；真实全文/层级表仅SELECT、撤权后的258，以及HDI独立运行时用户SELECT/EXECUTE本地通过，其他模型与完整业务集成继续覆盖 |
 | G4.1 | 用三库真实消费示例定型通用/专属类型、CAST 与列视图 API | G0.4、G2.5 | DECIMAL 原型已通过三库真实消费，原生差异显式标注；其余类型/列视图继续收敛 |
-| G4.2 | 通用类型参数、三库 DDL/CAST 分离、类型族重载、返回表达式静态类型 | G4.1 | DECIMAL、有界 Unicode 文本、typed value/NULL 和编译负例已落地；完整目录继续实施 |
+| G4.2 | 通用类型参数、三库 DDL/CAST 分离、类型族重载、返回表达式静态类型 | G4.1 | DECIMAL、有界 Unicode 文本、typed value/NULL 和编译负例已落地；BIGINT与有限REAL/DOUBLE参数、三库极值及CTE已有实库证据，保留MySQL FLOAT文本结果损失和显式精确读取选择，完整目录继续实施 |
 | G4.3 | NULL-safe/NULLIF/数据库日期截断，以及 JSON path/布尔结果组合桥接 | G4.2 | NULL-safe、NULLIF、常规日期截断与结构化 JSON path/布尔桥接已实现；历史历法及完整组合继续验收 |
 | G4.4 | 三库原生类型目录：unsigned、MySQL 时长、PG interval、HANA 受限文本等 | G4.2 | PG interval、MySQL unsigned/TIME、HANA LOB/JSON 文本及三库原生数值已有实库证据；MySQL unsignedBigint 直接 facade 参数重载歧义已红绿修复，字符及其余目录继续实施 |
 | G4.5 | MySQL JSON、PG JSONB 与 PG SQL 数组的完整选定操作 | G4.2、G4.4 | MySQL JSON、PG JSON/JSONB 和一维数组选定操作已有实库证据；完整类型组合、分片及性能继续验收 |

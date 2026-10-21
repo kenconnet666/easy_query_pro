@@ -4,6 +4,9 @@
 
 | 入口 | Java 类型 | 声明范围 / 值域 |
 | --- | --- | --- |
+| `CommonTypes.bigint()` | Long | signed 64 位；MySQL CAST 目标为 SIGNED |
+| `CommonTypes.real()` | Float | 有限 binary32 参数、零符号规范化；MySQL 精确回读要求见下文 |
+| `CommonTypes.doublePrecision()` | Double | 有限 binary64 参数、零符号规范化 |
 | `CommonTypes.decimal(p,s)` | BigDecimal | 三库共同范围，p 1–38，s 0–min(p,30) |
 | `MySqlTypes.decimal(p,s)` | BigDecimal | p 1–65，s 0–min(p,30) |
 | `PgSqlTypes.numeric(p,s)` | BigDecimal | p 1–1000，s -1000–1000；负 scale 需要 PostgreSQL 15+ |
@@ -13,7 +16,9 @@
 | `HanaTypes.floatingDecimal()` | BigDecimal | 无 p/s 的 DECIMAL，最多 34 位有效数字；下述实测指数边界 |
 | `HanaTypes.tinyint()` | Short | 0–255；不改变 Java Byte 的 signed 映射 |
 
-类型只接受对应方言。`value` 拒绝需要舍入、下溢或越界的值，尾零可精确移除；`nativeCast` 保留数据库转换行为。类型的 DDL 描述不会给普通实体 setter 自动加上同样的 Java 输入校验。
+方言专属工厂只接受对应方言。`value` 拒绝需要舍入、下溢或越界的值，尾零可精确移除；`nativeCast` 保留数据库转换行为。类型的 DDL 描述不会给普通实体 setter 自动加上同样的 Java 输入校验。
+
+CommonTypes 为三库共同描述；上表其余工厂只接受所属方言。基础浮点参数的有限值与原生运算结果分开承诺，MySQL FLOAT 的文本结果损失和显式服务端预处理/DOUBLE 投影选择见 [基础数值类型](dsl-types.md#基础整数和浮点类型)；不会用容差断言掩盖 JDBC 传输丢失。
 
 ```java
 var thousands = PgSqlTypes.numeric(2, -3);

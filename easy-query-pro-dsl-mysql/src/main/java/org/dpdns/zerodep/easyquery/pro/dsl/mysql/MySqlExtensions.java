@@ -15,6 +15,7 @@ import org.dpdns.zerodep.easyquery.pro.dsl.internal.NullSafeComparison;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.TemporalTruncation;
 import org.dpdns.zerodep.easyquery.pro.dsl.internal.JsonPathAccess;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.json.MySqlJsonColumnConverter;
+import org.dpdns.zerodep.easyquery.pro.dsl.mysql.jdbc.MySqlJdbcTypeHandlerManager;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationTypeHandler;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationMetadataManager;
 import com.easy.query.core.metadata.EntityMetadataManager;
@@ -31,6 +32,8 @@ public final class MySqlExtensions {
         services.addService(TemporalTruncation.class, new MySqlTemporalTruncation());
         services.addService(JsonPathAccess.class, new MySqlJsonPathAccess());
         services.addService(EntityMetadataManager.class, MySqlDurationMetadataManager.class);
+        // 默认 Float 修复必须早于 metadata 缓存；应用自定义服务在本方法之后安装。
+        services.addService(JdbcTypeHandlerManager.class, MySqlJdbcTypeHandlerManager.class);
     }
 
     /**

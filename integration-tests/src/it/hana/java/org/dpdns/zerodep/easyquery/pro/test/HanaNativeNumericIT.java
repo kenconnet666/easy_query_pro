@@ -16,6 +16,15 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class HanaNativeNumericIT {
     @Test
+    void basicNumericWidthsSurviveExtremeParametersAndStorage() throws SQLException {
+        var client = TestClients.configured(HanaTestDatabase.dataSource(), new HanaDatabaseConfiguration(), HanaExtensions::configure);
+        try (var fixture = HanaTestDatabase.createTable("BASIC_NUMERIC",
+                BasicNumericContract.columns(client, SqlDialect.HANA))) {
+            BasicNumericContract.verify(client, fixture.name());
+        }
+    }
+
+    @Test
     void decimalFloatingExtremesAndFixedScaleSurviveBatchBindingAndStorage() throws SQLException {
         var source = HanaTestDatabase.dataSource();
         var client = TestClients.configured(source, new HanaDatabaseConfiguration(), HanaExtensions::configure);
