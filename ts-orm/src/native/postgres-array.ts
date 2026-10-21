@@ -9,7 +9,7 @@ import {
 import { sqlFragment, type Node } from "../expression/node.js";
 import { DataType, types, type CommonSqlKind } from "../schema/data-type.js";
 import {
-  requireNativeOperation,
+  requireTypeOperation,
   type NativeStorage,
   type SqlTypeWrapper,
 } from "../schema/native-type.js";
@@ -169,7 +169,7 @@ export class PgArrayExpression<A extends ArrayValue, K extends ArrayKind> extend
     operator: "@>" | "&&",
     value: Exclude<A, null> | Expression<A | null, K>,
   ): Predicate {
-    requireNativeOperation(this.type.storage, "postgres", "equality");
+    requireTypeOperation(this.type.storage, "postgres", "equality");
     let other;
     if (value instanceof Expression) {
       if (!this.type.hasSameStorage(value.type) || !this.type.hasSameCodec(value.type))
@@ -200,7 +200,7 @@ export class PgArrayExpression<A extends ArrayValue, K extends ArrayKind> extend
   anyEquals(value: Exclude<ElementOf<A>, null>): Predicate {
     if (value === null || value === undefined || value instanceof Expression)
       throw new TypeError("anyEquals requires a non-null business value, not a scalar expression");
-    requireNativeOperation(this.type.storage, "postgres", "equality");
+    requireTypeOperation(this.type.storage, "postgres", "equality");
     // 构造器限定为允许任意长度列表的工厂 codec；元素业务映射仍逐项执行。
     const single = valueOf([value] as unknown as A, this.type);
     return call(

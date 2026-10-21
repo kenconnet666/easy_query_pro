@@ -5,6 +5,7 @@ import {
   Expression,
   grouping,
   jsonNull,
+  not,
   postgresDialect,
   postgresTypes,
   table,
@@ -70,6 +71,13 @@ const query = db
 
 type Row = Awaited<ReturnType<typeof query.execute>>[number];
 function declarationsRemainSpecific(row: Row) {
+  const base = db.from({ a: accounts });
+  const certain: Expression<boolean, "boolean"> = not(base.scope.a.parentId.eqNullSafe(null));
+  // @ts-expect-error Ordinary nullable comparisons retain UNKNOWN after NOT.
+  const uncertain: Expression<boolean, "boolean"> = not(base.scope.a.parentId.eq(1));
+  // @ts-expect-error NULL-safe comparison still uses the original business value type.
+  base.scope.a.balance.eqNullSafe("1.00");
+  void [certain, uncertain];
   const statistic = aggregate.varianceSampleApprox(valueOf(1, types.integer()));
   // @ts-expect-error Published statistical aggregates must preserve the unavailable DISTINCT capability.
   statistic.filter(valueOf(true, types.boolean())).distinct();

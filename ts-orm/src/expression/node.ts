@@ -36,7 +36,21 @@ export interface FunctionDefinition {
   readonly render: Readonly<Partial<Record<DialectName, (arguments_: readonly Node[]) => Node>>>;
 }
 export type BinaryOperator =
-  "=" | "<>" | ">" | ">=" | "<" | "<=" | "+" | "-" | "*" | "/" | "AND" | "OR" | "LIKE";
+  | "="
+  | "<>"
+  | ">"
+  | ">="
+  | "<"
+  | "<="
+  | "+"
+  | "-"
+  | "*"
+  | "/"
+  | "AND"
+  | "OR"
+  | "LIKE"
+  | "IS NOT DISTINCT FROM"
+  | "IS DISTINCT FROM";
 export type Node = NodeShape & Readonly<{ outputType?: AnyDataType }>;
 type NodeShape =
   | Readonly<{

@@ -225,3 +225,15 @@ rollupBy 共用现有分组计划，scope/groupKeys 保留 codec 并可空化，
 同类审查随后发现函数定义的对象展开会丢失 class getter 与 renderer 原型方法。类定义红测实际报 Function undefined does not support postgres；改为明确读取 name/phase/syntax，并按三库键获取、绑定原 renderer 对象后冻结函数映射。带私有字段的类方法、own method、单次 getter 读取和 aggregate phase 保留均有回归；DataType codec 与其他普通回调不作无关改动。
 
 133 单元用例、类型与格式检查通过。此次不改变标准方言生成的 SQL，新增的是有状态扩展回归，本地未重复无关实库测试。前一 ROLLUP 提交 3b86152cd9c10abf875c6e94697d1c6682cf9f47 的 [TS CI 39516299169](https://github.com/kenconnet666/easy_query_pro/actions/runs/39516299169) 已成功，Java/HANA CI 提交前仍在进行。
+
+## 2026-10-21：NULL-safe 比较与 JSON 操作能力
+
+沿已有表达式/codec 添加 eqNullSafe、neNullSafe。PG 原生 IS [NOT] DISTINCT FROM、MySQL <=>、HANA MAP 均复用实际位置绑定；两个 NULL 相等、单个 NULL 不等。not 保持输入的静态与运行时 NULL 合同。HANA 只对 AST 确定二值的谓词减少 CASE 分支，自定义 renderer 的非空 reader 声明不能作为忽略 UNKNOWN 的依据。
+
+能力检查按物理类型统一覆盖比较、IN、排序、分组、窗口分区和 DISTINCT，透过 CASE/COALESCE/CTE 保留。HANA NCLOB 拒绝整文档比较和去重；MySQL JSON IN 按官方限制拒绝，整文档排序因非标量和有限排序键边界明确拒绝，分组仍保留。MySQL 额外只读探针以 1,500 个相同前缀字符与不同尾字符确认 max_sort_length=1024 时仍分成两组，没有将排序限制误推成分组错误。
+
+三库五行 NULL 组合 fixture 覆盖整数、BOOLEAN、中文、业务金额、SELECT/WHERE/NOT、LEFT JOIN、关联 scalar、CTE/page。PG/MySQL 的 JSON null、SQL NULL 与字符串 null 比较及分组/count distinct 也通过。首次 HANA 新 JSON COUNT 用例暴露窗口聚合拒绝 CASE 内的 LOB IS NOT NULL（264），普通聚合却通过；改为先 LENGTH(doc) 后 COUNT，条件和窗口全部通过。不做 NVARCHAR 截断或按长度去重，COUNT DISTINCT 的拒绝仍早于改写。
+
+最终 144 个单元用例、类型正负例和格式检查通过；HANA JSON 参数的 filtered window COUNT 在预算2内参数恰为[条件值,文档值]，预算1拒绝。包消费者验证 boolean 非空声明、普通比较 UNKNOWN 与业务 codec 参数边界，从真实 tarball 消费通过，观测84文件、17,896类型实例化、约18MiB内存。随机实库对象和自有连接池正常清理。
+
+前序扩展接收者提交 8976ce565d020a6f7a236794706ead577bbbc00b 的 [TS CI 39517176077](https://github.com/kenconnet666/easy_query_pro/actions/runs/39517176077) 与 [Java CI 39517176062](https://github.com/kenconnet666/easy_query_pro/actions/runs/39517176062) 均成功。Java d7dcad0 首次消费者因外部依赖解析失败，失败任务重跑被下一提交取代而取消；当前 15d06c7 的 [CI 39520937577](https://github.com/kenconnet666/easy_query_pro/actions/runs/39520937577) 仍进行，本批继续交各自矩阵异步验收。两份 CI 归档下载到被忽略的 .codex-tmp/ci-39518796112 和后缀 -windows 目录；自动审批拒绝目录及逐文件清理，诊断归档保留，不计入提交。

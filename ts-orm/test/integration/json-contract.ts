@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import {
+  aggregate,
   column,
   createDatabase,
   identifier,
@@ -8,6 +9,7 @@ import {
   sql,
   table,
   types,
+  windowSpec,
   type Dialect,
 } from "../../src/index.js";
 
@@ -58,6 +60,57 @@ export async function verifyJson(
     assert.equal(rows[1]!.raw, null);
     assert.match(rows[2]!.raw!, /9007199254740993/);
     assert.equal(rows[3]!.raw, '"null"');
+    await assert.doesNotReject(async () => {
+      const counted = await base
+        .select(({ j }) => ({
+          count: aggregate.count(j.document),
+          filtered: aggregate.count(j.document).filter(j.id.lt(3)),
+        }))
+        .first();
+      assert.deepEqual(counted, { count: 3n, filtered: 1n });
+    }, "JSON COUNT and filtered COUNT must preserve SQL NULL semantics");
+    await assert.doesNotReject(async () => {
+      const windowCounts = await base
+        .select(({ j }) => ({
+          count: aggregate.count(j.document).over(windowSpec()),
+          filtered: aggregate.count(j.document).filter(j.id.lt(3)).over(windowSpec()),
+        }))
+        .execute();
+      assert.deepEqual(
+        windowCounts,
+        Array.from({ length: 4 }, () => ({ count: 3n, filtered: 1n })),
+      );
+    }, "JSON window COUNT must preserve SQL NULL semantics");
+    if (dialect.name !== "hana") {
+      const comparisons = await base
+        .orderBy(({ j }) => j.id.asc())
+        .select(({ j }) => ({
+          jsonNull: j.document.eqNullSafe(jsonNull),
+          sqlNull: j.document.eqNullSafe(null),
+          different: j.document.neNullSafe(jsonNull),
+          raw: j.raw.eqNullSafe("null"),
+        }))
+        .execute();
+      assert.deepEqual(comparisons, [
+        { jsonNull: true, sqlNull: false, different: false, raw: true },
+        { jsonNull: false, sqlNull: true, different: true, raw: false },
+        { jsonNull: false, sqlNull: false, different: true, raw: false },
+        { jsonNull: false, sqlNull: false, different: true, raw: false },
+      ]);
+      const groups = await base
+        .groupBy(({ j }) => ({ document: j.document }))
+        .select((_, __, keys) => ({ document: keys.document, count: aggregate.count() }))
+        .execute();
+      assert.equal(groups.length, 4);
+      assert.ok(groups.every((row) => row.count === 1n));
+      assert.equal(groups.filter((row) => row.document === null).length, 1);
+      assert.equal(groups.filter((row) => row.document === jsonNull).length, 1);
+      assert.equal(
+        (await base.select(({ j }) => ({ count: aggregate.count(j.document).distinct() })).first())!
+          .count,
+        3n,
+      );
+    }
     const scalar = db
       .from({ source: definition })
       .where(({ source }) => source.id.eq(1))

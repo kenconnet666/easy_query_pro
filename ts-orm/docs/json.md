@@ -68,4 +68,23 @@ jsonText 只检查 JSON 语法并返回收到的原字符串。语法检查产�
 
 本设计参考 EasyQuery 的 ValueConverter/ColumnReader 分工，以及 [Prisma 的 JSON null 与数据库 NULL 区分](https://www.prisma.io/docs/orm/v7/prisma-client/special-fields-and-types/working-with-json-fields#using-null-values)。本项目已有 `.nullable()`，因此不再加入另一组 DbNull/AnyNull 标记，也未复制生成器或 JSON 路径 DSL。
 
-三库契约验证真实 JSONB/JSON/NCLOB 的往返、IS NULL、业务字符串、嵌套值、精确 64 位整数文本、LEFT JOIN、CTE/page 和更新；记录见 [验证证据](evidence.md)。
+## 比较、分组和统计
+
+共同 API 保留类型，但不能改变底层存储能力。以下限制在编译时检查，CASE、COALESCE、派生表和 CTE 不会抹掉 JSON 类型：
+
+| 操作                              | PostgreSQL JSONB | MySQL JSON | HANA NCLOB             |
+| --------------------------------- | ---------------- | ---------- | ---------------------- |
+| 读取、IS NULL、UNION ALL          | 支持             | 支持       | 支持                   |
+| 等于、不等于、NULL-safe 比较      | 支持             | 支持       | 拒绝                   |
+| IN                                | 支持             | 拒绝       | 拒绝                   |
+| GROUP BY、DISTINCT、UNION 去重    | 支持             | 支持       | 拒绝                   |
+| 整份文档 ORDER BY                 | 原生规则         | 拒绝       | 拒绝                   |
+| COUNT(document)、条件及窗口 COUNT | 支持             | 支持       | 支持，转为长度标量计数 |
+
+PG/MySQL 的 `document.eqNullSafe(jsonNull)` 匹配 JSON null，`.eqNullSafe(null)` 匹配 SQL NULL；结果始终是 boolean。jsonText 使用相同 SQL 语义，但其参数是 JSON 文本，例如 `.eqNullSafe("null")`。普通 eq/ne 遇到 SQL NULL 仍返回 UNKNOWN。
+
+COUNT 只跳过 SQL NULL，JSON null 和空对象均计入。HANA 普通聚合允许 `CASE WHEN lob IS NOT NULL`，窗口聚合却拒绝同一 LOB 参与方式，因此统一先调用 LENGTH：NULL 对应 NULL，非 NULL 的长度即使为零也会计入。不会截断成有限 NVARCHAR，也不比较文档长度是否相等；COUNT DISTINCT 仍拒绝。
+
+MySQL 官方明确不支持 JSON IN，非标量文档排序也不受支持；字符串排序键还受 max_sort_length 限制，因此通用 ORDER BY 拒绝隐含的整份 JSON 排序。可通过显式标量投影选择业务排序依据。MySQL 的比较和分组仍保留，未因排序限制一并关闭；PG 与 MySQL 的 JSON 类型排序优先级也没有统一承诺。参见 [MySQL 8.4 JSON 比较与排序](https://dev.mysql.com/doc/refman/8.4/en/json.html) 和 [HANA LOB 类型限制](https://help.sap.com/docs/PRODUCT_ID/4fe29514fd584807ac9f2a04f6754767/c374aca91944460b834ef1d5ceb82acf.html)。
+
+三库契约验证真实 JSONB/JSON/NCLOB 的往返、IS NULL、业务字符串、嵌套值、精确 64 位整数文本、LEFT JOIN、CTE/page、COUNT 和更新，PG/MySQL 另验证 JSON NULL-safe 比较与分组；记录见 [验证证据](evidence.md)。

@@ -85,6 +85,8 @@ union/unionAll 产出一个新来源，后续查询通过 from 绑定结果列�
 
 显式 select 后可用 `.exists()` 创建存在性谓词，单字段投影还可 `.scalar()` 作为可空标量；支持祖先关系捕获和自动 SQL 别名避让。原聚合/DISTINCT/分页保持，标量多行保留数据库错误。CTE、分组、HANA 和扩展 renderer 的边界见 [复杂子查询](docs/subqueries.md)。
 
+`left.eqNullSafe(right)` / `left.neNullSafe(right)` 把两个 SQL NULL 视为相等，只有一个 NULL 时视为不等，始终返回 boolean；可用于 JOIN、WHERE 和投影，并沿字段原 codec 校验参数。普通 `.eq()` / `.ne()` 保持 SQL 三值逻辑，`not()` 保留其可空性。PG 使用 IS [NOT] DISTINCT FROM，MySQL 使用 `<=>`，HANA 使用 MAP；NULL-safe 运算符各渲染一次左右操作数，输入表达式自身的方言转换与绑定仍按实际 SQL 计算。JSON 等类型的能力限制见 [JSON 操作边界](docs/json.md#比较分组和统计)。
+
 ## 类型化写入
 
 ```ts

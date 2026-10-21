@@ -74,6 +74,27 @@ export class Expression<T, K extends SqlKind = SqlKind> {
   ne(value: Exclude<T, null> | Expression<T, K>): Predicate {
     return this.compare("<>", value);
   }
+  /** 两个 SQL NULL 相等，只有一个 NULL 时为 false；不同于普通等号的三值逻辑。 */
+  eqNullSafe(value: T | null | Expression<T | null, K>): Expression<boolean, "boolean"> {
+    return this.nullSafeComparison("IS NOT DISTINCT FROM", value);
+  }
+  neNullSafe(value: T | null | Expression<T | null, K>): Expression<boolean, "boolean"> {
+    return this.nullSafeComparison("IS DISTINCT FROM", value);
+  }
+  private nullSafeComparison(
+    operator: "IS NOT DISTINCT FROM" | "IS DISTINCT FROM",
+    value: T | null | Expression<T | null, K>,
+  ): Expression<boolean, "boolean"> {
+    return new Expression({
+      node: freezeNode({
+        kind: "binary",
+        operator,
+        left: this.node,
+        right: operand(value, this.type.nullable()),
+      }),
+      type: types.boolean(),
+    });
+  }
   gt(value: Exclude<T, null> | Expression<T, K>): Predicate {
     return this.compare(">", value);
   }
@@ -262,9 +283,13 @@ function combine(
     predicates[0]!,
   );
 }
-export function not(predicate: Predicate): Predicate {
+export function not<T extends boolean | null>(
+  predicate: Expression<T, "boolean">,
+): Expression<boolean | (null extends T ? null : never), "boolean"> {
+  if (!(predicate instanceof Expression) || predicate.type.storage.kind !== "boolean")
+    throw new TypeError("NOT requires a boolean expression");
   return new Expression({
     node: freezeNode({ kind: "unary", operator: "NOT", operand: predicate.node }),
-    type: types.boolean().nullable(),
-  });
+    type: predicate.type.acceptsNull ? types.boolean().nullable() : types.boolean(),
+  }) as Expression<boolean | (null extends T ? null : never), "boolean">;
 }

@@ -7,16 +7,16 @@ import {
 } from "../expression/node.js";
 import { validateWindow, type RowBoundary } from "../expression/window.js";
 import type { Order, QueryNode } from "../query/model.js";
-import { requireNativeOperation, requireNativeSupport } from "../schema/native-type.js";
+import {
+  requireTypeOperation,
+  requireNativeSupport,
+  type TypeOperation,
+} from "../schema/native-type.js";
 import { sameGroupingKey } from "../query/analysis.js";
 
-export function requireNodeOperation(
-  node: Node,
-  dialect: Dialect,
-  operation: "equality" | "ordering",
-): void {
+export function requireNodeOperation(node: Node, dialect: Dialect, operation: TypeOperation): void {
   const storage = nodeOutputType(node)?.storage;
-  if (storage) requireNativeOperation(storage, dialect.name, operation);
+  if (storage) requireTypeOperation(storage, dialect.name, operation);
 }
 
 export type Scope = ReadonlyMap<symbol, string>;
@@ -76,6 +76,16 @@ function isPredicate(node: Node): boolean {
   return node.kind === "call" && node.definition.syntax === "predicate";
 }
 
+/** 只优化 SQL 本身保证二值的结构，不凭扩展作者声明的 reader 类型吞掉可能的 UNKNOWN。 */
+function isTwoValuedPredicate(node: Node): boolean {
+  if (node.kind === "constant" || (node.kind === "subquery" && node.mode === "exists")) return true;
+  if (node.kind === "unary") return node.operator !== "NOT" || isTwoValuedPredicate(node.operand);
+  return (
+    node.kind === "binary" &&
+    (node.operator === "IS DISTINCT FROM" || node.operator === "IS NOT DISTINCT FROM")
+  );
+}
+
 export function renderNode(
   node: Node,
   scope: Scope,
@@ -84,8 +94,8 @@ export function renderNode(
 ): string {
   if (state.dialect.name === "hana") {
     const predicate = isPredicate(node);
-    // EXISTS 只有真/假，不需一般谓词的三值 CASE，也不重复渲染整份子查询。
-    if (context === "value" && node.kind === "subquery" && node.mode === "exists")
+    // 二值谓词只需一个 WHEN，复杂操作数/子查询也只按实际 SQL 出现位置绑定一次。
+    if (context === "value" && predicate && isTwoValuedPredicate(node))
       return `(CASE WHEN ${renderRawNode(node, scope, state)} THEN TRUE ELSE FALSE END)`;
     if (context === "value" && predicate) {
       // 三值逻辑必须保留 UNKNOWN，不能把 CASE 的 ELSE 直接当作 FALSE。
@@ -173,7 +183,7 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
             node.spec.partitions
               .map((partition) => {
                 requireRowExpression(partition, "Window partition");
-                requireNodeOperation(partition, dialect, "equality");
+                requireNodeOperation(partition, dialect, "grouping");
                 return renderNode(partition, scope, state);
               })
               .join(", "),
@@ -205,17 +215,25 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
       if (node.operand) requireRowExpression(node.operand, "Aggregate operand");
       if (node.filter) requireRowExpression(node.filter, "Aggregate filter");
       if (node.operandType) {
-        if (node.distinct)
-          requireNativeOperation(node.operandType.storage, dialect.name, "equality");
+        if (node.distinct) requireTypeOperation(node.operandType.storage, dialect.name, "grouping");
         if (node.operator === "MIN" || node.operator === "MAX")
-          requireNativeOperation(node.operandType.storage, dialect.name, "ordering");
+          requireTypeOperation(node.operandType.storage, dialect.name, "ordering");
       }
-      if (node.distinct && dialect.name === "hana" && node.operandType?.storage.kind === "json")
-        throw new TypeError("HANA cannot apply DISTINCT to NCLOB JSON operands");
       let operand: string;
+      const renderOperand = () => {
+        if (!node.operand) return node.filter ? "1" : "*";
+        const rendered = renderNode(node.operand, scope, state);
+        // HANA 窗口聚合连 CASE WHEN lob IS NOT NULL 都拒绝。LENGTH 先变为标量，
+        // 恰好只在 SQL NULL 时返回 NULL；空文档计为 0 仍会被 COUNT 计入，不截断文本。
+        return node.operator === "COUNT" &&
+          node.operandType?.storage.kind === "json" &&
+          dialect.name === "hana"
+          ? `LENGTH(${rendered})`
+          : rendered;
+      };
       if (node.filter)
-        operand = `CASE WHEN ${renderNode(node.filter, scope, state, "predicate")} THEN ${node.operand ? renderNode(node.operand, scope, state) : "1"} ELSE NULL END`;
-      else operand = node.operand ? renderNode(node.operand, scope, state) : "*";
+        operand = `CASE WHEN ${renderNode(node.filter, scope, state, "predicate")} THEN ${renderOperand()} ELSE NULL END`;
+      else operand = renderOperand();
       return `${node.operator}(${node.distinct ? "DISTINCT " : ""}${operand})`;
     }
     case "constant":
@@ -227,6 +245,17 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
         .map((part) => (typeof part === "string" ? part : renderNode(part, scope, state)))
         .join("");
     case "binary": {
+      if (node.operator === "IS NOT DISTINCT FROM" || node.operator === "IS DISTINCT FROM") {
+        requireNodeOperation(node.left, dialect, "equality");
+        requireNodeOperation(node.right, dialect, "equality");
+        const left = renderNode(node.left, scope, state);
+        const right = renderNode(node.right, scope, state);
+        const different = node.operator === "IS DISTINCT FROM";
+        if (dialect.name === "postgres") return `(${left} ${node.operator} ${right})`;
+        if (dialect.name === "mysql")
+          return different ? `(NOT (${left} <=> ${right}))` : `(${left} <=> ${right})`;
+        return `(MAP(${left}, ${right}, 1, 0) = ${different ? 0 : 1})`;
+      }
       if (["=", "<>", ">", ">=", "<", "<="].includes(node.operator)) {
         const operation = node.operator === "=" || node.operator === "<>" ? "equality" : "ordering";
         requireNodeOperation(node.left, dialect, operation);
@@ -240,7 +269,7 @@ function renderRawNode(node: Node, scope: Scope, state: State): string {
         ? `(NOT ${renderNode(node.operand, scope, state, "predicate")})`
         : `(${renderNode(node.operand, scope, state)} ${node.operator})`;
     case "in":
-      requireNodeOperation(node.operand, dialect, "equality");
+      requireNodeOperation(node.operand, dialect, "membership");
       return `(${renderNode(node.operand, scope, state)} ${node.negated ? "NOT IN" : "IN"} (${node.values.map((value) => renderNode(value, scope, state)).join(", ")}))`;
     case "call": {
       requireNativeSupport(node.type.storage, dialect.name);
@@ -305,7 +334,7 @@ function renderBoundary(boundary: RowBoundary): string {
 export function renderOrders(orders: readonly Order[], scope: Scope, state: State): string {
   return orders
     .map((order) => {
-      requireNodeOperation(order.expression, state.dialect, "ordering");
+      requireNodeOperation(order.expression, state.dialect, "sorting");
       if (order.nulls && state.dialect.name === "mysql") {
         const first = order.nulls === "FIRST";
         return `CASE WHEN ${renderNode(order.expression, scope, state)} IS NULL THEN ${first ? 0 : 1} ELSE ${first ? 1 : 0} END ASC, ${renderNode(order.expression, scope, state)} ${order.direction}`;

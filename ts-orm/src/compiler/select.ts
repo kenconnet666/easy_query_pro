@@ -21,7 +21,7 @@ import { collectCtes } from "./cte.js";
 import { validateGrouping } from "./grouping.js";
 import { Table } from "../schema/table.js";
 import { types } from "../schema/data-type.js";
-import { requireNativeOperation, requireNativeSupport } from "../schema/native-type.js";
+import { requireTypeOperation, requireNativeSupport } from "../schema/native-type.js";
 
 export interface CompiledQuery<T> {
   readonly sql: string;
@@ -83,15 +83,7 @@ function renderQuery(
   if (query.kind === "select") return renderSelect(query, state, declared, ancestors);
   if (!query.all)
     for (const slot of query.projection)
-      requireNativeOperation(slot.type.storage, state.dialect.name, "equality");
-  if (
-    !query.all &&
-    state.dialect.name === "hana" &&
-    query.projection.some((slot) => slot.type.storage.kind === "json")
-  )
-    throw new TypeError(
-      "HANA cannot deduplicate NCLOB JSON values in UNION; use a comparable projection",
-    );
+      requireTypeOperation(slot.type.storage, state.dialect.name, "grouping");
   const columns = query.projection.map((slot) => state.dialect.quote(slot.sqlAlias)).join(", ");
   // 分支包装保留各自 ORDER/LIMIT，也使三库不依赖裸括号 SELECT 的集合运算语法差异。
   return (
@@ -134,9 +126,9 @@ function renderSelect(query: SelectNode, state: State, declared: CteSet, ancesto
   const quote = state.dialect.quote.bind(state.dialect);
   for (const slot of query.projection) {
     requireNativeSupport(slot.type.storage, state.dialect.name);
-    if (query.distinct) requireNativeOperation(slot.type.storage, state.dialect.name, "equality");
+    if (query.distinct) requireTypeOperation(slot.type.storage, state.dialect.name, "grouping");
   }
-  for (const key of query.grouping) requireNodeOperation(key, state.dialect, "equality");
+  for (const key of query.grouping) requireNodeOperation(key, state.dialect, "grouping");
   // SQL 文本出现的顺序就是参数绑定顺序：SELECT、FROM/子查询、JOIN、WHERE、ORDER。
   const selected = query.projection
     .map((slot) => `${renderNode(slot.node, scope, state)} AS ${quote(slot.sqlAlias)}`)

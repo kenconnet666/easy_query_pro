@@ -106,6 +106,8 @@ function rollupNullable(node: Node, matchesKey: (node: Node) => boolean): boolea
         rollupNullable(node.whenTrue, matchesKey) || rollupNullable(node.whenFalse, matchesKey)
       );
     case "binary":
+      if (node.operator === "IS NOT DISTINCT FROM" || node.operator === "IS DISTINCT FROM")
+        return false;
       return rollupNullable(node.left, matchesKey) || rollupNullable(node.right, matchesKey);
     case "in":
       return (

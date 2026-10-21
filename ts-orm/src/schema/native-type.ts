@@ -85,12 +85,26 @@ export function requireNativeSupport(
   return definition;
 }
 
-export function requireNativeOperation(
+export type TypeOperation = "equality" | "ordering" | "sorting" | "grouping" | "membership";
+
+/** 操作可用性由物理存储决定；JSON 在三库并不具有相同的 LOB/排序键能力。 */
+export function requireTypeOperation(
   type: StorageType,
   dialect: DialectName,
-  operation: "equality" | "ordering",
+  operation: TypeOperation,
 ): void {
   const definition = requireNativeSupport(type, dialect);
-  if (definition && !definition[operation])
-    throw new TypeError(`SQL type ${type.kind} does not support ${operation} on ${dialect}`);
+  if (type.kind === "json") {
+    if (dialect === "hana")
+      throw new TypeError(
+        `HANA NCLOB JSON does not support ${operation}; choose a comparable scalar projection`,
+      );
+    if (dialect === "mysql" && ["membership", "sorting"].includes(operation))
+      throw new TypeError(
+        `MySQL JSON does not support portable ${operation}; choose a scalar projection`,
+      );
+  }
+  const capability = operation === "ordering" || operation === "sorting" ? "ordering" : "equality";
+  if (definition && !definition[capability])
+    throw new TypeError(`SQL type ${type.kind} does not support ${capability} on ${dialect}`);
 }

@@ -48,6 +48,8 @@ Query/Expr/关系引用不可变。表达式带来源身份，编译时核对作
 
 T10 已增加真实 tarball 离线消费者、公开声明负例、十次 JOIN／四层 CTE、全部 declaration map 目标检查。四个 Node/OS 任务运行并保存类型诊断；真实数据库仍按三库契约独立验证，公开驱动依赖组合和更大类型图继续扩充。
 
+T01/T07/T08 已追加 NULL-safe 比较与物理类型操作能力检查，三库查询和 JSON 计数合同通过。下一步优先共同日期桶，复用已有表达式、codec 和分组/窗口层完成日/月/年汇总。条件透视已有 filter/CASE 可组合，不另造 pivot 执行器；任意 GROUPING SETS、RANGE 与统一精确 AVG 继续保留独立语义评估，不能把方言原生差异隐藏在通用方法后。
+
 ## 已核对的参考
 
 EasyQuery 源码基线为相邻仓库 3.2.17（2b25e9510868b4f9071365510393b0b02a451cda）。保留结构化表达式、metadata、方言、参数与连接所有权，避免直接复制 Java APT、Draft 数量族和 ThreadLocal。
