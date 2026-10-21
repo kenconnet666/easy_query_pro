@@ -877,3 +877,45 @@ Java 8 准备：
 - `~/.m2/toolchains.xml` 同时注册了 `D:\soft\jdk1.8.0_181`（1.8）和 JBR 17。
 - 按 DebugTools 官方 8u181 安装包（sha256 与 GitHub release digest 一致），把 altjvm 从 `dcevmlight-14` 升级到 `dcevmlight-26`，旧文件保留为备份。
 - 迁移方案见 [Java 8 迁移](java8-migration.md)，尚未开始改代码。
+
+## Java 8 基线迁移与 Spring Boot 3/4 接入
+
+按用户决定，Java 模块从 Java 17 降到 Java 8，与上游 EasyQuery 3.2.17 的字节码一致。
+
+构建：
+- 编译、Javadoc 和测试经 toolchain 使用 `D:\soft\jdk1.8.0_181`（版本范围 `[1.8,1.9),[8,9)`）；Maven 本身运行在 JDK 17。
+- JUnit 6.1.3 降到 5.14.4，HikariCP 7.0.2 降到 4.0.3。
+- 去掉 javac 8 不认识的 `proc full`/`proc none`。
+- CI 的 `setup-java` 改为同时安装 Temurin 8 和 17。
+
+代码：
+- 用一个一次性的 javac 带类型语法树改写工具完成大部分改写，三轮收敛，约 3,750 处：`var` 2,532、record 71、`List.of` 519、`Stream.toList` 243、instanceof 模式 95、switch 表达式和箭头 case 27、文本块 10 等。
+- EasyQuery 自己的 `toList()` 按方法所属类型排除，不会被误改。
+- 生产代码中不可变集合工厂的调用，换成 `hana`/`dsl` 两个基础模块各一份的 `internal.ImmutableCollections`，保留原有的不可变、拒绝 null、重复报错语义。之所以各放一份，是因为两个模块没有共同依赖，新建公共模块又会改动发布的产物结构。
+- `String.isBlank` 换成上游的 `EasyStringUtil.isBlank`。
+
+手工处理的部分：
+- 方法调用结果上的 instanceof 模式；
+- 多键值对的 `Map.of`，改用 builder；
+- JDK 9–15 的 `Duration`/`StringBuilder`/`String` API；
+- Java 9 的 try-with-resources 写法；
+- javac 8 无法推断局部类构造器引用的缺陷；
+- JDK 8 doclint 的 7 处错误。
+
+`DslCompilationTest` 里的 140 段代码片段，由同一工具在 `--release 8` 下逐段校验：期望通过的零错误，期望失败的第一个错误仍在原语句上。最终以真正的 javac 8 跑通为准。
+
+示例：
+- `java-client` 改为经 toolchain 使用 JDK 8 的独立使用方。
+- `spring-client`（Boot 3.5.16）保持 Java 17 不变，直接消费 Java 8 jar。
+- 新增 `spring-boot4-client`（Boot 4.0.8 + `sql-springboot4-starter` 3.2.17），`ProConfiguration` 与 Boot 3 示例完全相同。
+- Boot 4 测试用真实 `SpringApplication` 跑完整自动配置。实测在 Boot 4 下，v3 和 v4 两份 starter 的自动配置清单共存时不冲突。
+
+验证全部在 JDK 8u181 上进行：
+- 离线 `clean verify`：281 个测试通过；
+- 开发实例 MySQL/PostgreSQL IT 130 个、HANA IT 146 个通过（按库分开跑，三库合跑会超过 failsafe 的 120 秒 fork 上限）；
+- 5 个产物 jar 都是 class 52；
+- JDK 8 javadoc doclint 零错误、零警告；
+- `-Pconsumers,artifacts` 下 Invoker 5/5 通过（java-client 6 个、Boot 3 示例 8 个、Boot 4 示例 4 个测试，各含 1 个按条件跳过的实库用例）；
+- `-Pconsumers -Dconsumer.database=<mysql|postgres|hana>` 按库分别跑，每库 Invoker 5/5 通过：Boot 3 示例 8 个、Boot 4 示例 4 个测试零跳过，实库事务用例都执行；java-client 6 个测试中实库契约执行，只跳过需要 `artifacts` profile 的 sources/javadoc 检查。
+
+规则和替换对照表见 [Java 8 基线](java8-migration.md)。

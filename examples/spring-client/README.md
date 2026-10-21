@@ -1,6 +1,6 @@
 # Spring 独立消费者
 
-此示例针对 Java 17、Spring Boot 3.5.16 / Spring Framework 6.2.19、EasyQuery 3.2.17。它使用独立 POM、Spring Boot 官方 parent 和自己的 APT 实体，不继承本仓库 parent，不读取生产模块源码或现有 Proxy。其他 Spring 主版本需要各自验证，不能用本示例的结果替代兼容声明。
+此示例针对 Java 17、Spring Boot 3.5.16（增强包本身以 Java 8 字节码发布，Boot 3/4 应用直接依赖即可） / Spring Framework 6.2.19、EasyQuery 3.2.17。它使用独立 POM、Spring Boot 官方 parent 和自己的 APT 实体，不继承本仓库 parent，不读取生产模块源码或现有 Proxy。其他 Spring 主版本需要各自验证，不能用本示例的结果替代兼容声明。
 
 ## 配置位置与顺序
 
@@ -56,10 +56,9 @@ easy-query:
 
 ## 执行方式
 
-在仓库根目录使用指定 JDK 17：
+在仓库根目录执行，Maven 进程需要 JDK 17 及以上。Spring Boot 4 的同类接入见 [Spring Boot 4 消费者](../spring-boot4-client/README.md)：
 
 ```powershell
-$env:JAVA_HOME = 'C:\Users\lionheart\.jdks\jbr-17.0.14'
 .\mvnw.cmd --batch-mode verify -Pconsumers -pl consumer-tests -am -Dinvoker.test=examples/spring-client
 ```
 

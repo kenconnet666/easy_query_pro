@@ -28,7 +28,7 @@ easy-query-pro-dsl-1.0-SNAPSHOT-sources.jar
 easy-query-pro-dsl-1.0-SNAPSHOT-javadoc.jar
 ```
 
-API HTML 同时位于 `target/reports/apidocs/`。Javadoc 使用相同 JDK 17 工具链、UTF-8 和 384 MiB 上限。doclint 保留结构、引用等检查，仅不要求每个简单访问器都有机械的 missing 标签；生成错误会失败。外部 API 链接自动探测关闭，生成不依赖其他站点可达。
+API HTML 同时位于 `target/reports/apidocs/`。Javadoc 使用相同的 JDK 8 工具链、UTF-8 和 384 MiB 上限。doclint 保留结构、引用等检查，仅不要求每个简单访问器都有机械的 missing 标签；生成错误会失败。外部 API 链接自动探测关闭，生成不依赖其他站点可达。
 
 源码使用稳定的 Maven Source Plugin 3.4.0 `jar-no-fork`，文档使用 Javadoc Plugin 3.12.0 `jar`。采用 [Source Plugin 的附加工件流程](https://maven.apache.org/plugins/maven-source-plugin/usage.html) 和 [Javadoc classifier 配置](https://maven.apache.org/plugins/maven-javadoc-plugin/faq.html)，不复制源代码到另一个项目充当源码包。
 

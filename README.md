@@ -1,6 +1,6 @@
 # EasyQuery Pro
 
-基于 EasyQuery 3.2.17 的 Java 17 增强包，目标数据库限定为 MySQL、PostgreSQL、SAP HANA。优先适配 HANA 2.0 本地部署，保持 EasyQuery 的统一查询体验；只有通用 API 无法准确表达的数据库能力才提供显式方言 DSL。
+基于 EasyQuery 3.2.17 的 Java 8 增强包，目标数据库限定为 MySQL、PostgreSQL、SAP HANA。优先适配 HANA 2.0 本地部署，保持 EasyQuery 的统一查询体验；只有通用 API 无法准确表达的数据库能力才提供显式方言 DSL。
 
 仓库新增独立的 [TypeScript ORM 子项目](ts-orm/README.md)：以 EasyQuery 为主要设计参考，使用无生成器 schema、不可变查询、typed codec 和泛型扩展挂载。它有独立 Node 工程与 CI，不属于 Maven reactor；实现与验收状态见 [TS 执行计划](ts-orm/docs/plan.md)。
 
@@ -25,7 +25,7 @@
 .\tools\hana.ps1 -Action test
 ```
 
-第一条不需要数据库，验证 JDK 17、上游 APT 和三库参数化 SQL。第二条通过 Debian Docker 启动隔离数据库，验证 CRUD 和事务，结束后删除本次容器、卷与网络。MySQL 内存上限为 1 GiB，PostgreSQL 为 512 MiB，均禁用额外 swap，并在测试前检查 Docker 实际配置。
+第一条不需要数据库，经 toolchain 在 JDK 8 上验证编译、上游 APT 和三库参数化 SQL（Maven 本身运行在 JDK 17 及以上，见开发环境说明）。第二条通过 Debian Docker 启动隔离数据库，验证 CRUD 和事务，结束后删除本次容器、卷与网络。MySQL 内存上限为 1 GiB，PostgreSQL 为 512 MiB，均禁用额外 swap，并在测试前检查 Docker 实际配置。
 
 `tools/databases.ps1` 启动供 IDEA 使用的 MySQL/PostgreSQL 持久开发实例，固定端口为 53306/55432，数据库及用户均为 `eqp`；`stop` 保留数据。它与临时测试的 Compose project、卷和清理流程独立。
 
@@ -58,7 +58,8 @@ HANA 使用独立 Docker 部署和持久卷，内存上限 8 GiB、无额外 swa
 - [PostgreSQL SQL 数组、元素类型与绑定边界](docs/pgsql-arrays.md)
 - [PostgreSQL 日历间隔、精确映射与原生运算](docs/pgsql-interval.md)
 - [开发环境与运行方式](docs/development.md)
-- [Java 8 迁移方案（待确认）](docs/java8-migration.md)
+- [Java 8 基线、迁移记录与编码约束](docs/java8-migration.md)
+- 接入示例：[Java 8 应用](examples/java-client/README.md)、[Spring Boot 3](examples/spring-client/README.md)、[Spring Boot 4](examples/spring-boot4-client/README.md)
 - [分包与设计方案](docs/architecture.md)
 - [实施计划与验证条件](docs/plan.md)
 - [HANA 元数据、Code First 与事务边界](docs/hana-migrations.md)

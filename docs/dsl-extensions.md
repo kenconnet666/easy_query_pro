@@ -6,7 +6,7 @@
 
 `ProDsl.of(entity, factory)` 的返回类型为具体 D，工厂接收公开的 `dsl.spi.ExpressionScope`。自定义 DSL 可继承对应数据库 facade，通过受保护构造接入查询；数据库身份检查仍由该 facade 完成。
 
-`view(source, factory)`、`nativeCast(source, target, factory)` 和 `value(value, target, factory)` 在挂载方法上约束 `E extends PropTypeColumn<T>`，结果保持 E 的具体类型。ExpressionFactory 自身仅约束结果为列表达式，避免 Java 17 因重复的依赖上界而无法推导普通 lambda；错误 Java 值类型仍在挂载时编译失败。工厂接收 scope、mappingSource 和已经构造好的 SQLFunction 回调。view 保留原映射来源；CAST/绑定值提供新的结果来源，不把输入业务转换器继续套在新类型上。
+`view(source, factory)`、`nativeCast(source, target, factory)` 和 `value(value, target, factory)` 在挂载方法上约束 `E extends PropTypeColumn<T>`，结果保持 E 的具体类型。ExpressionFactory 自身仅约束结果为列表达式，避免 javac（JDK 8 与 17 均已验证）因重复的依赖上界而无法推导普通 lambda；错误 Java 值类型仍在挂载时编译失败。工厂接收 scope、mappingSource 和已经构造好的 SQLFunction 回调。view 保留原映射来源；CAST/绑定值提供新的结果来源，不把输入业务转换器继续套在新类型上。
 
 工厂必须消费这些输入，不能返回另一查询缓存的表达式。转换、参数校验和作用域仍由共同入口处理。自定义 Java 载体需要注册原有 JDBC handler，必要时配合 scalar EntityMetadataManager；一个类型描述符不会自动创造 JDBC 读取能力。
 

@@ -2,7 +2,7 @@
 
 状态：完整范围已获确认，正在无人值守实施；2026-10-20 根据统计与报表需求扩充分析能力和组合验收。阶段表示依赖顺序，不表示可以在中途把项目宣布为完成。
 
-目标是交付一个基于 EasyQuery 3.2.17、使用 Java 17、面向 MySQL、PostgreSQL 和 SAP HANA 的成熟增强包。HANA 适配是核心交付；通用查询继续沿用 EasyQuery，确有差异的数据库类型和操作通过显式、可组合的 DSL 表达。完成条件包括功能、错误行为、类型安全、实际数据库验证、应用接入、性能证据、文档和可消费产物。
+目标是交付一个基于 EasyQuery 3.2.17、以 Java 8 为字节码基线、面向 MySQL、PostgreSQL 和 SAP HANA 的成熟增强包。HANA 适配是核心交付；通用查询继续沿用 EasyQuery，确有差异的数据库类型和操作通过显式、可组合的 DSL 表达。完成条件包括功能、错误行为、类型安全、实际数据库验证、应用接入、性能证据、文档和可消费产物。
 
 公开 API 的分层、通用新增清单、三库类型目录与逐领域方言实现，详见 [通用 DSL 核心与数据库方言设计](dsl-design.md)。该文档细化本蓝图的能力归属，避免把全部功能都放进通用核心或全部复制成方言方法。
 
@@ -28,7 +28,7 @@
 | --- | --- |
 | EasyQuery 上游 | 本地 3.2.17，commit `2b25e9510868b4f9071365510393b0b02a451cda`；源码远端为 dromara/easy-query 的 Gitee 仓库 |
 | 增强包工程 | `7b9d96089327f035a9ee9baa542fd74b2fe75ea5` 是分包基线；HANA 适配、通用 DSL、三库类型/JSON/数组/时长和分片组合已持续实现，完整目标尚未完成 |
-| JDK | 本机 `C:\Users\lionheart\.jdks\jbr-17.0.14`；编译和测试实际使用 Java 17，`release=17` |
+| JDK | 本机 `D:\soft\jdk1.8.0_181`（DCEVM altjvm）；编译和测试实际使用 Java 8，source/target 1.8；Maven 运行在 JDK 17 |
 | 工具链 | Maven Wrapper 3.9.16；IDEA MCP、APT 和独立重建已验证；DebugTools 5.3.0 可用 |
 | MySQL | Docker 8.4.11，Connector/J 9.7.0，内存上限 1 GiB |
 | PostgreSQL | Docker 17.11，JDBC 42.7.14，内存上限 512 MiB |
@@ -171,7 +171,7 @@ PgSqlDsl.of(order).view(order.attributes(), PgSqlTypes.jsonb()).containsJson(Jso
 - 复用 `PropTypeColumn`、`SQLFunction`、现有 selector/segment 和绑定机制；保留表访问、别名、聚合类型及参数顺序，不解析生成 SQL 再做字符串替换。
 - 类型长度、precision/scale、窗口边界等结构参数做边界校验。数据值优先绑定；必须是 SQL 语法字面量的部分由受控节点渲染。
 - JSON 实体序列化复用上游转换器。JSON 文本可以作为绑定值，不为此强制引入 Jackson，也不再写一套 JSON 解析器。
-- 仅在三个真实方言实现证明需要后提取共同类型契约。Java 17 的 record 用于不可变描述，sealed 仅用于明确封闭的内部节点；用户扩展点保持可扩展。
+- 仅在三个真实方言实现证明需要后提取共同类型契约。不可变描述使用 final class 和显式 equals/hashCode；需要封闭的内部层次用包私有构造器与 final 子类表达；用户扩展点保持可扩展。
 
 如果现有公开 SPI 无法保留必需的表达式语义，必须提交最小可复现案例和所需 SPI 变化说明。不能依赖反射修改私有字段、覆写上游同包类、动态补丁或复制整个 Proxy 生成器。
 
@@ -290,7 +290,7 @@ PG SQL 数组支持 String、Integer、Long、BigDecimal、Boolean、UUID、Loca
 
 保留本地快速检查和 GitHub 完整验证的分工。本地优先编译、IDEA 诊断、单个 SQL/类型用例和必要的真实问题复现；完整数据库组合、并发和回归交给 GitHub Actions。
 
-Windows/Linux 使用 JBR 17。MySQL 1 GiB、PG 512 MiB；HANA 8 GiB、4 CPU，均保持明确 swap 限制。HANA CI 是强制任务，不得以手动外部实例任务或 H2 等替代。进一步扩大矩阵时，控制并发与资源，不解除限制来隐藏问题。
+Windows/Linux 使用 JDK 8 工具链，Spring 示例使用 JDK 17。MySQL 1 GiB、PG 512 MiB；HANA 8 GiB、4 CPU，均保持明确 swap 限制。HANA CI 是强制任务，不得以手动外部实例任务或 H2 等替代。进一步扩大矩阵时，控制并发与资源，不解除限制来隐藏问题。
 
 CI 应从当前基础检查扩展到 API 编译、完整数据库契约、非管理员用户、消费者工程、迁移和必要性能/稳定性用例。长测可以单独分组按阶段执行，但最终验收要求同一候选 commit 的完整必需集合通过。
 

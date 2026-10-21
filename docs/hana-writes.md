@@ -1,6 +1,6 @@
 # HANA 写入契约
 
-当前基线为 EasyQuery 3.2.17、HANA Platform 2.00.088、JDK 17。普通插入、更新、删除继续使用已有 API；生成键和触发器边界见 [生成键契约](hana-generated-keys.md)。本文件记录已实现路径与仍未关闭的写入问题，不缩减完整蓝图。
+当前基线为 EasyQuery 3.2.17、HANA Platform 2.00.088、JDK 8。普通插入、更新、删除继续使用已有 API；生成键和触发器边界见 [生成键契约](hana-generated-keys.md)。本文件记录已实现路径与仍未关闭的写入问题，不缩减完整蓝图。
 
 ## 冲突写入
 

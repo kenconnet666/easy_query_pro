@@ -1,14 +1,14 @@
 # Java EasyQuery Pro 兼容与迁移
 
-当前基线为 EasyQuery 3.2.17、Java 17，目标数据库限定 MySQL、PostgreSQL 与 HANA 2.0 本地部署。下表描述已有实现和定向证据；一个 fixture 通过不等于对应蓝图 ID 的全部组合已关闭。最终验收继续绑定 [执行记录](execution.md) 中的具体 SHA、产物和强制 CI。
+当前基线为 EasyQuery 3.2.17、Java 8，目标数据库限定 MySQL、PostgreSQL 与 HANA 2.0 本地部署。下表描述已有实现和定向证据；一个 fixture 通过不等于对应蓝图 ID 的全部组合已关闭。最终验收继续绑定 [执行记录](execution.md) 中的具体 SHA、产物和强制 CI。
 
 ## 版本范围
 
 | 组件 | 当前已实际使用的版本 | 范围 |
 | --- | --- | --- |
 | EasyQuery 与 APT | 3.2.17 | 所有上游模块和 processor 保持同一版本 |
-| Java | JBR 17.0.14，release 17 | 不启用 preview；其他 JDK 主版本另做兼容验证 |
-| Maven | Wrapper 3.9.16 | 工具链选择 JDK 17；不依赖系统默认 Java |
+| Java | 编译与测试使用 JDK 8（本机 8u181，CI Temurin 8），source/target 1.8 | 产物为 class 52，Java 8 及以上可直接依赖；Spring Boot 3/4（Java 17）由独立示例验证 |
+| Maven | Wrapper 3.9.16 | Maven 运行在 JDK 17 及以上，toolchain 选择 JDK 8；编译不依赖系统默认 Java |
 | MySQL / JDBC | 8.4.11 / Connector/J 9.7.0 | 当前 8.4 目标矩阵；不自动覆盖 5.7、其他主版本或兼容产品 |
 | PostgreSQL / JDBC | 17.11 / pgJDBC 42.7.14 | 当前 17 目标矩阵 |
 | HANA / JDBC | 2.00.088.00.1760424921 / ngdbc 2.30.11 | HXE 租户验证；HANA Cloud 和其他 revision 不自动继承结果 |

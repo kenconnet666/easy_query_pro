@@ -2,25 +2,25 @@
 
 ## JDK 与 Maven
 
-本机使用 `C:\Users\Administrator\.jdks\jbr-17.0.14`，IDEA Project SDK 为 `jbr-17`。已在本机 `~/.m2/toolchains.xml` 注册该路径，项目编译和测试选择 `[17,18)` 工具链；即使 Maven 本身由其他版本的系统 Java 启动，编译器和测试 JVM 仍使用 JDK 17。
+Java 模块以 Java 8 为基线，与上游 EasyQuery 3.2.17 的字节码保持一致：`source/target=1.8`，产物 class 文件主版本为 52。本机使用 `D:\soft\jdk1.8.0_181` 编译和运行测试，它已在 `~/.m2/toolchains.xml` 中注册为 `1.8`。POM 选择的版本范围是 `[1.8,1.9),[8,9)`，同时兼容本机的 `1.8` 写法和 `setup-java` 写入的 `8.0.x`。
 
-Java 模块计划降到 Java 8，与上游 EasyQuery 的字节码基线一致。目标 JDK 为 `D:\soft\jdk1.8.0_181`，已作为 `1.8` 注册到同一个 `toolchains.xml`。POM 切换之前不会选中它，切换方案见 [Java 8 迁移](java8-migration.md)。
+Maven 进程本身运行在系统 JDK 17（`JAVA_HOME`）上，只有编译器、Javadoc 和测试 JVM 经 toolchain 使用 JDK 8。这样做有两个原因：8u181 自带的 CA 证书较旧，用它访问 Maven Central 可能出现 TLS 问题；而 Spring Boot 3/4 示例需要 JDK 17 编译。
 
 Maven Wrapper 固定 Maven 3.9.16，wrapper 为官方 only-script 3.3.4。不要求安装全局 Maven，不更改系统 JAVA_HOME。首次运行需要网络以下载依赖。
 
-其他机器需要在自己的 `~/.m2/toolchains.xml` 注册 JDK 17，CI 由 `actions/setup-java` 写入工具链。POM 使用标准 `toolchain` goal 和 `<toolchains><jdk><version>` 配置，供 Maven 与 IDEA 一致解析，不自动扫描其他 JDK。本机实验版 JDK 的发现曾触发插件异常，而 IDEA 会错误地将 `select-jdk-toolchain` 的 `discoverToolchains` 配置解析为匹配条件；标准配置避开这两个问题。
+其他机器需要在自己的 `~/.m2/toolchains.xml` 注册一个 JDK 8，CI 由 `actions/setup-java` 同时安装 8 和 17 并写入工具链。POM 使用标准 `toolchain` goal 和 `<toolchains><jdk><version>` 配置，供 Maven 与 IDEA 一致解析，不自动扫描其他 JDK。本机实验版 JDK 的发现曾触发插件异常，而 IDEA 会错误地将 `select-jdk-toolchain` 的 `discoverToolchains` 配置解析为匹配条件；标准配置避开这两个问题。
 
 ```xml
 <toolchains>
     <toolchain>
         <type>jdk</type>
-        <provides><version>17</version></provides>
-        <configuration><jdkHome>/absolute/path/to/jdk-17</jdkHome></configuration>
+        <provides><version>1.8</version></provides>
+        <configuration><jdkHome>/absolute/path/to/jdk1.8</jdkHome></configuration>
     </toolchain>
 </toolchains>
 ```
 
-POM 使用 `release=17`，不启用 preview；Maven 堆上限 1 GiB，测试 JVM 上限 512 MiB。测试会断言实际运行在 Java 17，避免只验证字节码目标版本。
+Maven 堆上限 1 GiB，测试 JVM 上限 512 MiB。测试会断言实际运行在 Java 8（`java.specification.version=1.8`），避免只验证字节码目标版本。新代码不能使用 Java 9+ 的语法和 API，具体替换规则见 [Java 8 迁移](java8-migration.md)。
 
 ## 本地工作流
 
@@ -98,7 +98,7 @@ HANA 所需 IPC sysctl 和文件句柄限制在 Compose 中配置。若宿主系
 
 ## IDEA 与 DebugTools
 
-IDEA 已识别父项目和六个子模块，Project SDK 为指定 JBR 17。通过 Maven 导入同步依赖；代理源由 `sql-processor:3.2.17` 生成在 `integration-tests/target/generated-test-sources/test-annotations`，不提交生成文件。
+IDEA 已识别父项目和六个子模块；Maven 导入后模块语言级别为 8，Project SDK 应设为 `D:\soft\jdk1.8.0_181`，DebugTools 热重载也使用该 JDK 的 DCEVM。通过 Maven 导入同步依赖；代理源由 `sql-processor:3.2.17` 生成在 `integration-tests/target/generated-test-sources/test-annotations`，不提交生成文件。
 
 已核对 DebugTools 官方 [热重载说明](https://debug-tools.cc/guide/hot-reload.html)和 [JDK 安装说明](https://debug-tools.cc/guide/install.html)。本机插件为 5.3.0，JBR 17 已通过 `-XX:+AllowEnhancedClassRedefinition -version` 启动检查；这项检查不等于已经完成应用热重载验证。
 
@@ -110,7 +110,7 @@ JDK 8 热重载依赖 DCEVM。`D:\soft\jdk1.8.0_181` 已按官方 8u181 安装�
 
 ## GitHub Actions
 
-`CI` 工作流由 push、pull_request、workflow_dispatch 触发。Windows/Linux 使用 JetBrains JDK 17.0.14 构建；MySQL、PostgreSQL 通过 matrix 在独立 runner 上并行运行，各自启动对应 profile、校验内存并保存独立报告，设置 fail-fast=false。HANA 仍是独立 job，所有 job 没有相互等待的依赖。失败时保留报告和数据库日志，最后总是清理本 job 的测试资源。
+`CI` 工作流由 push、pull_request、workflow_dispatch 触发。Windows/Linux 由 `setup-java` 安装 Temurin 8 和 17：JDK 8 经 toolchain 编译和测试，JDK 17 运行 Maven 与 Spring 示例；MySQL、PostgreSQL 通过 matrix 在独立 runner 上并行运行，各自启动对应 profile、校验内存并保存独立报告，设置 fail-fast=false。HANA 仍是独立 job，所有 job 没有相互等待的依赖。失败时保留报告和数据库日志，最后总是清理本 job 的测试资源。
 
 HANA Docker job 默认运行，使用临时密码、独立卷和同一份 HANA Compose 配置，运行 JDBC 检查后清理所有测试资源。手动输入 hana 额外启用外部实例检查，需要在 `hana-test` Environment 配置三项同名 secrets，并确保 runner 能访问实例；只有这项额外检查可以显示 skipped。
 

@@ -1,4 +1,6 @@
-# Java 17 独立消费者
+# Java 8 独立消费者
+
+本工程以 Java 8 应用的身份编译和测试：通过 Maven toolchain 选用 JDK 8（版本范围 `[1.8,1.9),[8,9)`），Maven 进程本身可以运行在更新的 JDK 上。
 
 附加源码与 API 文档的解析检查通过 `-Pconsumers,artifacts` 启用，见 [Java 产物](../../docs/artifacts.md)。默认数据库消费者继续只运行自身的二进制/APT/实库契约。
 
@@ -13,9 +15,10 @@
 在仓库根目录用 Maven Wrapper 执行隔离消费验证：
 
 ```powershell
-$env:JAVA_HOME = 'C:\Users\lionheart\.jdks\jbr-17.0.14'
 .\mvnw.cmd --batch-mode verify -Pconsumers -pl consumer-tests -am
 ```
+
+`consumers` profile 同时运行 Spring 示例，所以 Maven 进程需要 JDK 17 及以上；`~/.m2/toolchains.xml` 中还需要注册一个 JDK 8，供本工程使用。
 
 Maven Invoker 把候选 JAR、实际 POM 和可达父 POM放入 `consumer-tests/target/repository`，将本工程 clone 到 `consumer-tests/target/projects` 后启动独立 Maven `clean verify`。子构建不在原 reactor 内，不共享原工程的 target/classes。另两个负例分别漏选 PG 模块与指定不存在的版本，校验错误确实来自对应编译/依赖解析阶段。
 
@@ -41,4 +44,4 @@ mvn --batch-mode clean verify -Deasyquerypro.version=<published-version>
 
 URL必须指向专用测试库。该测试只操作本次创建的 `EQP_CONSUMER_...` 表，不运行 identity/default 的风险探测、不修改用户表或持久开发容器。用户名需要在当前 schema 建表与删表的权限；完全只读用户的应用接入会在后续权限契约中单独验证。
 
-本示例的普通 Java 事务由 EasyQuery 管理。Spring 应用应参考 [独立 Spring 消费者](../spring-client/README.md) 的连接/事务集成，不能仅把这里的 client 放进 Spring 容器就假定 `@Transactional` 生效。
+本示例的普通 Java 事务由 EasyQuery 管理。Spring 应用应参考 [Spring Boot 3 消费者](../spring-client/README.md) 或 [Spring Boot 4 消费者](../spring-boot4-client/README.md) 的连接/事务集成，不能仅把这里的 client 放进 Spring 容器就假定 `@Transactional` 生效。

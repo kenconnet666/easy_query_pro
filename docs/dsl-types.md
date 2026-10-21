@@ -1,6 +1,6 @@
 # 精确类型表达式
 
-当前已落地 BIGINT、有限浮点参数、DECIMAL 与有界 Unicode 文本路径，使用 EasyQuery 3.2.17 与 JDK 17。完整类型目录、列视图和方言类型仍按 [DSL 设计](dsl-design.md) 继续实施；本文只描述已经有实现的接口。
+当前已落地 BIGINT、有限浮点参数、DECIMAL 与有界 Unicode 文本路径，使用 EasyQuery 3.2.17 与 JDK 8。完整类型目录、列视图和方言类型仍按 [DSL 设计](dsl-design.md) 继续实施；本文只描述已经有实现的接口。
 
 更大的 decimal 容量、PG 特殊 scale、HANA SMALLDECIMAL/浮点 DECIMAL 与 TINYINT 见 [原生数值目录](native-numeric.md)，继续使用本文的共同数字表达式入口。
 
@@ -126,7 +126,7 @@ query.queryable(Product.class).selectColumn(p ->
 ## 验证入口
 
 - `DecimalDslTest`：三库离线 SQL、参数顺序、克隆、JOIN/相关子查询、setter、安装和作用域负例。
-- `DslCompilationTest`：真实 JDK 17 消费者编译；错误值类型、错误结果族、错误 Java 数字类型、只有 StorageType 的输入均失败。
+- `DslCompilationTest`：真实 JDK 8 消费者编译（`-source 8 -target 8`）；错误值类型、错误结果族、错误 Java 数字类型、只有 StorageType 的输入均失败。
 - `DecimalDslContract`：通过三个真实数据库执行相同消费用例；由 `MySqlConnectionIT`、`PostgresConnectionIT`、`HanaDecimalDslIT` 调用。
 - `HanaConversionIT`：业务主键转换后投影为数字，以及 SQL 属性转换与精确 CAST 的协作。
 - `TextDslTest,TextDslContract`：UTF-16 容量与合法性、三库真实文本绑定和 CAST；JdbcContract 同时验证物理 DDL。

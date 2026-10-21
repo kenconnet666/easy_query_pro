@@ -60,7 +60,7 @@ ResultSet 数量表示观察到的 JDBC 门面。HANA 的时间读取基础会�
 
 各库内部的样本分布存在交叠，不据此认定某入口具有固定性能优势。这里也没有复制 JVM、采集 GC/网络 profile 或控制其他开发负载，无法把单个高值直接归因于某段代码。后续同环境、多轮次出现稳定退化时，应保留原始序列、输入、版本和资源配置再定位；不为共享 CI 设置绝对延迟门槛。这一小型重复基线不替代大 LOB、复杂报表及长期压力的成本验收。
 
-先按 [开发环境](development.md) 设置对应数据库环境变量，再用 JDK 17 执行：
+先按 [开发环境](development.md) 设置对应数据库环境变量，再执行（测试经 toolchain 运行在 JDK 8）：
 
 ```powershell
 .\mvnw.cmd --batch-mode verify '-Phana,mysql,postgres' `
