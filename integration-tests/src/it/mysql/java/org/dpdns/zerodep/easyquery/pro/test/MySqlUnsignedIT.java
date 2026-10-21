@@ -78,7 +78,7 @@ class MySqlUnsignedIT {
             var common = ProDsl.of(p);
             return Select.DRAFT.of(mysql.value((short) 255, MySqlTypes.unsignedTinyint()), mysql.value(65535, MySqlTypes.unsignedSmallint()),
                     mysql.value(16777215, MySqlTypes.unsignedMediumint()), mysql.value(4294967295L, MySqlTypes.unsignedInt()),
-                    common.value(MAX, MySqlTypes.unsignedBigint()), common.nativeCast(common.value("-1", CommonTypes.unicodeText(10)), MySqlTypes.unsignedBigint()));
+                    mysql.value(MAX, MySqlTypes.unsignedBigint()), common.nativeCast(common.value("-1", CommonTypes.unicodeText(10)), MySqlTypes.unsignedBigint()));
         }).singleNotNull();
         assertEquals((short) 255, selected.getValue1());
         assertEquals(65535, selected.getValue2());
@@ -92,5 +92,7 @@ class MySqlUnsignedIT {
         else assertThrows(RuntimeException.class, difference::toList);
         assertNull(query.queryable(MySqlUnsignedRecord.class).asTable(table).where(p -> p.id().eq(1))
                 .selectColumn(p -> ProDsl.of(p).nullValue(MySqlTypes.unsignedBigint())).toList().get(0));
+        assertNull(query.queryable(MySqlUnsignedRecord.class).asTable(table).where(p -> p.id().eq(1))
+                .selectColumn(p -> MySqlDsl.of(p).value(null, MySqlTypes.unsignedBigint())).toList().get(0));
     }
 }

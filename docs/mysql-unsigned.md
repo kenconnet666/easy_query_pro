@@ -15,11 +15,13 @@
 ```java
 var mysql = MySqlDsl.of(row);
 NumberTypeExpression<Long> limit = mysql.value(4294967295L, MySqlTypes.unsignedInt());
-NumberTypeExpression<BigInteger> big = ProDsl.of(row).value(
+NumberTypeExpression<BigInteger> big = mysql.value(
         new BigInteger("18446744073709551615"), MySqlTypes.unsignedBigint());
 ```
 
 较小类型的参数已校验可表示，SQL 用 64 位 UNSIGNED 表达该精确值。返回的是上游 NumberTypeExpression，继续使用已有数字运算、条件和聚合。unsignedBigint 实现公共 NumericType，可直接进入 ProDsl 的参数、NULL 和 nativeCast 入口。
+
+MySqlDsl 对 unsignedBigint 提供精确的参数重载，消除它同时属于 Unsigned 与 NumericType 时的 Java 重载歧义；直接传 BigInteger 或 NULL 均可。该重载继续调用公共数字入口，应用继承 MySqlDsl 并覆盖数字参数方法时仍会收到调用。较窄 unsigned 类型没有因此获得原生 CAST 能力。
 
 ## 读写与原生运算
 

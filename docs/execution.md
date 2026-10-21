@@ -819,3 +819,13 @@ IDEA 构建、actionlint 与 diff 检查通过，未运行无关实库回归。�
 指定 JBR 17 的 `mvnw.cmd --batch-mode verify -Phana,mysql,postgres -Dtest=HanaConfigurationTest -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=HanaQueryResourceIT,MySqlQueryResourceIT,PostgresQueryResourceIT` 通过 2 个基础离线与 3 个实库用例，包含原资源契约及新增重复测量，完成于 07:38:12。三库内部样本范围有交叠，完整数据见 query-resources.md；JDBC预生成SQL、ORM构造/映射与Pro服务器CAST的成本不能由差值拆开。
 
 只读复审后将第二 client 的创建纳入第一 client 的 finally 所有权范围，并把生命周期与测量主体分开；测量循环未改动。IDEA 格式与构建验证整理后的代码。MCP 确认三库自有资源表/schema 遗留为零，本轮自有日志记录后清理，标准 Failsafe 的原始样本保留。前一 `1471d05df428eea1a4f97cf80cd88aea7d25cc9f` 的 [Java CI 39515321177](https://github.com/kenconnet666/easy_query_pro/actions/runs/39515321177) 已重新核实成功，classifier 与任务级并发规则有对应 SHA 的完整检查；当前重复测量批仍交自己的 CI。
+
+## MySQL unsignedBigint 参数重载歧义
+
+类型目录审计先补消费者直接调用，JDK 17 红测确认 `MySqlDsl.of(p).value(BigInteger.ONE, MySqlTypes.unsignedBigint())` 无法编译：UnsignedBigint 同时属于 Unsigned 存储描述和 NumericType，两个 value 泛型重载互不更具体。既有实库用例经 ProDsl 调用，没有覆盖这个方言入口。
+
+新增 BigInteger/UnsignedBigint 精确重载，只委托已有 NumericType 路径；继续虚调用，应用 facade 覆盖数字参数方法时仍能参与。没有改变窄 unsigned 类型的 CAST 能力，也没有为此次缺陷扩大类型接口。消费者增加直接 MAX 类型、NULL、静态 Unsigned 视图正例和错误 Long 负例；离线断言应用覆盖被调用、参数值与 clone 保持，越界仍拒绝。
+
+指定 JBR 17 的 `mvnw.cmd --batch-mode verify -Pmysql -Dtest=MySqlUnsignedTypeTest,DslCompilationTest#unsignedStorageWidthsDoNotPretendToBeNarrowNativeCastTargets -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=MySqlUnsignedIT` 在 2026-10-21 07:58:18 完成，3 个离线/消费者检查和 4 个实库组合通过。原生用例直接走 MySqlDsl 绑定最大值与 NULL，保留两种预处理及两种 unsigned 减法模式。IDEA 格式与构建通过，MCP 确认 eqp_unsigned_ 测试表遗留为零。
+
+前一 `3eae6b05684142eef92c67b6d9a7716477f6746e` 的 [CI 39517642251](https://github.com/kenconnet666/easy_query_pro/actions/runs/39517642251) 检查时仍 in_progress，继续后台验证。本次红绿根日志记录后清理，标准测试报告保留；完整类型角色矩阵仍开放。

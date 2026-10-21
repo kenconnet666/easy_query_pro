@@ -125,8 +125,11 @@ class DslCompilationTest {
     @Test
     void unsignedStorageWidthsDoNotPretendToBeNarrowNativeCastTargets() throws IOException {
         compile(true, "NumberTypeExpression<java.math.BigInteger> n = d.nativeCast(p.id(), MySqlTypes.unsignedBigint()); NumberTypeExpression<Long> small = MySqlDsl.of(p).value(4294967295L, MySqlTypes.unsignedInt());");
+        compile(true, "NumberTypeExpression<java.math.BigInteger> n = MySqlDsl.of(p).value(java.math.BigInteger.ONE, MySqlTypes.unsignedBigint());");
+        compile(true, "NumberTypeExpression<java.math.BigInteger> n = MySqlDsl.of(p).value(null, MySqlTypes.unsignedBigint()); MySqlTypes.Unsigned<java.math.BigInteger> storage = MySqlTypes.unsignedBigint(); MySqlDsl.of(p).value(java.math.BigInteger.ONE, storage);");
         compile(false, "d.nativeCast(p.id(), MySqlTypes.unsignedInt());");
         compile(false, "MySqlDsl.of(p).value(256, MySqlTypes.unsignedTinyint());");
+        compile(false, "MySqlDsl.of(p).value(1L, MySqlTypes.unsignedBigint());");
         compile(false, "NumberTypeExpression<Long> n = d.value(java.math.BigInteger.ONE, MySqlTypes.unsignedBigint());");
     }
 

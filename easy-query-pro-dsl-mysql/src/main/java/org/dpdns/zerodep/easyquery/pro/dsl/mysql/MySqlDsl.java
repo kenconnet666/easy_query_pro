@@ -18,7 +18,9 @@ import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationType;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationExpression;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.temporal.MySqlDurationExpressions;
 import org.dpdns.zerodep.easyquery.pro.dsl.mysql.window.MySqlWindowSpec;
+import org.dpdns.zerodep.easyquery.pro.dsl.type.NumericType;
 
+import java.math.BigInteger;
 import java.time.Duration;
 
 import java.util.Objects;
@@ -61,6 +63,14 @@ public class MySqlDsl extends ProDsl {
         // The checked parameter fits its declared storage width; native UNSIGNED CAST itself is always 64-bit.
         return new NumberTypeExpressionImpl<>(scope.context(), scope.anchor(), null,
                 factory -> scope.function(factory.anySQLFunction("CAST({0} AS UNSIGNED)", args -> args.value(checked)), AggregationType.UNKNOWN, false), type.javaType());
+    }
+
+    /**
+     * Resolves the overlap between unsigned storage and numeric CAST roles.
+     * Delegation remains virtual so application overrides of the numeric entry point still apply.
+     */
+    public NumberTypeExpression<BigInteger> value(BigInteger value, MySqlTypes.UnsignedBigint type) {
+        return value(value, (NumericType<BigInteger>) type);
     }
 
     public <T> MySqlJsonExpression<T> view(PropTypeColumn<T> source, MySqlTypes.Json type) {
